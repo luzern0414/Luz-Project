@@ -1,0 +1,1105 @@
+{
+  "schema_version": "1.0",
+  "note": "通用客户信息问题库（精简版）：每题只有“信息项”和一个真实感示例；单选、多选题的选项就是示例。按使用端 surfaces 与功能标签 tags 筛选；平台规则（备案、类目、商户资质）只作确认问题，具体要求以平台官方最新说明为准。",
+  "methods": [
+    "文本",
+    "单选",
+    "多选",
+    "上传文件",
+    "勾选"
+  ],
+  "categories": [
+    "企业与主体信息",
+    "品牌与视觉素材",
+    "经营信息与规则",
+    "会员、积分与营销规则",
+    "预约与服务规则",
+    "微信小程序账号与上线资料",
+    "支付与结算",
+    "消息通知",
+    "管理后台与人员权限",
+    "智能体与自动化",
+    "规则、核算与定时任务",
+    "域名、服务器与第三方",
+    "现场硬件",
+    "验收与运维"
+  ],
+  "questions": [
+    {
+      "category": "企业与主体信息",
+      "item": "企业或主体全称（与营业执照一致）",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": null,
+      "example": "示例健身有限公司",
+      "why": "写入小程序主体、用户协议和合同，必须与营业执照一致"
+    },
+    {
+      "category": "企业与主体信息",
+      "item": "主体类型",
+      "method": "单选",
+      "options": [
+        "企业",
+        "个体工商户",
+        "政府或组织",
+        "个人"
+      ],
+      "required": true,
+      "surfaces": null,
+      "tags": null,
+      "example": "",
+      "why": "不同主体可申请的小程序类目和支付能力不同"
+    },
+    {
+      "category": "企业与主体信息",
+      "item": "统一社会信用代码",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": null,
+      "example": "91110000MA01234567",
+      "why": "小程序认证、备案和开具发票时需要"
+    },
+    {
+      "category": "企业与主体信息",
+      "item": "项目联系人姓名和职务",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": null,
+      "example": "张三，运营经理",
+      "why": "日常沟通和确认需求的对接人"
+    },
+    {
+      "category": "企业与主体信息",
+      "item": "项目联系人手机号和邮箱",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": null,
+      "example": "138****0000，zhangsan@example.com",
+      "why": "接收验证码、进度通知和验收文件"
+    },
+    {
+      "category": "企业与主体信息",
+      "item": "项目决策人与确认方式",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": null,
+      "example": "王总；微信文字确认，重要节点盖章",
+      "why": "需求、报价和验收以谁的确认为准，避免反复修改"
+    },
+    {
+      "category": "企业与主体信息",
+      "item": "期望上线日期和关键节点",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": null,
+      "example": "2026-12-01 前上线；11 月中旬开业活动",
+      "why": "倒推开发、备案和审核的排期，判断工期是否可行"
+    },
+    {
+      "category": "品牌与视觉素材",
+      "item": "品牌或产品名称",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": null,
+      "example": "示例健身",
+      "why": "用于界面标题、小程序名称和文档署名"
+    },
+    {
+      "category": "品牌与视觉素材",
+      "item": "品牌 Logo 文件",
+      "method": "上传文件",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": null,
+      "example": "示例健身-logo.svg（矢量优先，其次 PNG ≥ 512×512）",
+      "why": "用于启动页、小程序头像和后台界面"
+    },
+    {
+      "category": "品牌与视觉素材",
+      "item": "品牌主色与禁用色",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": null,
+      "example": "主色 #D4380D；不用蓝色",
+      "why": "界面配色以品牌色为准，避免与品牌冲突"
+    },
+    {
+      "category": "品牌与视觉素材",
+      "item": "品牌口号或一句话介绍",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": null,
+      "example": "每天 1 小时，练出好状态",
+      "why": "用于首页、小程序简介和分享文案"
+    },
+    {
+      "category": "品牌与视觉素材",
+      "item": "门店、产品、环境实拍图",
+      "method": "上传文件",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": null,
+      "example": "门店外观.jpg、前台.jpg、器械区.jpg",
+      "why": "界面使用真实图片，比通用素材更可信"
+    },
+    {
+      "category": "品牌与视觉素材",
+      "item": "参考的同类产品或喜欢的风格",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": null,
+      "example": "喜欢 Keep 小程序的简洁风格",
+      "why": "快速对齐界面风格，减少设计返工"
+    },
+    {
+      "category": "经营信息与规则",
+      "item": "营业时间",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "miniprogram",
+        "web-admin"
+      ],
+      "tags": [
+        "预约",
+        "门店"
+      ],
+      "example": "周一至周五 6:30–22:30；周末 8:00–21:00",
+      "why": "决定预约、下单和核销的可用时间段"
+    },
+    {
+      "category": "经营信息与规则",
+      "item": "节假日与临时休息安排",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": [
+        "miniprogram",
+        "web-admin"
+      ],
+      "tags": [
+        "预约",
+        "门店"
+      ],
+      "example": "春节 2026-02-16 至 02-22 休息；法定假日正常营业",
+      "why": "休息日不能下单和预约，避免与到店情况冲突"
+    },
+    {
+      "category": "经营信息与规则",
+      "item": "门店或服务点清单",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "miniprogram",
+        "web-admin"
+      ],
+      "tags": [
+        "门店"
+      ],
+      "example": "总店｜某市某区某路 100 号｜021-00000000｜120.12,30.28",
+      "why": "用于门店选择、数据隔离、取货和核销地点"
+    },
+    {
+      "category": "经营信息与规则",
+      "item": "商品、服务或套餐清单",
+      "method": "上传文件",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "miniprogram",
+        "web-admin"
+      ],
+      "tags": [
+        "商品",
+        "套餐"
+      ],
+      "example": "套餐清单.xlsx：月卡 299 元、次卡 10 次 180 元、私教单次 200 元",
+      "why": "商品名称、价格和库存是下单的基础数据，需要首批导入"
+    },
+    {
+      "category": "经营信息与规则",
+      "item": "价格与优惠规则",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "miniprogram",
+        "web-admin"
+      ],
+      "tags": [
+        "优惠券",
+        "会员",
+        "活动",
+        "积分"
+      ],
+      "example": "新客首单 8 折；满 200 减 20；会员日 9 折，不与满减叠加",
+      "why": "系统按规则自动计算金额，叠加关系必须写清楚"
+    },
+    {
+      "category": "经营信息与规则",
+      "item": "订单状态与履约流程",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "miniprogram",
+        "web-admin"
+      ],
+      "tags": [
+        "订单"
+      ],
+      "example": "待付款 → 已付款 → 待核销 → 已完成；30 分钟未付款自动取消",
+      "why": "决定订单有哪些状态、何时自动流转或取消"
+    },
+    {
+      "category": "经营信息与规则",
+      "item": "取消、退款与售后规则",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "退款",
+        "售后"
+      ],
+      "example": "开课前 2 小时可取消，原路退款；已核销不退",
+      "why": "决定能否取消、退多少钱、由谁审批"
+    },
+    {
+      "category": "经营信息与规则",
+      "item": "配送或到店方式",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": [
+        "配送"
+      ],
+      "example": "到店自提；同城配送 5 公里内，起送 30 元，运费 5 元",
+      "why": "决定下单时要不要填地址、运费和配送范围"
+    },
+    {
+      "category": "经营信息与规则",
+      "item": "发票规则",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": [
+        "发票"
+      ],
+      "example": "支持电子普票，订单完成后 30 天内在“我的订单”申请",
+      "why": "决定是否开发开票入口，以及可开票的时间和类型"
+    },
+    {
+      "category": "会员、积分与营销规则",
+      "item": "是否需要会员体系",
+      "method": "单选",
+      "options": [
+        "需要",
+        "不需要",
+        "待定"
+      ],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "会员",
+        "积分",
+        "储值"
+      ],
+      "example": "",
+      "why": "决定是否开发会员、积分、储值等模块，影响工期"
+    },
+    {
+      "category": "会员、积分与营销规则",
+      "item": "会员等级与升降级条件",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "会员"
+      ],
+      "example": "普通 / 银卡（累计消费 1000 元）/ 金卡（5000 元）；每年 1 月核算一次",
+      "why": "系统按条件自动升降级，条件必须量化"
+    },
+    {
+      "category": "会员、积分与营销规则",
+      "item": "会员权益",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "会员"
+      ],
+      "example": "银卡 95 折；金卡 9 折 + 生日券 50 元",
+      "why": "权益在下单时自动生效，需明确折扣和叠加关系"
+    },
+    {
+      "category": "会员、积分与营销规则",
+      "item": "积分获取规则",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "积分"
+      ],
+      "example": "消费 1 元得 1 分；每日上限 500 分",
+      "why": "系统按规则自动发放积分，需明确比例和上限"
+    },
+    {
+      "category": "会员、积分与营销规则",
+      "item": "积分使用与有效期",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "积分"
+      ],
+      "example": "100 分抵 1 元；积分 12 个月后清零",
+      "why": "决定抵扣比例、是否过期以及清零时间"
+    },
+    {
+      "category": "会员、积分与营销规则",
+      "item": "储值或充值规则",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "储值"
+      ],
+      "example": "充 500 送 50，充 1000 送 150；余额不可提现，12 个月内有效",
+      "why": "涉及资金，需明确赠送、退还和提现规则"
+    },
+    {
+      "category": "会员、积分与营销规则",
+      "item": "优惠券类型与发放规则",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "优惠券"
+      ],
+      "example": "新人券 20 元（满 100 可用，7 天有效）；生日券 50 元",
+      "why": "决定券的面额、使用门槛、有效期和发放时机"
+    },
+    {
+      "category": "会员、积分与营销规则",
+      "item": "拉新或分销规则",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": [
+        "分销",
+        "拉新"
+      ],
+      "example": "邀请 1 人成功下单，双方各得 30 积分；不设多级分销",
+      "why": "涉及奖励发放，需明确触发条件和上限，防止刷单"
+    },
+    {
+      "category": "会员、积分与营销规则",
+      "item": "抽奖或活动规则",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": [
+        "抽奖",
+        "活动"
+      ],
+      "example": "每周五抽奖，每人 1 次，奖品 50 元券 / 周卡 / 谢谢参与",
+      "why": "决定活动次数、奖品和中奖概率，避免纠纷"
+    },
+    {
+      "category": "预约与服务规则",
+      "item": "可预约的服务和资源",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "预约"
+      ],
+      "example": "私教课（5 位教练）、团课（瑜伽房、单车房）",
+      "why": "每种资源要单独设置可约时间和数量"
+    },
+    {
+      "category": "预约与服务规则",
+      "item": "预约时间规则",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "预约"
+      ],
+      "example": "最早提前 7 天预约，开课前 2 小时可取消；爽约 3 次限制预约 7 天",
+      "why": "决定提前多久可约、何时能取消以及爽约如何处理"
+    },
+    {
+      "category": "预约与服务规则",
+      "item": "到店核销方式",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "预约",
+        "核销"
+      ],
+      "example": "前台扫手机二维码核销，教练端也可核销",
+      "why": "决定核销入口、核销人员和使用的设备"
+    },
+    {
+      "category": "微信小程序账号与上线资料",
+      "item": "是否已有微信小程序账号",
+      "method": "单选",
+      "options": [
+        "已有",
+        "没有，需要注册",
+        "没有，需代注册"
+      ],
+      "required": true,
+      "surfaces": [
+        "miniprogram"
+      ],
+      "tags": null,
+      "example": "",
+      "why": "决定由谁注册和认证，影响上线周期"
+    },
+    {
+      "category": "微信小程序账号与上线资料",
+      "item": "小程序 AppID 与管理员姓名",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "miniprogram"
+      ],
+      "tags": null,
+      "example": "wx1234567890abcdef；管理员：张三",
+      "why": "绑定开发和发布的账号，提交审核时需要管理员扫码"
+    },
+    {
+      "category": "微信小程序账号与上线资料",
+      "item": "小程序是否已完成微信认证",
+      "method": "单选",
+      "options": [
+        "已认证",
+        "未认证",
+        "认证中"
+      ],
+      "required": true,
+      "surfaces": [
+        "miniprogram"
+      ],
+      "tags": null,
+      "example": "",
+      "why": "未认证无法使用支付等能力，审核也需要时间"
+    },
+    {
+      "category": "微信小程序账号与上线资料",
+      "item": "服务类目与所需资质",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "miniprogram"
+      ],
+      "tags": null,
+      "example": "体育健身 > 健身场馆；需提供《营业执照》",
+      "why": "类目与资质不符会被审核驳回，需提前准备"
+    },
+    {
+      "category": "微信小程序账号与上线资料",
+      "item": "备案情况",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "miniprogram"
+      ],
+      "tags": null,
+      "example": "小程序备案已通过，备案号：浙ICP备2026012345号-1X",
+      "why": "小程序必须完成备案才能上线"
+    },
+    {
+      "category": "微信小程序账号与上线资料",
+      "item": "客服联系方式",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "miniprogram"
+      ],
+      "tags": null,
+      "example": "400-800-0000（9:00–21:00）；企业微信客服",
+      "why": "小程序必须公示客服方式，也用于用户反馈"
+    },
+    {
+      "category": "微信小程序账号与上线资料",
+      "item": "用户协议与隐私政策的主体信息",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "miniprogram",
+        "website",
+        "mobile-app"
+      ],
+      "tags": null,
+      "example": "示例健身有限公司；privacy@example.com",
+      "why": "协议和隐私政策必须写明运营主体和联系方式"
+    },
+    {
+      "category": "支付与结算",
+      "item": "收款方式",
+      "method": "多选",
+      "options": [
+        "微信支付",
+        "储值余额",
+        "线下收款",
+        "其他"
+      ],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "支付",
+        "储值"
+      ],
+      "example": "",
+      "why": "决定要接入哪些支付能力"
+    },
+    {
+      "category": "支付与结算",
+      "item": "微信支付商户号状态",
+      "method": "单选",
+      "options": [
+        "已有并已绑定",
+        "已有未绑定",
+        "需要申请"
+      ],
+      "required": true,
+      "surfaces": [
+        "miniprogram"
+      ],
+      "tags": [
+        "支付"
+      ],
+      "example": "",
+      "why": "接入微信支付需要商户号，并绑定到小程序"
+    },
+    {
+      "category": "支付与结算",
+      "item": "结算账户与对账方式",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "支付"
+      ],
+      "example": "对公账户尾号 8866；每周一对上周账",
+      "why": "资金流向和对账周期需要与财务流程一致"
+    },
+    {
+      "category": "支付与结算",
+      "item": "退款审批规则",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "退款"
+      ],
+      "example": "500 元以内店长审批；超过 500 元需老板确认",
+      "why": "决定退款是自动还是人工审批，以及谁有权限"
+    },
+    {
+      "category": "消息通知",
+      "item": "需要通知的场景",
+      "method": "多选",
+      "options": [
+        "下单成功",
+        "支付成功",
+        "预约提醒",
+        "到期提醒",
+        "审批结果",
+        "活动通知",
+        "其他"
+      ],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "通知"
+      ],
+      "example": "",
+      "why": "决定开发哪些消息推送"
+    },
+    {
+      "category": "消息通知",
+      "item": "短信签名与模板",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": [
+        "通知"
+      ],
+      "example": "签名【示例健身】；模板：您预约的课程将于 {时间} 开始",
+      "why": "短信需备案签名和模板才能发送，审核需要时间"
+    },
+    {
+      "category": "消息通知",
+      "item": "订阅消息模板内容",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": [
+        "miniprogram"
+      ],
+      "tags": [
+        "通知"
+      ],
+      "example": "预约成功：{课程} {时间}；开课前 1 小时提醒",
+      "why": "订阅消息须先申请模板，措辞需符合微信规范"
+    },
+    {
+      "category": "管理后台与人员权限",
+      "item": "后台使用人员与角色",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "web-admin"
+      ],
+      "tags": null,
+      "example": "店长 2 人、前台 4 人、财务 1 人、老板 1 人",
+      "why": "决定后台开设哪些账号、划分哪些角色"
+    },
+    {
+      "category": "管理后台与人员权限",
+      "item": "数据权限范围",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "web-admin"
+      ],
+      "tags": [
+        "门店"
+      ],
+      "example": "店长只看本店；财务和老板看全部门店",
+      "why": "决定每个角色能看到哪些门店和数据"
+    },
+    {
+      "category": "管理后台与人员权限",
+      "item": "需要的报表和统计口径",
+      "method": "上传文件",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "web-admin"
+      ],
+      "tags": null,
+      "example": "日报表.xlsx：营业额按支付成功订单统计，会员数按当日新增",
+      "why": "同一指标口径不同数字就不同，需要先对齐"
+    },
+    {
+      "category": "管理后台与人员权限",
+      "item": "历史数据迁移",
+      "method": "单选",
+      "options": [
+        "不需要",
+        "需要，Excel",
+        "需要，系统导出",
+        "待评估"
+      ],
+      "required": true,
+      "surfaces": [
+        "web-admin"
+      ],
+      "tags": null,
+      "example": "",
+      "why": "决定是否导入旧数据，影响工期和上线切换"
+    },
+    {
+      "category": "管理后台与人员权限",
+      "item": "审批与操作留痕要求",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": [
+        "web-admin"
+      ],
+      "tags": null,
+      "example": "改价、退款需审批；操作日志保留 1 年",
+      "why": "决定哪些操作需要审批、操作日志保留多久"
+    },
+    {
+      "category": "智能体与自动化",
+      "item": "智能体承担的任务",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "agent"
+      ],
+      "tags": null,
+      "example": "回答会员常见问题；查询当日营业额；不处理退款",
+      "why": "划定智能体能做什么、不能做什么"
+    },
+    {
+      "category": "智能体与自动化",
+      "item": "需要智能体读写的业务系统和数据",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "agent"
+      ],
+      "tags": null,
+      "example": "只读订单与会员数据；不写入任何数据",
+      "why": "决定给智能体开放哪些数据权限，保证安全"
+    },
+    {
+      "category": "智能体与自动化",
+      "item": "必须由人审批的动作",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "agent"
+      ],
+      "tags": null,
+      "example": "退款、改价、群发消息",
+      "why": "高风险动作必须由人确认后才执行"
+    },
+    {
+      "category": "智能体与自动化",
+      "item": "知识库资料来源",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "agent"
+      ],
+      "tags": [
+        "知识库"
+      ],
+      "example": "《会员手册.pdf》《课程介绍.docx》；门店运营经理每月更新",
+      "why": "智能体只依据这些资料回答，需要有人持续维护"
+    },
+    {
+      "category": "智能体与自动化",
+      "item": "无法回答时的处理",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "agent"
+      ],
+      "tags": [
+        "知识库"
+      ],
+      "example": "转人工客服，工作时间 9:00–21:00；非工作时间留言",
+      "why": "避免智能体乱答，约定何时转人工以及怎么转"
+    },
+    {
+      "category": "智能体与自动化",
+      "item": "敏感内容与禁答范围",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "agent"
+      ],
+      "tags": null,
+      "example": "不回答医疗建议、他人隐私；敏感词表见附件",
+      "why": "划定不能回答的内容，降低合规风险"
+    },
+    {
+      "category": "智能体与自动化",
+      "item": "高并发时的服务期望",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "agent"
+      ],
+      "tags": [
+        "排队",
+        "并发"
+      ],
+      "example": "高峰 12:00–13:00，约 50 人同时提问；可接受等待 10 秒",
+      "why": "决定是否需要排队、限流和扩容设计"
+    },
+    {
+      "category": "规则、核算与定时任务",
+      "item": "需要核算的业务及口径",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "规则引擎",
+        "绩效核算",
+        "单据核算"
+      ],
+      "example": "教练课时费：课时数 × 单价，月底按自然月汇总，四舍五入到元",
+      "why": "核算公式必须量化，系统才能自动计算"
+    },
+    {
+      "category": "规则、核算与定时任务",
+      "item": "规则的维护人和变更流程",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "规则引擎",
+        "绩效核算",
+        "单据核算"
+      ],
+      "example": "财务维护；变更需店长确认，次月 1 日生效",
+      "why": "规则由谁修改、何时生效，避免随意改动"
+    },
+    {
+      "category": "规则、核算与定时任务",
+      "item": "核算样例",
+      "method": "上传文件",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "规则引擎",
+        "绩效核算",
+        "单据核算"
+      ],
+      "example": "3 个真实案例及正确结果.xlsx",
+      "why": "用真实案例核对系统算出的结果是否一致"
+    },
+    {
+      "category": "规则、核算与定时任务",
+      "item": "定时任务清单",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "定时任务"
+      ],
+      "example": "每天 8:00 发昨日日报给店长；每月 1 日 9:00 核算上月课时费",
+      "why": "决定哪些任务由系统按时自动执行"
+    },
+    {
+      "category": "规则、核算与定时任务",
+      "item": "风险预警规则与处理人",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": [
+        "风险预警"
+      ],
+      "example": "单日退款超过 5 笔预警；店长 2 小时内处理，超时升级老板",
+      "why": "预警要有明确阈值和处理人，才能形成闭环"
+    },
+    {
+      "category": "域名、服务器与第三方",
+      "item": "域名与证书",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": [
+        "miniprogram",
+        "website",
+        "web-admin",
+        "api"
+      ],
+      "tags": null,
+      "example": "app.example.com，证书由我方申请免费证书并自动续期",
+      "why": "小程序和网页必须使用已备案的域名并启用 HTTPS"
+    },
+    {
+      "category": "域名、服务器与第三方",
+      "item": "服务器与云服务偏好",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": null,
+      "example": "阿里云杭州；数据须境内存储",
+      "why": "决定部署位置、费用和数据存放地"
+    },
+    {
+      "category": "域名、服务器与第三方",
+      "item": "需要对接的第三方系统",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": [
+        "对接"
+      ],
+      "example": "金蝶云星辰（财务）；接口文档.pdf；负责人王工",
+      "why": "对接范围和接口文档决定开发量"
+    },
+    {
+      "category": "域名、服务器与第三方",
+      "item": "现有系统账号交接方式",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": null,
+      "example": "当面或加密邮件交接，不写在本表",
+      "why": "账号密码需要安全交接，不能写在本表"
+    },
+    {
+      "category": "现场硬件",
+      "item": "现场设备清单",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "hardware"
+      ],
+      "tags": null,
+      "example": "海康摄像头 6 台、门禁机 2 台、闸机 1 台；需新购扫码枪 2 把",
+      "why": "判断现有设备能否接入、还需要新购什么"
+    },
+    {
+      "category": "现场硬件",
+      "item": "现场网络与供电",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "hardware"
+      ],
+      "tags": null,
+      "example": "光纤 200M，固定 IP；弱电间在一楼前台后",
+      "why": "决定设备能否稳定联网和供电"
+    },
+    {
+      "category": "现场硬件",
+      "item": "现场照片与平面图",
+      "method": "上传文件",
+      "options": [],
+      "required": true,
+      "surfaces": [
+        "hardware"
+      ],
+      "tags": null,
+      "example": "平面图.pdf、前台.jpg、弱电间.jpg",
+      "why": "用于确定设备安装位置和布线"
+    },
+    {
+      "category": "验收与运维",
+      "item": "验收人员与验收方式",
+      "method": "文本",
+      "options": [],
+      "required": true,
+      "surfaces": null,
+      "tags": null,
+      "example": "店长张三、财务李四到场验收；逐项签字",
+      "why": "明确由谁验收、按什么标准，避免验收拖延"
+    },
+    {
+      "category": "验收与运维",
+      "item": "上线后的运维与支持期望",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": null,
+      "example": "工作日 9:00–18:00 响应，紧急问题 2 小时内",
+      "why": "决定运维响应时间和服务范围"
+    },
+    {
+      "category": "验收与运维",
+      "item": "培训对象与人数",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": null,
+      "example": "店长 2 人、前台 4 人；线上培训 1 小时",
+      "why": "决定培训场次、形式和材料"
+    },
+    {
+      "category": "验收与运维",
+      "item": "数据备份与保留要求",
+      "method": "文本",
+      "options": [],
+      "required": false,
+      "surfaces": null,
+      "tags": null,
+      "example": "每天备份，保留 30 天；交易数据保留 5 年",
+      "why": "决定备份频率、保留期限和存储成本"
+    }
+  ],
+  "tag_vocabulary": [
+    "优惠券",
+    "会员",
+    "储值",
+    "分销",
+    "单据核算",
+    "发票",
+    "售后",
+    "商品",
+    "套餐",
+    "定时任务",
+    "对接",
+    "并发",
+    "抽奖",
+    "拉新",
+    "排队",
+    "支付",
+    "核销",
+    "活动",
+    "流程编排",
+    "知识库",
+    "积分",
+    "绩效核算",
+    "规则引擎",
+    "订单",
+    "退款",
+    "通知",
+    "配送",
+    "门店",
+    "预约",
+    "风险预警"
+  ]
+}

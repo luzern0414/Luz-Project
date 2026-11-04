@@ -1,0 +1,542 @@
+[
+  {
+    "key": "hash-gate",
+    "kind": "lesson",
+    "text": "上游产物变化会让下游审批回到待复核。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "preflight-crawl-before-stage",
+    "kind": "lesson",
+    "text": "每个业务阶段先完成 Crawl run、正文阅读、conclude 和 check；缺来源或补充信息时阻断该阶段，内部验证命令不递归检索。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "client-docs-single-source",
+    "kind": "lesson",
+    "text": "客户文档（PDF/Excel）与开发评审页都由 data/ 的 JSON 渲染，来源哈希变化即过期；先改事实再重建，不手改成品。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "change-ledger-first",
+    "kind": "lesson",
+    "text": "客户新增需求、改规则、补细节、删功能都先写入全局变更台账再动手；已确认变更改功能清单并重开最早受影响的已批准阶段。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "signature-human-only",
+    "kind": "lesson",
+    "text": "验收签字只来自客户回填表的姓名与日期；脚本和模型不代签，豁免需确认人与理由。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "stable-ids-traceability",
+    "kind": "fact",
+    "text": "REQ/FN/ACC/CHG 稳定 ID 串起需求、功能、架构落点、使用说明、验收项与变更；trace 报缺口，防止上下文在技能之间丢失。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "adopt-in-place",
+    "kind": "lesson",
+    "text": "既有仓库用 adopt 就地接入：文档 git mv 进三个目录并自动修复链接，代码目录靠 paths.json 别名保留，不预设任何阶段已批准。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "intake-library-scope",
+    "kind": "lesson",
+    "text": "通用问题库默认不用（它问的是每个项目都一样的通用信息）：只在 intake-extra 的 library 写 all、tagged 或列表时借用；确认表以功能清单自动生成的逻辑行和项目专属的 logic 行为主。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "client-doc-ids-visible",
+    "kind": "lesson",
+    "text": "功能编号（FN-001…）只在数据文件、变更台账和验收清单里使用，客户看的功能清单不带编号；台账里用中文阶段名与功能名，不出现英文标识。",
+    "why": null,
+    "uses": 2,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "client-docs-through-design-showcase",
+    "kind": "lesson",
+    "text": "客户方案说明书和使用说明走 Luz-Design 的 docx 规则卡（make_docx_paginated.py，只交付导出的 PDF）；架构图册走 showcase 规则卡的 atlas 样式；Excel 走 xlsx 卡（make_xlsx.py 生成功能清单、报价清单、业务逻辑确认表、台账、验收清单，字体字号与配色见 references/client-documents.md 第 3 节）。Project 只提供事实与检查，不在 Project 里自己排版，也不因为“给客户看”就用展示版引擎。",
+    "why": null,
+    "uses": 2,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "dev-pages-follow-design",
+    "kind": "lesson",
+    "text": "开发评审页和项目索引同样走 Design 的页面构建：标题图标、主题色、标签页图标、按列对齐的表格、中文状态词，不再用自带的临时样式。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "worked-example",
+    "kind": "fact",
+    "text": "references/examples 保存了一个完整项目的 Word 方案、架构图册（atlas）、功能清单（含 hours）、报价单价和业务逻辑确认表补充问题（含 why），新项目从它改起，不从空白写。",
+    "why": null,
+    "uses": 2,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "client-gets-pdf-only",
+    "kind": "preference",
+    "text": "给客户的是 PDF 和 Excel：方案说明书、系统架构图、使用说明是 PDF（方案和使用说明用 Word 排版后导出，Word 源文件留在 raw 不交给客户），功能清单、业务逻辑确认表、台账是 Excel；HTML 只给开发看（放产品开发目录），需求对接目录出现 HTML 视为错误。",
+    "why": null,
+    "uses": 2,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "client-doc-theme",
+    "kind": "preference",
+    "text": "Word 正式文档全黑白；系统架构图册用沉稳低饱和的浅色主题（深蓝 japanese-sushi 或钢青 salon），一次选定，只用于表头浅底、发丝线和图。图册要有高级感、清楚：不用黑线黑框，表头用主题浅底，行间浅色发丝线，字体用微软雅黑 Light 加常规、全文不加粗，标题前不放图标，泳道连线不写标签，页脚页码居中；页眉的取舍见 client-pdf-header-follows-style。",
+    "why": "用户：“系统架构图太丑了，要有高级感，清楚，而不是一堆黑线黑框表格，字体也丑，还粗”",
+    "uses": 3,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "feature-list-as-excel",
+    "kind": "preference",
+    "text": "功能清单用 Excel 交付，两个工作表：功能清单（使用端→使用角色→功能模块→功能、功能说明、类型，纵向合并）和报价清单（同一份清单加工时人天与报价，表下方基础功能小计、可选功能小计、报价合计）；不显示编号，不写业务规则（业务规则在业务逻辑确认表）。",
+    "why": null,
+    "uses": 2,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "intake-two-level-category",
+    "kind": "preference",
+    "text": "收集表的分类拆成“分类”“子类”两列并分别纵向合并，不用“·”把两级拼在一个格子里；没有子类的写“通用”。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "intake-two-sheets",
+    "kind": "preference",
+    "text": "业务逻辑确认表分两个工作表：业务逻辑确认（每个功能一行，先给出拟定的业务逻辑或常见做法并逐条写出，客户选确认或需修改并写修改后的逻辑；再是待决定的规则）和需要提供的资料（只放客户才有的定制信息）；不问每个项目都一样的通用内容，信息项写清楚、不抽象；每一行写说明与理由。",
+    "why": "用户：“信息项太抽象，你只需要让用户填写一些比较定制化的东西……改成业务逻辑确认表，先给出方案，再由用户确认或者修改”",
+    "uses": 3,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "atlas-figures-and-tables-only",
+    "kind": "preference",
+    "text": "系统架构图册只用图（分层、泳道、部署）和表，不写段落、卡片说明和结论句。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "group-columns-sweep",
+    "kind": "lesson",
+    "text": "新增或改动任何客户 Excel 时先排分组列：使用端→角色→模块这类由大到小放最前并合并，再放编号和名称。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "client-doc-division",
+    "kind": "preference",
+    "text": "每份客户文件把自己的内容写完整，文件里不提及其他文件（不写“详见《功能清单》”“配套文件”）：方案说明书做需求分析后给出解决方案（系统、角色、业务流程、各系统的功能与业务逻辑、交付内容）；功能清单给具体功能和报价；系统架构图给完整架构、模块逻辑、依赖和数据链路；业务逻辑确认表先给出拟定的逻辑再由客户确认或修改。",
+    "why": "用户：“方案只需给出方案，功能清单给出具体功能和报价，系统架构图给出完整架构，每个文件要清晰，互补而不重复”",
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "proposal-chapters-and-headings",
+    "kind": "preference",
+    "text": "方案说明书用 Word 正式文档版式并作为后续项目标准，只交付导出的 PDF：封面、可点击的目录、一级标题“一、”、二级“（一）”、标题不写括号说明、页眉标题、页脚页码居中、全文黑白（表格也不上色）、每张表有表题并跨页续表；内容是项目背景与需求分析、建设目标、解决方案、交付内容，不写实施计划、双方职责、风险、验收、变更约定，不写价格。",
+    "why": "用户：“可以，就按照当前的格式作为后续项目的标准，目录要能点击并跳转，一级标题要是中文的格式一、，标题不要有（）说明，精简一点……第八点及以后的内容都删掉”",
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "quote-hours-are-estimates",
+    "kind": "lesson",
+    "text": "报价清单的工时是按功能复杂度估的人天，总额对齐方案里已有的预算；写进 features.json 的 hours 和 quote.json 的 unit_price 后须请用户确认，再交给客户。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "word-route-needs-wps",
+    "kind": "fact",
+    "text": "方案说明书和使用说明的 Word 排版需要本机有 WPS 文字或 Word（经 Luz-Design 的 docx_layout.ps1 用 COM 排版并导出 PDF）；没有时 client proposal 报“找不到排版用的 Word 兼容软件”。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "legal-docs-are-client-deliverables",
+    "kind": "preference",
+    "text": "用户协议和隐私政策是 implementation 阶段给客户的交付物：PDF，放 docs/03-验收交付，文件名固定为 用户协议.pdf、隐私政策.pdf；由 Luz-Dev 的 formal_doc.py build 经 Design 的 Word 排版导出，再用 project.py artifact <项目> implementation <PDF> --kind legal-pdf 登记。验收测试报告、发布说明、运维手册同理是 Ops 三个阶段的客户 PDF。",
+    "why": "用户要求把协议和隐私政策加进交付物；给客户的只有 PDF 和 Excel，目录由矩阵和 test_project 的目录约定测试把关",
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "acceptance-plan-before-verification",
+    "kind": "lesson",
+    "text": "验收清单数据要在 verification 开始前生成：运行 project.py client acceptance-plan（只写 data/acceptance/checklist.json，不出 Excel）；交付阶段再运行 client acceptance 保留结果并出 Excel，测试证据列写 Ops 的中文检查名，不写内部检查编号。",
+    "why": "Ops 在验收测试阶段就读清单的 evidence_checks，原先清单只在交付阶段才生成，两边对不上",
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "crawl-before-every-document",
+    "kind": "preference",
+    "text": "每个文档的生成必须先走 Luz-Crawl 取得足够的信息才能写入：阶段评审页、方案说明书、系统架构图、功能清单、业务逻辑确认表、使用说明、验收清单（Project），验收测试报告、发布说明、运维手册（Ops），用户协议、隐私政策（Dev）。没有该阶段通过 check 的前置检索时，生成命令直接报错、什么都不写；变更台账、客户回填导入、项目索引页除外。",
+    "why": "用户明确要求：每个文档的生成，必须走 crawl 获取足够的信息才能写入；之前只在审批和校验时检查，写文档的入口没有拦",
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "dev-documents-standard",
+    "kind": "preference",
+    "text": "给开发看的 HTML 放 docs/02-产品开发，用“两位序号加中文名”，平铺、一个序号顺序：01-系统架构、02-前端界面设计、03-小程序原型、04-后台原型、05-后端设计规范、06-实现报告、07-验收测试评审、08-发布评审、09-运维评审；需求阶段的评审页另排（01-需求评审到 05-交付评审），放 raw/reviews。不为每个阶段写空壳概况页，总览只有 README.html。每份文档的章节、必须有的表、图、原型和来源见 references/dev-documents.md，scripts/dev_documents.py 校验，不合格写不出来也不能审批。接口和库表从代码取，界面用来自真实组件库的可交互原型，来源来自本阶段的 Crawl 前置检索。",
+    "why": "用户要的是“系统具体架构、前端 UI 设计、后端具体设计规范”三份有具体内容的 HTML，并要求重命名、重新制定标准；之前的阶段页只有空壳概况",
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "dev-docs-facts-from-code",
+    "kind": "lesson",
+    "text": "写开发文档先从代码和运行中的系统取事实：控制器抽接口（与 OpenAPI 逐项核对）、迁移脚本抽库表字段、构建文件取版本、真实运行取截图。旧设计文档只当措辞来源，与代码不一致的地方写进“已知限制”，不悄悄抹平。工作区没有旧文档时，从版本库历史读（git show），不恢复。",
+    "why": "重写一个已交付项目的三份文档时，旧文档与代码有多处不一致（测试容器、鉴权库版本、日期条天数）",
+    "uses": 1,
+    "first_seen": "2026-11-02",
+    "last_confirmed": "2026-11-02"
+  },
+  {
+    "key": "init-vs-adopt-current-dir",
+    "kind": "lesson",
+    "text": "用户要求在当前目录规范文件夹时用 adopt，不用 init：init 会在输出根下另建编号子目录，adopt 就地建标准目录，目录里已有的原始需求文件保持原位，check 仍通过。",
+    "why": "当前目录只有 docs/01-需求对接/需求.txt，adopt 后 check 与 --strict 均通过。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "web-voice-input-routes",
+    "kind": "fact",
+    "text": "网页语音录入分三层：浏览器原生语音识别（caniuse 为“部分支持”：Chrome、安卓 Chrome、Safari 14.1+、iOS Safari 14.5+ 可用；Edge 桌面与火狐不支持；苹果需开 Siri，主屏幕和应用内网页不可用，须真机验证）、录音上传后端转写（录音接口广泛可用，腾讯云一句话识别每月 5000 次免费）、输入法语音键保底；必须 https 且公网可访问；国产手机自带浏览器的支持没有资料。浏览器兼容性以 caniuse 为准，不要采信博客的说法。",
+    "why": "2026-11-03 调研阶段更正：此前笔记沿用博客称 Edge 可用，与 caniuse 官方表不符。",
+    "uses": 2,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "baseline-single-statement",
+    "kind": "lesson",
+    "text": "项目对技术底座的表态只写一份 data/baseline.json（stack、frontend、modules 三张表），开发文档里的底座对照表必须与它一致，校验器两边都查；功能到基础功能的对应写在功能卡的 inherits 里，不再写进表态文件。",
+    "why": "文档和数据文件各写一遍会漂移；tech-baseline.md 的示例曾与实际校验的键不一致，改完才对得上",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "tabbed-doc-browser-pass",
+    "kind": "fact",
+    "text": "分标签页开发文档在真实 Edge 里逐个标签和子标签点一遍，1440 与 390 两个宽度都量页面横向溢出：功能卡里的长路径和底座对照表是最常见的溢出来源，用 overflow-wrap:anywhere、minmax(0,1fr) 和窄屏表格横向滚动解决；点标签的测试要用 :visible 取当前面板，否则会选中隐藏父级里的子面板。",
+    "why": "三份文档 390 宽曾溢出 448 与 6 像素，修复后全部为 0",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "baseline-source-conflicts",
+    "kind": "fact",
+    "text": "技术底座取材时发现的来源规范互相矛盾处记在 references/baseline/CONFLICTS.md，每处写了底座取哪一边；改 Luz-System、Luz-Design、Luz-Dev 的规范时按它逐项对齐，对齐后从清单里删掉。",
+    "why": "四位底座作者各自报告了矛盾（断点两套、HSTS 年限、限流数值、MySQL 可选无法落地、模块表名与状态不一致等），分散在会话里容易丢",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "prototype-embed-fresh-build",
+    "kind": "lesson",
+    "text": "文档嵌入的原型要在生成文档前从当前源码重建，并核对成品里没有占位字样：旧构建会留下只显示占位文字的空壳，体积检查看不出来；演示口令的字段名不要叫 password，项目严格检查会把“password 加赋值”的代码当作疑似秘密值拦下。",
+    "why": "小程序原型嵌进文档后只显示 mini stub，是早先的旧构建；后台原型因配置项名为 password 被严格检查拦下，改名 demoPass 后通过",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "migrate-docs-dir-stale",
+    "kind": "lesson",
+    "text": "skill 改了 docs 目录规则后，旧项目跑 migrate 不会刷新 project.json 各阶段的 docs_dir，render 会把旧子目录重新建出来、check 持续报“只有一层”。处理：按矩阵同步各阶段 docs_dir，删空目录，再 render 与 check --strict。",
+    "why": "skill 在会话中被改为平铺目录，migrate 后 00-需求与方案 反复出现，根因是前四个阶段的 docs_dir 仍是旧值。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "docs-flat-three-folders",
+    "kind": "preference",
+    "text": "项目 docs 只有三个目录且每个只有一层，按目录名放：01-需求对接和 03-验收交付只放给客户的 PDF、XLSX，02-产品开发只放开发阶段（系统架构、前端界面设计与各前端原型、后端设计规范、实现报告、测试、发布、运维）的 HTML；需求、调研、方案、客户信息、交付的评审页是内部页，放 raw/reviews，不进 docs；不建子目录，客户原始资料放 raw/uploads，Word 源文件和旧 Markdown 放 raw，空目录不预先建。",
+    "why": "用户两次纠正：层级太多，客户的文件和开发的 HTML 要分开放；技能的路径表曾写死子目录并让 03 混放；需求阶段的评审页后来从 01 移到 raw/reviews",
+    "uses": 2,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "skill-rules-must-be-checked-not-only-written",
+    "kind": "lesson",
+    "text": "目录、命名这类规则不能只写在文档里：校验要逐个文件核对位置、类型和所属阶段，并提供 migrate 搬旧项目；规则表、模板、示例、迁移默认值互相矛盾时，先改规则源（矩阵和常量），再改文档与测试，最后在真实项目上跑一遍；改了编号要同步查所有技能的文档里的旧句子。",
+    "why": "路径表写“受众决定目录”却让 03 混放，检查只看已登记产物；平铺后 client-documents.md 还留着旧的原始资料子目录句子，被另一个 agent 发现",
+    "uses": 2,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "crawl-task-bound-per-project",
+    "kind": "lesson",
+    "text": "同一项目所有阶段的检索必须在项目绑定的 Crawl 任务里做：后续阶段 crawl_preflight run 要带 --task 指向 project.json 的 crawl.task_root，否则 approve 报“必须复用绑定的 Crawl 任务”，只能重新检索。",
+    "why": "调研阶段漏传 --task 另开了任务，批准被拒，重新检索一遍才通过。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "skill-changes-mid-session",
+    "kind": "lesson",
+    "text": "skill 脚本、标准文档、校验器和底座必有项可能在会话中途被改动（目录布局、交付物清单、前端界面设计的页签结构、新增必有项）：遇到 check 或 gate 的新报错，先读脚本当前内容和 migrate 结果，以代码为准，参考文档可能滞后；每次渲染文档前先重跑 dev_documents.validate，并看 references 与 scripts 的修改时间；底座新增必有项要补项目 baseline.json 的声明（沿用、调整、新增、不用加理由）；标准变化后，子代理此前的验收结论要重跑才算数。不要照旧路径硬写，也不要自行改 skill。",
+    "why": "目录规则一小时内改了两次并新增必做的需求说明书 PDF；设计文档渲染前校验器突然报页签结构与 FE-CL-07 缺失，原有校验结论作废",
+    "uses": 2,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-04"
+  },
+  {
+    "key": "requirements-pdf-reopens-approval",
+    "kind": "lesson",
+    "text": "需求阶段的客户 PDF（01-需求说明书，来源 requirements.json）是被跟踪的来源：它在需求批准之后才生成，会让需求回到待审、调研被取代。应先写好需求说明书给用户看，再请用户批准需求与调研。",
+    "why": "先批准了评审页，随后生成需求说明书，两个阶段都被重开，需要用户重新批准。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "requirements-document-first",
+    "kind": "preference",
+    "text": "需求对接要先有需求文档：客户没有就先写一份 PDF 需求说明书（项目背景与按使用方的现状问题、建设目标、范围与使用者、需求清单、业务规则与约束、验收标准、需要客户确认的事项），用 Luz-Design 的客户正式文档版式（Word 排版导出）；之后才写方案和功能清单；客户有自己的需求文档时放 raw/uploads 并登记。",
+    "why": "用户要求：没有需求文档就先生成 PDF 需求文档，列清具体的背景和需求，再生成方案等",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "client-doc-build-pitfalls",
+    "kind": "lesson",
+    "text": "客户文档构建的几个坑：Word 版方案不允许 auto 块，功能总览和角色矩阵要用功能清单数据算出来再写成文段和 matrix 块；架构图册表格里不能出现“更新时间”这类制作信息词；图册节点名不超过 4 个字否则在字中间折行；图册 min_fill 要用规范值 0.7 而不是示例的 0.3，小表挪前才能占满页；窄列（使用方、系统、功能数）要加宽 widths，否则表头折成两行。 给客户的 Word 正式文档过 check_document 时，数据来源、免责声明、仅供参考、由大模型生成会被判为元信息或建议文案而报错；改写成数据提供方、风险揭示、分析结果、利用生成式人工智能技术产生内容后通过，写需求说明书前先避开这些词。",
+    "why": "方案说明书与架构图册多轮构建与逐页目检总结；需求说明书首次构建 7 处报错，改词后零错误",
+    "uses": 2,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "surface-values-no-mobile-web",
+    "kind": "lesson",
+    "text": "功能清单的使用端只有七个固定取值，没有“手机网页”：手机浏览器加电脑浏览器的网页系统全部标 web-admin（显示为网页管理后台），并在方案评审页写明请用户确认。",
+    "why": "销售用手机浏览器、主管用电脑浏览器，没有对应使用端取值。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "preflight-url-failure-blocks-run",
+    "kind": "lesson",
+    "text": "crawl_preflight run 里任何一个 --url 采集失败（如当前网络打不开的境外站）会让整轮记录标 blocked 且没有来源；先用 curl 探测官方页是否可达，只把可达的网址放进 --url。整轮要把全部查询放进同一次 run，后一次 run 会覆盖同阶段的记录。",
+    "why": "需求阶段检索：一个境外官方文档站点打不开导致一整轮作废，改用探测过的官方页重跑才通过",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "init-into-existing-empty-numbered-dir",
+    "kind": "lesson",
+    "text": "project.py init 的编号取父目录里最大编号加一；要建到已存在的空目录 NNN-名称，先 rmdir 这个空目录，再用名称（不含编号）和 --output-root 父目录 init，文件夹名才会正好是 NNN-名称。目录非空时 rmdir 会失败，不会误删。",
+    "why": "在已有的空编号目录上验证",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "crawl-recapture-keeps-old-archive",
+    "kind": "fact",
+    "text": "Luz-Crawl 同一网址再次采集不再自动续接并改写旧归档，而是另存为新序号的归档（manifest 与 identity 写 recapture_of 指向前一份），旧归档哈希不变，各阶段登记的来源仍能核验，同一网址可以在两个阶段各采一次；要续接才明确加 --resume，续接的是该网址最新的一份。每次检索后仍对所有已有阶段记录跑 crawl_preflight check，批准之前发现问题。若旧记录已被早先版本的改写破坏（check --strict 报来源清单已变化）：用不会再抓到那个网址的查询重跑受损阶段的检索，重新写补充信息并生成评审页，再请用户重新批准；记录里的校验值和采集时间绑定抓取日志，不要手改。",
+    "why": "原来的自动续接会改写旧 manifest，让前一个阶段登记的归档校验失效，只好规定一个来源只属于一个阶段；旧版行为下，后续阶段的重复抓取曾破坏早先阶段的记录，导致多个阶段重新批准",
+    "uses": 4,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "pii-retention-not-forever",
+    "kind": "fact",
+    "text": "个人信息保护法第十九条：个人信息的保存期限应为实现处理目的所必要的最短时间，第十七条要求处理前告知保存期限。方案里涉及联系人姓名等个人信息时，不要写“长期保存”，要拟定可确认的保存期限或清除提示，并请客户确认。",
+    "why": "业务逻辑确认阶段检索个保法原文后，把已批准的“洽谈记录长期保存”拆开，请客户确认联系人信息的保存期限。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "intake-text-no-book-marks",
+    "kind": "lesson",
+    "text": "业务逻辑确认与功能清单的客户文字检查会把任何书名号当成“提及其他文件”，写法规时不要加书名号，直接写“个人信息保护法”；密钥类资料只问“已通过安全渠道发送 / 尚未发送”，项目专属问题的 example 要写成真实可抄的样子。",
+    "why": "features_check 的 OTHER_FILES 规则匹配所有 2 到 16 字的书名号内容。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "xlsx-rebuild-reopens-approval",
+    "kind": "lesson",
+    "text": "规范更新后重做已批准阶段的 Excel，会让该阶段回到待审、下游被取代。只重做受影响的那份：用 client_render.build_xlsx 加 register_artifact，其余 PDF 不动，不用 client proposal --force；做完提醒用户重新批准。",
+    "why": "表格版式更新后重做功能清单，方案阶段需要重新批准。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "xlsx-card-sections-disagree",
+    "kind": "fact",
+    "text": "Luz-Design 的 xlsx 规则卡在表格版式更新后，“颜色与边框”和“用什么做”小节仍写旧的蓝灰配色加微软雅黑，与“表格文件”小节和最新偏好的宋体、黑字、淡色底不一致；以 make_xlsx.py 的实际输出和 check_document 为准，并用 WPS 导出 PDF 逐页目检。",
+    "why": "重做两份 Excel 时发现规则卡内部冲突。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "intake-form-filled-in-place",
+    "kind": "lesson",
+    "text": "客户直接在已登记的空白确认表里填写，会让该表哈希漂移、check 不通过；而重新生成确认表会清空 intake.json 里已入库的回答、选择和暂缓。修法：先备份填好的文件，intake-form --force 恢复空白表，再用备份路径（不是 -回填 目标文件，同一文件复制会失败）intake-import，最后重新 intake-defer。以后请客户填写副本。",
+    "why": "客户直接在 05 业务逻辑确认表原文件里填写并回传。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "dev-doc-placeholder-regex-xxx",
+    "kind": "lesson",
+    "text": "开发文档校验的占位字样检查对大小写不敏感，正文里写“新建客户：xxx”这类示意会被当成占位 XXX 拒绝；规则条目不足 6 个字（如“只读”“默认按周”）也会被拒，要写成完整的一句话。",
+    "why": "架构文档功能卡校验两次被这类写法拦下。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "baseline-small-project-statement",
+    "kind": "lesson",
+    "text": "给小系统写 data/baseline.json 时，先列出底座全部必有项再按项目事实表态：小程序、对象存储、Redis、多租户这类整层不适用的写“不用”并说明项目事实，调整项写出本项目取值和理由，最后用 baseline.py 与 dev_documents.validate 迭代到零错误；长脚本用 Write 写文件再运行，不用 shell heredoc。",
+    "why": "一个小系统要对技术栈、前端、基础功能三张表逐项表态，条目很多。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "no-miniprogram-wording",
+    "kind": "preference",
+    "text": "项目没有小程序时，文档和底座表态里不要写小程序：不写“放弃了小程序”“没有小程序所以不用”这类理由，直接说这一端项目没有、使用者全部用浏览器；备选栏写真实考虑过的方案。",
+    "why": "用户原话：没有小程序就不要写小程序。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "intake-import-dry-run",
+    "kind": "lesson",
+    "text": "客户回填表导入前，先复制项目到临时目录试导入一次：导入会写变更台账并重新生成 06-需求变更台账.xlsx，正式项目上失败会留下半成品状态；功能选“待定”仍算必填未答，需决定或 intake-defer。复制的项目里 Crawl 检索记录是绝对路径，副本的 project.py check 会报“记录无效”，那是复制造成的，不是正式项目的问题。",
+    "why": "试导入时台账从 3 行增到 8 行，Luz-Design check_document 的分组列启发式把变更类型、分类等列误判为排在变更编号之后的分组列，导入在重渲染台账时报错；已在 _check_group_order 对首列为“变更编号”的台账表跳过该检查，并补测试。",
+    "uses": 2,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "baseline-by-surface",
+    "kind": "lesson",
+    "text": "底座按使用端过滤：小程序前端层和只属于小程序的前端项，只在项目功能清单里有小程序时才出现、才要说明；其他层的正文不分端，只对小程序成立的句子写在 by_surface.miniprogram，项目有小程序时才接在正文后显示。项目没有小程序时，生成架构页前还要同步改两处：data/baseline.json 删去不适用端的底座项（小程序前端 STK-MP-01~07 和只属于小程序的 FE-SK-01、FE-SK-03、FE-LG-03、FE-FT-04、FE-FT-08、FE-CL-06，写了会被校验器拒绝），架构规格的“技术栈”标签页删去“小程序前端”章节；两处做完，页面里小程序字样为 0。",
+    "why": "用户指出文档标准有‘项目没有这一端就不出这个标签页’的机制，但技术栈这一层没接上；底座正文里还写着小程序的条目",
+    "uses": 2,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "client-pdf-header-follows-style",
+    "kind": "lesson",
+    "text": "客户 PDF 的页眉由样式决定：正式版（方案书）保留文档标题页眉，系统架构图册（atlas）不设页眉；改了导出参数要同步规则页与规则卡",
+    "why": "用户要求 03-系统架构图去掉页首居中标题，而代码把标题固定写进 atlas 的页眉",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "reapproval-cascade",
+    "kind": "lesson",
+    "text": "重新批准一个前序阶段，会让它之后所有阶段的批准自动作废：改动已批准阶段的检索记录或功能清单之前，先算清下游要重批几次，并一次性问用户；确认变更要用 change add 带 feature-ops 登记新条目，已有的待确认条目不能补 feature-ops，只能先标已驳回再新增。",
+    "why": "确认 3 条合规变更后，功能清单变化导致方案阶段需要重批；检索记录被改写后需求阶段也要重批，连带调研、方案、客户信息各重批一次，共问了用户四次。",
+    "uses": 1,
+    "first_seen": "2026-11-03",
+    "last_confirmed": "2026-11-03"
+  },
+  {
+    "key": "design-stage-check-architecture-library-first",
+    "kind": "lesson",
+    "text": "设计阶段开工前，先把已批准架构里每个使用端的前端选型（data/baseline.json 的 STK-AD、FE-SK 条目）与 Luz-Design 的 component-libraries.json 和 dev-documents.md「原型的做法」对照：标准要求原型控件一律来自真实组件库、一个前端一个库，若架构写的是自写布局，就必须先登记技术变更（project.py change --category 技术 --affects architecture），改基线与架构规格，重新渲染系统架构并由用户重新批准，再做原型和前端界面设计文档。",
+    "why": "设计阶段：架构已批准手机页自写移动布局，新标准出台后手机原型改用 Vant，两个原型已建好才发现要回头改架构，技术变更重开了架构审批。",
+    "uses": 1,
+    "first_seen": "2026-11-04",
+    "last_confirmed": "2026-11-04"
+  },
+  {
+    "key": "reading-page-md-hierarchy",
+    "kind": "preference",
+    "text": "阅读型网页的文字层级做成 Markdown 渲染的样子：桌面正文 18、手机 16，样式取 Luz-Design 的 md-type 块（Luz-Project 里是 scripts/reading_style.py），产品界面的原型沿用产品字阶",
+    "why": "用户 2026-11-04：HTML 的字体偏小、不好看，桌面端要大、手机端可以小一点，层级做成 md 格式",
+    "uses": 1,
+    "first_seen": "2026-11-04",
+    "last_confirmed": "2026-11-04"
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Luz Project Manifest",
+  "type": "object",
+  "required": ["schema_version", "project_id", "name", "status", "current_stage", "stages"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "project_id": {"type": "string", "pattern": "^PROJECT-[0-9]{3,}$"},
+    "name": {"type": "string", "minLength": 1},
+    "status": {"enum": ["draft", "active", "blocked", "completed", "archived"]},
+    "current_stage": {"type": "string"},
+    "repository": {"type": ["string", "null"]},
+    "stages": {"type": "array", "items": {"type": "object"}}
+  }
+}

@@ -1,0 +1,3029 @@
+{
+  "schema_version": 1,
+  "name": "基础功能底座",
+  "modules": [
+    {
+      "id": "login",
+      "name": "登录与账号",
+      "dev_module": "login",
+      "kind": "基础",
+      "summary": "会员与员工用微信身份静默登录，按需绑定手机号；服务端签发短期访问令牌与可轮换的刷新令牌，支持资料、注销、禁用和加入主体的身份绑定。",
+      "functions": [
+        {
+          "id": "BF-LOGIN-01",
+          "name": "微信静默登录与自动建档",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "用户打开小程序即完成微信登录，首次登录自动建档并记录勾选的协议版本；账号被禁用时不签发令牌。",
+          "frontend": "启动时先读本地令牌，没有或已过期就调 wx.login 取 code，连同已勾选的协议版本（document_id、version、sha256）调 POST /api/v1/app/auth/login。登录页协议复选框默认不勾选，未勾选时登录按钮置灰。并发请求同时触发登录时合并成一个登录任务，避免 code 被重复使用。4220 agreement_required 弹协议窗，4030 account_disabled 进账号状态页只显示原因与客服电话，5020 提示稍后重试并停留当前页。",
+          "backend": "先在事务外调微信 code2Session（超时 3 秒，经熔断），再取回或创建会员；openid 唯一约束兜底并发首次登录，冲突时回滚重读已有会员继续签发。新会员必须先通过必需协议校验（未同意 4220，不建号）；会员号为 M 加 10 位随机数字，不按注册顺序。session_key 用 AES-GCM 加密保存，任何响应都不含它。停用账号返回 4030 并写审计；冷静期内登录自动撤销注销。成功后开新会话，返回令牌对、is_new_user、phone_bound、pending_agreements，新会员发 member.registered 事件。",
+          "database": "users 表：member_no 唯一、openid 唯一、unionid 索引、wx_session_key_enc、status（active、disabled、deleting、deleted）、agreed_document_ids、last_login_at、created_at，索引 (status, created_at)。user_consents 追加一条场景为 login 的同意记录。openid 与 unionid 不出现在任何列表和响应里。",
+          "tech": "用微信 code2Session 换身份，code 5 分钟有效且只能用一次，所以后端不自动重试，由前端换新 code 再试一次。调用统一走小程序服务端客户端（超时 3 秒、熔断 10 次失败打开 30 秒）。登录接口按 IP 限流每分钟 5 次。会员号随机生成，避免暴露注册量与顺序。",
+          "rules": [
+            "未同意用户协议与隐私政策不得建号，返回 4220 agreement_required 并带待同意清单",
+            "同一 openid 并发首次登录只建一个会员，由唯一约束裁决",
+            "账号状态为 disabled 时不签发令牌，返回 4030 account_disabled 并写审计",
+            "冷静期（deleting）内登录视为撤回注销，响应带 deletion_cancelled=true",
+            "已匿名化账号的 openid 已被替换，同一微信再次登录成为全新会员"
+          ],
+          "exceptions": [
+            "code 过期或已使用返回 4010，前端重新 wx.login 再试一次，仍失败才提示",
+            "微信接口超时或故障返回 5020，不创建会员；熔断打开返回 5030 带 Retry-After",
+            "登录接口超过每 IP 每分钟 5 次返回 4290，按钮按 Retry-After 倒计时",
+            "微信风控拦截返回 4030，不签发令牌"
+          ],
+          "tests": [
+            "20 线程并发首次登录只创建 1 个会员",
+            "响应与日志中不含 session_key 和 openid",
+            "未同意协议拒绝且不建号；停用账号返回 4030",
+            "无效 code、微信超时、限流三种失败的错误码映射正确"
+          ],
+          "source": "Luz-Dev/references/module-specs/login.json features、flows「小程序登录」; backend/01-identity/MODULE.md §3、§4.1–4.7、§8、§10; backend/28-wechat-mp/MODULE.md §4; backend/SECURITY.md §1、§6"
+        },
+        {
+          "id": "BF-LOGIN-02",
+          "name": "令牌、会话与刷新轮换",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "访问令牌 2 小时，刷新令牌每次使用即轮换，重放即吊销整条登录链；登出、禁用、注销立即生效。",
+          "frontend": "请求层统一附加 Authorization: Bearer。收到 4010 时串行调用一次 POST /api/v1/app/auth/refresh，多个请求同时失败只发一次刷新，其余等待结果；reason=refresh_rotated 表示别的请求刚刷新过，改用最新令牌重试。仍失败（refresh_invalid、session_revoked、session_expired）则静默 wx.login 重新登录，再失败回登录页。GET 遇网络错误或 502/503/504 最多重试 2 次（0.5 秒、1 秒退避），写请求不自动重试。退出调 /auth/logout 或 /auth/logout-all 并清本地令牌。",
+          "backend": "访问令牌是 HS256 JWT（只接受 HS256，拒绝 none），声明 iss、aud、sub、sid、jti、iat、exp，默认 2 小时，时钟偏差 30 秒，先验签再读声明。每个请求按 sid 校验服务端会话为 active、未过绝对期限、会员为 active 或 deleting。刷新令牌 256 bit 随机、不透明、只存哈希，每次刷新轮换；旧令牌在 10 秒宽限内再出现返回 4010 refresh_rotated 不吊销，超过宽限则吊销整个令牌家族并写安全审计。并发刷新靠条件 UPDATE（status=active）只有一个成功。",
+          "database": "user_sessions：sid 唯一、user_id、status、channel、absolute_expires_at、revoked_at、revoke_reason、ip、user_agent。user_refresh_tokens：token_hash 唯一（SHA-256）、session_id、parent_id、status（active、rotated、revoked）、expires_at、used_at。已失效会话保留 180 天，由每日任务清理。",
+          "tech": "会话等于刷新令牌家族，sid 写入访问令牌，服务端可随时作废；会话不进缓存，每请求查库，所以登出和禁用立刻生效。依据 RFC 9700 的刷新轮换与家族吊销、RFC 8725 的算法白名单与 aud 校验。参数：访问令牌 7200 秒、空闲 14 天、绝对 30 天、宽限 10 秒、偏差 30 秒，均为运行配置 [identity]，热加载；刷新接口每 IP 每分钟 30 次。",
+          "rules": [
+            "刷新令牌只存哈希，每次刷新旧令牌变 rotated，新令牌 parent_id 指向旧令牌",
+            "宽限期外重放已轮换令牌，吊销整个令牌家族并记 member.session.reuse_detected",
+            "绝对期限 30 天从会话创建起算，空闲 14 天无刷新则失效",
+            "登出结束当前会话，全部登出结束该会员所有会话，均在服务端作废"
+          ],
+          "exceptions": [
+            "令牌被篡改、aud 或 kind 不符、alg=none 一律返回 4010",
+            "同一刷新令牌 20 个并发请求只有 1 个成功，其余 4010 且登录链保持有效",
+            "会员被禁用后仍持有访问令牌，下一次请求校验会话状态即返回 4030",
+            "刷新令牌伪造或不存在返回 4010 refresh_invalid"
+          ],
+          "tests": [
+            "20 并发刷新同一令牌只有 1 个成功",
+            "宽限内重放不吊销，宽限外重放吊销整链且不影响其他设备",
+            "alg=none、错误 aud、过期、缺 sid、刷新令牌当访问令牌用都被拒绝",
+            "登出、停用后旧访问令牌立即失效"
+          ],
+          "source": "Luz-Dev/references/module-specs/login.json features「令牌与会话」flows「刷新令牌」; backend/01-identity/MODULE.md §3、§4.8–4.13、§8、§9.2; backend/SECURITY.md §1; backend/SPEC.md §11"
+        },
+        {
+          "id": "BF-LOGIN-03",
+          "name": "手机号绑定（微信快速验证，短信备选）",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "需要手机号的业务（下单、储值等）前，用户用微信手机号快速验证或短信验证码绑定手机号；号码加密保存、脱敏展示、一号一账号。",
+          "frontend": "手机号按钮用 open-type=getPhoneNumber，用户同意后拿 phone_code 调 POST /api/v1/app/me/phone/wechat（带 Idempotency-Key）。只在确需手机号的动作前弹授权，用户拒绝就关闭弹窗并停留原页，不能强制绑定才能浏览。启用短信时：发送调 /auth/sms/send，保存返回的 request_id，按 retry_after 倒计时（与服务端重发间隔同值，默认 60 秒），再提交 /me/phone/sms。验证码各种失败统一提示「验证码错误或已失效」。4090 PHONE_IN_USE 提示联系客服或换号。页面只显示脱敏号 138****8000。",
+          "backend": "微信方式：用 phone_code 调 getuserphonenumber 并传 openid 让平台校验 code 归属；写接口先查已完成的幂等记录再调微信。入库三列：phone_enc（AES-GCM）、phone_hash（带密钥 HMAC，唯一）、phone_masked。号码已被他人绑定返回 4090 PHONE_IN_USE，唯一索引兜底并发；换绑写审计并发 member.phone_bound。短信方式：6 位随机数字，有效 5 分钟，单码最多校验 5 次（含正确那次），同号 60 秒重发、每天 10 条，每 IP 每小时 20 条、每天 50 条；先落库再调短信通道，通道失败 5020 且不占额度；响应不区分号码是否注册。",
+          "database": "users：phone_enc、phone_hash CHAR(64)（部分唯一 WHERE NOT NULL）、phone_masked、phone_verified_at。sms_codes：request_id 唯一，(phone_hash, purpose, send_slot) 唯一，code_hash=HMAC(请求+号码+用途+码)，attempts、status（active、used、superseded、failed）、expires_at、ip_hash，保留 7 天。",
+          "tech": "加密与哈希密钥 LUZ_FIELD_KEY（32 字节 base64）由密钥服务注入，生产缺失则启动检查拒绝启动。验证码依据 NIST 800-63B-4 与 ASVS 6.5：CSPRNG、不超过 10 分钟、只能用一次、哈希存储、限次数限速；服务端频控不高于云厂商默认的同号每分钟 1 条、每天 10 条。运营规范禁止强制要求手机号才能使用，所以手机号是可选能力。",
+          "rules": [
+            "同一手机号只能绑定一个账号，重复绑定返回 4090 PHONE_IN_USE",
+            "接口只返回脱敏手机号，完整号码仅 member:reveal 权限可看且每次写审计",
+            "新验证码发出后旧码作废；校验按次数条件计数，第 5 次后正确码也无效",
+            "发送与校验失败的响应不区分号码是否注册，防止枚举"
+          ],
+          "exceptions": [
+            "phone_code 已用或过期返回 4010，前端重新授权一次",
+            "同号 60 秒内重发返回 4290 并带剩余秒数",
+            "短信通道故障返回 5020，记录标 failed，不占重发间隔与每日额度",
+            "短信登录的号码未绑定任何账号，在验证码通过后才返回 4010 phone_not_registered"
+          ],
+          "tests": [
+            "20 并发同号发码只发 1 条",
+            "手机号入库为密文、哈希、脱敏三列，日志不含明文",
+            "PHONE_IN_USE、境外号码、code 归属不符三种情形",
+            "验证码过期、用途不符、请求不符、重复使用、超过 5 次尝试都被拒绝"
+          ],
+          "source": "Luz-Dev/references/module-specs/login.json features「手机号绑定」flows「绑定手机号」; backend/01-identity/MODULE.md §3、§4.14–4.22、§8、§9.2、§12; backend/28-wechat-mp/MODULE.md §4.9; backend/SECURITY.md §1、§6"
+        },
+        {
+          "id": "BF-LOGIN-04",
+          "name": "个人资料与内容安全检测",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "会员修改昵称、头像、性别、生日；昵称与头像经内容安全检测后才生效。",
+          "frontend": "资料页头像用 open-type=chooseAvatar，昵称输入框用 type=nickname；头像先走文件上传得到 https 地址，昵称限 1 到 20 字，生日不晚于今天。保存调 PUT /api/v1/app/me（带 Idempotency-Key），只提交白名单字段。返回 avatar_pending 时头像处显示「审核中」并保留旧头像；昵称 4220 content_risky 就近提示「内容不合规，请修改」；5020 提示稍后再试。",
+          "backend": "白名单字段：nickname（1 到 20 字）、avatar_url（https）、gender（0、1、2）、birthday，其他字段 4001。昵称改动先同步调内容安全 msgSecCheck（scene=1）：risky 返回 4220 content_risky，review 则保存并标 content_review 待人工复核。头像改动提交 mediaCheckAsync，不立即生效（avatar_pending），收到推送 pass 才生效，risky、review、失败都不生效；新上传使旧检测 superseded；超过 60 分钟没回推记 timeout（每 10 分钟任务）。检测服务不可用默认拒绝 5020，开关 content_check_fail_open=true 才放行并记降级日志。",
+          "database": "users：nickname VARCHAR(40)、avatar_url VARCHAR(512)、gender SMALLINT、birthday DATE、content_review。user_content_checks：trace_id 唯一、user_id、field、value、status（pending、pass、risky、review、failed、timeout、superseded）、label、decided_at，索引 user_id、created_at。",
+          "tech": "文本检测 msgSecCheck 要求 openid 近 2 小时访问过小程序；图片检测 mediaCheckAsync 在 30 分钟内以 wxa_media_check 事件推送，用 trace_id 对应，推送经统一推送入口验签解密并去重。检测服务异常时宁可拒绝也不放行（FILE-002）。开关与超时在运行配置 [identity] content_check、media_check_timeout_minutes（默认 60），热加载。",
+          "rules": [
+            "只能改白名单字段，其他字段返回 4001",
+            "昵称检测结果为 risky 不保存，review 保存并标记待复核",
+            "头像检测通过前不替换线上头像，新上传取代旧的待检测记录",
+            "生日只用于权益计算，不对外展示"
+          ],
+          "exceptions": [
+            "内容安全接口不可用默认拒绝，返回 5020；开启放行开关时记降级日志",
+            "头像检测超过 60 分钟无结果记 timeout，不生效，用户可重新上传",
+            "同一检测结果重复推送只处理一次，非本模块的 trace_id 直接忽略",
+            "PUT 缺少幂等键返回 4001，同键不同请求体返回 4093"
+          ],
+          "tests": [
+            "昵称 risky、review、通过三种结果的保存行为",
+            "头像 pass 后生效，risky 与下载失败不生效，重复推送幂等",
+            "检测服务不可用时默认拒绝，放行开关打开后放行",
+            "检测超时任务重复执行结果一致"
+          ],
+          "source": "Luz-Dev/references/module-specs/login.json features「个人资料」; backend/01-identity/MODULE.md §3、§4.23–4.26、§9.2、§12; backend/SECURITY.md §3; references/standards.json FILE-002"
+        },
+        {
+          "id": "BF-LOGIN-05",
+          "name": "账号注销与匿名化",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "会员在设置里申请注销，进入 15 天冷静期，可撤回；期满后匿名化个人信息，交易记录按法定年限保留。",
+          "frontend": "设置页的注销入口先 GET /api/v1/app/me/deletion，展示阻断清单（待支付订单、退款中、在场、钱包余额、有效会员卡、未结束预约）和注销须知（将删除的数据与保留的交易记录），勾选「已阅读注销须知」后才能提交 POST /me/deletion。4010 fresh_required 时静默重新登录后自动重试；4220 deletion_blocked 逐项显示原因和处理入口。成功后进入注销进度页，显示冷静期截止日期与「撤回注销」按钮（POST /me/deletion/cancel）。",
+          "backend": "申请要求新鲜令牌（15 分钟内登录）。各业务模块用 register_deletion_checker 注册阻断检查，任一返回阻断项即 4220 并带清单。通过后 active 到 deleting 用条件 UPDATE，冷静期默认 15 天（配置 0 到 15），立即结束其他会话但保留当前会话以便撤销；冷静期内登录或点撤回恢复 active。每小时任务到期后重新检查阻断：有阻断则挂起（deletion_hold）下次再试，否则匿名化：openid 换成随机值（不可逆）、清空昵称、头像、生日、手机号、unionid、session_key、会话 IP 与 UA，吊销全部会话，删验证码与检测记录，发 member.deleted 让其他模块清理，member_no 保留。",
+          "database": "users 增 deletion_requested_at、deletion_due_at、deletion_reason、deletion_hold、deleted_at；status 流转 active、deleting、deleted。交易、支付、审计记录不删除，只断开个人标识，法定留存期内只存储不处理。",
+          "tech": "依据《个人信息保护法》第 47 条与小程序运营规范 2.15：必须提供注销，处理时限不超过 15 个工作日，所以冷静期上限 15 天加每小时任务。匿名化是不可逆改写而不是仅标记禁用（PII-004）。其他模块通过 member.deleted 事件清理自己的个人数据，包括第三方（如人脸库）。参数 [identity] deletion_cooling_days，热加载。",
+          "rules": [
+            "有待支付订单、退款中、在场、余额、未结束预约时不能申请注销，返回 4220 并列清单",
+            "申请需 15 分钟内登录的新鲜令牌，否则 4010 fresh_required",
+            "冷静期内登录或点撤回即恢复 active，期满且无阻断才匿名化",
+            "匿名化后同一微信再次登录是新会员，交易记录保留但不可关联个人"
+          ],
+          "exceptions": [
+            "到期时仍有阻断项，挂起并在下一轮任务重试，不强行匿名化",
+            "重复提交注销返回 4090，撤销不存在的注销返回 4090",
+            "匿名化任务重复执行结果一致，不重复发事件",
+            "第三方数据（如人脸库）删除失败要告警并重试，不能只清本地"
+          ],
+          "tests": [
+            "阻断清单覆盖订单、退款、余额、预约各一例",
+            "冷静期内登录撤销，期满后匿名化清空全部个人字段并发 member.deleted",
+            "到期出现阻断后挂起，处理阻断后下一轮完成",
+            "冷静期天数配置上限为 15 天"
+          ],
+          "source": "Luz-Dev/references/module-specs/login.json features「账号注销」flows「账号注销」; backend/01-identity/MODULE.md §4.27–4.31、§5、§7; references/standards.json PII-004; references/legal-documents.md §1"
+        },
+        {
+          "id": "BF-LOGIN-06",
+          "name": "会员禁用与后台会员管理",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "后台查询会员，禁用、启用、强制下线；禁用立即生效，查看完整手机号和导出都要留痕。",
+          "frontend": "会员列表默认每页 20 条，可按状态、注册与最近登录时间区间、会员号、昵称、手机号后四位筛选，默认不含已匿名化会员；状态用行内开关或「停用」按钮，点击弹确认框，写明对象与后果（立即退出登录）并必填原因。「查看手机号」需填原因，4011 reauth_required 时弹出重新验证窗再重试。导出沿用当前筛选，超过 5000 行提示改为异步导出。无权限的按钮禁用并说明缺少的权限码。",
+          "backend": "GET /api/v1/admin/members（member:read）用声明式筛选与排序，未知参数 4001。停用、启用、强制下线（member:write）必须带原因和幂等键：停用用条件 UPDATE（active 到 disabled），非法流转 4090，同事务吊销全部会话、写审计、发 member.disabled。鉴权每请求校验会话与会员状态，停用后下一次请求即 4030 account_disabled。查看完整手机号 POST /members/{id}/reveal-phone（member:reveal，要求新鲜认证，原因必填，审计只记脱敏值，响应不进幂等缓存）。导出与列表同一筛选，手机号脱敏，不超过 5000 行同步，超出 4225，写审计。详情不返回 openid。",
+          "database": "users：status、disabled_reason、disabled_at、deleted_at；audit_logs 追加（操作者、对象、动作、前后值，敏感字段脱敏）；user_sessions 在停用时批量置 revoked。索引 (status, created_at) 支撑后台筛选。",
+          "tech": "权限由统一的后台权限模块校验（member:read、member:write、member:reveal，后者另要求新鲜认证）。导出使用同一份列表声明，CSV 加防公式注入前缀。会员状态流转全部是条件 UPDATE（WHERE status=源状态）。保留审计依据《个人信息保护法》第 51 条：合理确定操作权限。",
+          "rules": [
+            "禁用与解除禁用必须填写原因并写审计，非法状态流转返回 4090",
+            "禁用同事务吊销该会员全部会话，下一次请求即失效",
+            "查看完整手机号需 member:reveal、新鲜认证与原因，审计里只记脱敏值",
+            "导出手机号脱敏，超过同步上限返回 4225"
+          ],
+          "exceptions": [
+            "对已禁用会员再次禁用返回 4090，不重复吊销",
+            "会员不存在或已匿名化返回 4040",
+            "新鲜认证过期返回 4011 reauth_required，前端弹出重新验证后重试",
+            "缺少 member:reveal 返回 4030，不返回任何手机号字段"
+          ],
+          "tests": [
+            "停用后旧访问令牌下一次请求返回 4030",
+            "停用幂等重放返回首次结果，缺幂等键 4001",
+            "查看手机号的审计记录不含明文，响应不进幂等缓存",
+            "列表筛选、关键词、排序、未知参数 4001 与导出脱敏"
+          ],
+          "source": "Luz-Dev/references/module-specs/login.json features「后台禁用」apis admin/members*; backend/01-identity/MODULE.md §4.32–4.36、§6、§11; backend/SPEC.md §3.4; backend/SECURITY.md §1–§2"
+        },
+        {
+          "id": "BF-LOGIN-07",
+          "name": "加入主体的身份绑定（邀请码加名单核对）",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "面向企业或组织名单制的系统：用户微信登录后，用邀请码加姓名工号核对，绑定到名单中的一个成员，未绑定不能使用业务功能。",
+          "frontend": "静默登录返回 bound=false 时进入「加入」页，不进入业务页。输入邀请码（6 位，自动转大写）、姓名、工号，可选部门，提交 POST /api/v1/app/me/bind。失败统一提示「信息与名单不符」，不透露是哪一项错。任何业务请求收到 403 且 reason=NOT_BOUND 时自动跳转加入页。绑定成功刷新资料并回到来源页。已绑定者重复提交同一成员幂等返回资料，绑定到别的成员则提示联系管理员解除绑定。",
+          "backend": "按邀请码取主体（唯一索引，状态须启用），再在该主体名单里按姓名加工号找「启用且未绑定」的成员，用条件 UPDATE（wx_account_id IS NULL）完成绑定；一个微信账号只能绑定一个成员，由 wx_account_id 唯一约束裁决并发。不同失败给不同 reason 但对用户统一文案：BIND_NOT_MATCH、BIND_ALREADY、ENTERPRISE_DISABLED、EMPLOYEE_DISABLED（均 4090）。成功写审计 EMPLOYEE_BIND。管理员可在后台解除绑定，名单靠批量导入维护。",
+          "database": "主体表：invite_code CHAR(6) 唯一、status。成员表：UNIQUE(tenant_id, employee_no)、UNIQUE(wx_account_id)、wx_account_id、bound_at、status、department。微信账号表：openid 唯一、unionid、last_login_at。登录与绑定分表，使同一微信可先登录后绑定。",
+          "tech": "邀请码是低熵凭证，必须配合名单核对（姓名加工号）和会员写接口限流（SECURITY 约定每会员每秒 3 次）才安全，失败文案不区分原因以防枚举。绑定是租户隔离的入口：绑定完成后才把 tenant_id 写入登录上下文。是否跨门店通用由商户决定，写进方案的待确认事项（multi-store 模式）。",
+          "rules": [
+            "绑定需邀请码对应的主体启用，且名单中存在同姓名同工号、启用、未绑定的成员",
+            "一个微信账号只能绑定一个成员，一个成员只能被一个微信绑定",
+            "未绑定的用户访问业务接口返回 403 并带 reason=NOT_BOUND",
+            "更换绑定必须由管理员先解除，用户不能自行换绑"
+          ],
+          "exceptions": [
+            "邀请码错误、姓名或工号不符，对用户统一提示信息与名单不符",
+            "主体已停用返回 4090 ENTERPRISE_DISABLED，成员已停用返回 EMPLOYEE_DISABLED",
+            "同一成员被两个微信同时绑定，条件 UPDATE 只让一个成功，另一个得到 BIND_ALREADY",
+            "绑定接口被高频枚举，按会员限流并返回 4290"
+          ],
+          "tests": [
+            "邀请码、姓名、工号任一项错误都得到同一用户文案",
+            "并发两个微信绑定同一成员只有一个成功",
+            "已绑定用户重复提交同一成员幂等，换成别的成员被拒绝",
+            "未绑定账号访问业务接口返回 NOT_BOUND 并跳转加入页"
+          ],
+          "source": "对照已交付的多企业项目的微信登录与绑定流程（用于检验底座遗漏，Luz-Dev 无对应模块文本）; backend/SECURITY.md §6; references/patterns/multi-store.md §2"
+        }
+      ]
+    },
+    {
+      "id": "admin",
+      "name": "后台账号、角色与权限、审计",
+      "dev_module": "admin",
+      "kind": "基础",
+      "summary": "后台员工的账号、口令、锁定、二次验证、服务端会话、权限码与数据范围、敏感操作再验证，以及操作日志与登录日志的留痕、查询和导出。",
+      "functions": [
+        {
+          "id": "BF-ACCT-01",
+          "name": "后台账号管理",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "管理员新建、修改、停用、启用、解锁、重置口令和软删除员工账号；初始口令由系统生成，只显示一次。",
+          "frontend": "员工列表每页 20 条，可按状态、角色、门店、是否启用二次验证、关键词（账号或姓名）筛选。新建和重置口令后用弹窗展示一次性临时口令，提供复制按钮，关闭后无法再看，并提示「72 小时内首次登录必须改密」。手机号默认脱敏，「查看」需填原因。停用、重置口令、重置二次验证、删除、强制下线都先弹确认框，写明对象和后果并必填原因；不能对自己操作的按钮禁用并说明原因。",
+          "backend": "POST /api/v1/admin/staff（staff:write，新鲜认证，幂等）账号名唯一，由系统生成 20 位随机临时口令，仅本次响应返回一次，幂等重放返回 null，不写入幂等记录，72 小时有效，首次登录只能改密。PUT /staff/{id}/access 改角色与门店范围并撤销其全部会话。停用、启用、解锁、重置口令、重置二次验证、强制下线、删除均为条件 UPDATE，重复操作 4090。防越权：不能改、停用、删除、重置自己；只能授予自己持有的权限与门店；只能管理权限和门店都不超过自己的员工，范围外 4040；任何操作后至少保留一名在职超级管理员（锁角色行后复核，4220）。软删除是终态，账号名不复用。",
+          "database": "admin_users：username 唯一、password_hash（PHC 串）、must_change_password、temp_password_expires_at、password_changed_at、name、phone_enc、phone_hash、status（active、disabled）、all_stores、mfa_enabled、last_login_at、last_login_ip、created_by、updated_by、deleted_at。账号名唯一索引包含已删除行，保证不复用。",
+          "tech": "临时口令依据 ASVS 6.4.1：系统下发、随机、短期、首次使用后失效。手机号 AES-GCM 加密加 HMAC 哈希查询。账号变动通过发件箱发 staff.created、staff.disabled、staff.access_changed、staff.password_reset 等事件供通知模块使用。首个超级管理员由部署命令 python -m admin_rbac.bootstrap 创建，已有在职超管时拒绝。",
+          "rules": [
+            "临时口令 20 位随机，只在创建或重置的那次响应里返回，72 小时内必须改密",
+            "不能停用、删除、重置自己，也不能修改自己的角色和门店范围",
+            "只能授予自己持有的权限码与门店，超级管理员角色只有超级管理员能授予",
+            "任何操作后系统必须保留至少一名在职超级管理员"
+          ],
+          "exceptions": [
+            "两名超管同时互相停用，锁角色行后复核，至少留下一人，后到者返回 4220",
+            "账号名重复返回 4090，范围外或不存在的员工返回 4040",
+            "同一创建请求重放，响应不再包含临时口令",
+            "缺少 Idempotency-Key 返回 4001，同键不同请求体返回 4093"
+          ],
+          "tests": [
+            "临时口令不进幂等记录，重放返回 null",
+            "两名超管互相停用至少保留一人（并发测试）",
+            "越权授予权限、角色、门店分别被拒绝",
+            "停用、删除、重置口令、改角色后其会话立即失效"
+          ],
+          "source": "Luz-Dev/references/module-specs/admin.json features、apis admin-users; backend/22-admin-rbac/MODULE.md §3、§4 R1.5、R5.5–5.7、§6、§8、§9; backend/SECURITY.md §2"
+        },
+        {
+          "id": "BF-ACCT-02",
+          "name": "口令登录与防暴力破解",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "员工用账号口令登录；失败按账号计数并递增锁定，口令错误、账号不存在、停用给出相同提示。",
+          "frontend": "登录页提交账号（4 到 32 位）和口令，口令框允许粘贴，不截断。无论账号不存在、口令错误、停用或临时口令过期，都只显示「账号或口令错误」。4010 且 captcha_required=true 时显示图形验证码并要求填写；4290 读取 Retry-After 倒计时并禁用登录按钮；返回 mfa_token 时进入验证码页；4011 password_change_required 强制跳改密页，页面提示长度规则且不设组成规则。",
+          "backend": "POST /api/v1/admin/auth/login：先查锁定（4290 加 Retry-After），再按需要校验验证码（窗口内失败达 3 次且配置了人机验证），比对 Argon2id（m=19456 KiB、t=2、p=1，PHC 串存参数，旧格式登录成功后自动重哈希）；账号不存在也执行一次假哈希保持耗时一致。节流按规范化账号名而不按 IP：900 秒窗口内失败 5 次锁定 900 秒，再次锁定时长翻倍封顶 86400 秒，成功清零；失败计数用 INSERT … ON CONFLICT DO NOTHING 加 failures=failures+1 原子更新，锁定以 lock_count 与未锁定为条件，并发只锁一次。每次尝试写登录日志，锁定时发 staff.locked。",
+          "database": "admin_login_throttles：username（规范化，主键）、failures、window_started_at、locked_until、lock_count、last_failure_at，不存在的账号名同样计数。admin_login_logs：user_id、username、factor、success、reason、ip、user_agent、created_at，索引 (username, created_at)、created_at，保留 186 天。admin_users.password_hash、password_changed_at。",
+          "tech": "口令策略依据 NIST SP 800-63B-4：NFC 规范化不截断；启用二次验证或角色要求时不少于 8 位，否则不少于 15 位，最长 128 位；不设组成规则、不定期强制改密；拒绝常见口令、重复字符、含账号姓名系统名的口令，可接泄露库检查（k-匿名）。登录接口每 IP 每分钟 5 次。Argon2id 无专用库时用 cryptography 44 以上。参数在 [admin_rbac]，热加载。",
+          "rules": [
+            "窗口 15 分钟内连续失败 5 次锁定 15 分钟，再次锁定翻倍，上限 24 小时，成功登录清零",
+            "锁定期间输入正确口令也返回 4290，不透露口令是否正确",
+            "账号不存在、口令错误、停用、临时口令过期返回完全相同的提示",
+            "改密必须提交当前口令，新口令不能与当前相同，改密后撤销其他会话"
+          ],
+          "exceptions": [
+            "20 个线程并发失败只触发一次锁定，登录日志不丢",
+            "泄露口令检查服务不可用时，设置口令默认放行（可配置为拒绝并返回 5020）",
+            "口令超过 1024 字节直接判失败，不进入哈希比对",
+            "临时口令超过 72 小时返回通用失败提示"
+          ],
+          "tests": [
+            "三种失败原因的响应体与耗时量级一致",
+            "5 次锁定、锁定期正确口令被拒、时钟推进后解锁",
+            "不存在的账号同样计数和锁定",
+            "旧哈希格式登录成功后升级为 Argon2id"
+          ],
+          "source": "Luz-Dev/references/module-specs/admin.json features「后台登录」flows「后台登录」; backend/22-admin-rbac/MODULE.md §4 R1、R2、§5、§8、§9.2、§10; backend/SECURITY.md §1; references/standards.json（NIST 800-63B-4 引用）"
+        },
+        {
+          "id": "BF-ACCT-03",
+          "name": "二次验证（TOTP）与恢复码",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "高风险角色和持有退款、导出、调整余额等权限的员工必须绑定验证器，登录多一步；附一次性恢复码。",
+          "frontend": "安全设置页生成密钥后渲染 otpauth 二维码并附文本密钥，用户输入验证器上的 6 位码确认；成功后一次性展示 10 个恢复码（5 位加 5 位的短码，形如 7KQ3M-9PX2A），提示「只显示一次，请离线保存」，并改用返回的新令牌。登录第二步输入 6 位码或切换「使用恢复码」。会话处于受限状态（mfa_enrollment_required）时所有页面都引导到此页。关闭自己的二次验证要新鲜认证加当前验证码，角色强制要求时隐藏关闭入口。",
+          "backend": "口令通过后若已绑定，只签发 5 分钟有效的 mfa_token（kind=admin_mfa，不能当会话令牌），POST /auth/mfa 提交 TOTP 或恢复码，失败同样计入节流。TOTP 为 SHA1、6 位、30 秒、允许前后各 1 步；成功时条件 UPDATE mfa_last_step < step，同一或更早时间步的码一律拒绝，并发下只有一个成功。密钥 160 bit，加密存储；绑定先生成待确认密钥，用一个有效码确认后启用并生成恢复码。恢复码一次性，条件 UPDATE used_at IS NULL，可重新生成。重置他人二次验证必须由另一名管理员做、填原因、新鲜认证，并撤销其全部会话。",
+          "database": "admin_users：mfa_enabled、mfa_secret_enc、mfa_pending_secret_enc、mfa_last_step、mfa_enrolled_at。admin_recovery_codes：staff_id、code_hash（Argon2id）、used_at、created_at。admin_roles.mfa_required 标记强制二次验证的角色。",
+          "tech": "依据 RFC 6238 与 RFC 4226（含附录 B 测试向量）和 OWASP MFA Cheat Sheet。必须二次验证的情形：角色 mfa_required（种子：超级管理员、财务），或持有配置列表中的权限（staff:write、role:write、payment:refund、after_sale:refund、report:export、wallet:adjust、member:reveal 等，module:* 覆盖也算），或全员强制开关。未绑定的员工只获得受限会话。验证接口每 IP 每分钟 10 次。",
+          "rules": [
+            "同一时间步的验证码只能使用一次，重放被拒绝",
+            "恢复码一次性使用，使用后发 staff.recovery_code_used 通知",
+            "必须二次验证的员工未绑定时只能访问个人信息、改密、绑定和登出",
+            "重置他人二次验证必须是另一名管理员，且填写原因"
+          ],
+          "exceptions": [
+            "8 个线程用同一验证码，只有 1 个成功",
+            "验证器时钟偏差超过 1 步被拒绝，提示校准手机时间",
+            "挑战令牌 5 分钟过期，需要重新输入口令",
+            "角色要求二次验证的员工尝试关闭返回 4220"
+          ],
+          "tests": [
+            "RFC 6238 附录 B 全部测试向量通过",
+            "验证码重放、漂移 2 步被拒绝，漂移 1 步通过",
+            "恢复码只用一次，重新生成后旧码全部失效",
+            "挑战令牌不能当会话令牌使用"
+          ],
+          "source": "Luz-Dev/references/module-specs/admin.json features「后台登录」flows; backend/22-admin-rbac/MODULE.md §4 R3、§6、§8、§9.2、§11; backend/SECURITY.md §1"
+        },
+        {
+          "id": "BF-ACCT-04",
+          "name": "后台会话与敏感操作再验证",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "后台会话完全由服务端控制：空闲 15 分钟、绝对 8 小时失效，登出、改密、停用立即生效；退款、导出、调整余额等操作要求 5 分钟内重新验证。",
+          "frontend": "路由守卫：未登录跳登录页并带 redirect；每次进入调 GET /auth/me 取权限码、门店、二次验证状态、restricted_reason 和会话时限。4010 回登录页；4011 reauth_required 弹出重新验证窗（口令加验证码），成功后用返回的新令牌重试原请求；4011 其他原因跳安全设置页。「我的会话」页列出有效会话并标出当前会话，可终止其他会话（也需新鲜认证）。危险操作确认框写明对象、数量、金额和后果。",
+          "backend": "令牌是 HS256 JWT（kind=admin，sub=员工 id，sid=会话 id），只是会话行的签名引用，库里存令牌 SHA-256，每请求按 sid 取会话行并比对哈希，是否有效完全由服务端决定。空闲 900 秒、绝对 8 小时服务端强制，活动时最多每 60 秒写一次 last_seen；默认绑定 User-Agent，不一致撤销（4010 ua_mismatch）；每人最多 5 个会话，超出撤销最早的。登录二次验证通过、重新认证、改密、绑定二次验证后换发新令牌，旧令牌立即失效。新鲜认证要求 auth_at 在 300 秒内，否则 4011 reauth_required，POST /auth/reauth 重新验证后轮换会话。",
+          "database": "admin_sessions：staff_id、token_hash 唯一、stage（mfa_pending、active）、amr（pwd、pwd+otp、pwd+recovery）、created_at、auth_at、last_seen_at、expires_at、revoked_at、revoke_reason、ip、user_agent。撤销或过期超过 30 天的会话由每小时任务 admin_rbac.purge_sessions 清理。",
+          "tech": "依据 OWASP Session Management 与 ASVS V7：令牌不少于 128 bit，空闲 15 到 30 分钟、绝对 4 到 8 小时由服务端强制，敏感属性修改前重新认证（7.5.1），管理员可终止他人会话（7.4.5）。后台路由用 require_permission(code, fresh=True) 声明需要新鲜认证，不信任令牌里的权限声明。重新认证接口每 IP 每分钟 10 次。参数 [admin_rbac] session_idle_seconds、session_absolute_seconds、fresh_auth_seconds，热加载。",
+          "rules": [
+            "会话有效性只看服务端会话行，登出、改密、停用、角色变更后旧令牌立即失效",
+            "退款、对账差异处理、余额调整、导出、查看明文手机号要求 300 秒内完成认证",
+            "每人最多 5 个有效会话，超出时撤销最早的",
+            "默认绑定浏览器标识，换浏览器即失效"
+          ],
+          "exceptions": [
+            "空闲超过 900 秒返回 4010 session_expired，前端回登录页并保留 redirect",
+            "新鲜认证过期返回 4011 reauth_required，前端弹窗重新验证后重试同一请求",
+            "伪造或篡改的令牌、挑战令牌当会话令牌用，均返回 4010",
+            "受限会话访问普通接口返回 4011 并带 restricted_reason"
+          ],
+          "tests": [
+            "空闲 15 分钟、绝对 8 小时超时用时钟推进验证",
+            "登出、改密、停用、角色变更后旧令牌失效",
+            "新鲜认证 4011 后调用 reauth 再重试成功",
+            "第 6 个会话挤掉最早的会话"
+          ],
+          "source": "Luz-Dev/references/module-specs/admin.json features「敏感操作」; backend/22-admin-rbac/MODULE.md §4 R4、§5、§6、§9.2; backend/SECURITY.md §1; references/admin.md Routes and permissions"
+        },
+        {
+          "id": "BF-ACCT-05",
+          "name": "角色、权限码与门店数据范围",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "角色绑定权限码，接口逐个校验；账号绑定可管理的门店，查询自动附加门店范围；默认拒绝，变更立即生效。",
+          "frontend": "角色管理页把权限码按模块分组为勾选树，支持精确码和 module:* 通配，超级管理员角色只读。员工编辑页选角色（至少一个）和可管理门店（总部可选全部门店）。菜单和按钮按 GET /auth/me 返回的 permissions 隐藏（* 表示全部），只用于展示；4030 显示无权限页并说明缺少的权限码，4031 按 404 页处理。路由元信息声明权限码，只使用后端约定的 module:action，不自创前端专用码。",
+          "backend": "权限码形如 <module>:<action>，业务模块用 declare_permissions 登记，require_permission 遇到未登记码自动登记。默认拒绝（无授予即 4030），超级管理员持有全集加 *，module:* 按冒号前缀匹配。权限每请求从库加载，无缓存，变更立即生效。门店范围：all_stores=true 为全部，否则按列表（空表示无门店），apply_store_scope 给查询加条件，assert_in_scope 越界返回 4031；assert_not_self 做职责分离（不能审批自己发起的退款，4030）。内置角色可改权限不可删，仍有员工使用的角色删除 4090，超级管理员角色不可编辑不可删除。",
+          "database": "admin_roles：name 唯一、builtin_code 唯一、builtin、mfa_required。admin_permissions：code 主键、module、description。admin_role_permissions：(role_id, code) 复合主键。admin_user_roles：(user_id, role_id)。admin_store_scopes：(user_id, store_id) 复合主键，all_stores=false 时生效。超级管理员不存权限行，运行时视为全集。内置角色：super_admin、store_manager、front_desk、finance、operator。",
+          "tech": "依据 OWASP Authorization 与 ASVS V8：默认拒绝、每请求服务端校验、最小权限、多租户隔离。每次发布在迁移后执行 python -m admin_rbac.bootstrap --seed，幂等同步权限码与缺失的内置角色。授予 module:* 要求自己持有 module:* 或 *；* 不能授予他人。后台数据查询一律经门店范围助手，不接受客户端传来的 store_id 作为授权依据。",
+          "rules": [
+            "无授予即拒绝，缺少权限码返回 4030，访问范围外门店数据返回 4031",
+            "只能授予自己持有的权限码，module:* 要求授予者自己持有 module:* 或 *",
+            "审批类操作审批人不能是发起人，违反返回 4030 separation_of_duties",
+            "权限与门店范围变更后，下一次请求即按新权限校验，无缓存延迟"
+          ],
+          "exceptions": [
+            "角色授予了未登记的权限码返回 4001",
+            "删除仍有员工使用的角色返回 4090，删除内置角色返回 4220",
+            "门店 A 的账号访问门店 B 的详情返回 4031，前端按不存在页处理",
+            "部署后权限码未同步，bootstrap --seed 补齐且可重复执行"
+          ],
+          "tests": [
+            "无权限账号直接调接口返回 4030，门店 A 账号查不到门店 B 数据",
+            "module:* 前缀匹配：覆盖新增的同模块码，不覆盖 wallet_x:read",
+            "越权授予权限、角色、门店三种情形被拒绝",
+            "权限变更立即生效，种子同步重复执行幂等"
+          ],
+          "source": "Luz-Dev/references/module-specs/admin.json features「角色与权限码」「门店数据范围」; backend/22-admin-rbac/MODULE.md §3、§4 R5、§1 对外导出、§13; backend/SECURITY.md §2; references/standards.json AUTHZ-002"
+        },
+        {
+          "id": "BF-ACCT-06",
+          "name": "审计日志、登录日志与敏感查看留痕",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "后台写操作、敏感查看、导出、登录与权限变更都同事务留痕，只追加不可改；可按条件查询并导出。",
+          "frontend": "审计页和登录日志页提供操作者、动作、资源、对象编号、trace_id、日期区间、关键词筛选，默认每页 20 条，筛选条件进 URL，刷新或分享链接可还原。详情用居中面板显示修改前后的差异，敏感字段已脱敏。导出按钮沿用当前筛选，超过上限（审计导出 5 万行）提示缩小范围，并说明导出本身会被记录。查看明文手机号这类敏感查看要求填写原因，页面提示「本次查看将被记录」。",
+          "backend": "全部后台写操作和本人安全操作与业务同事务写 audit_logs（actor_type、actor_id、action、resource、resource_id、before_json、after_json、reason、ip、user_agent、trace_id），只追加。敏感查看（员工或会员手机号明文）要求 *:sensitive 权限、原因必填，调用 log_sensitive_read 写审计且只记脱敏值。列表用声明式筛选，未知参数 4001；导出与列表同一声明，CSV 单元格以 = + - @ 开头时加前缀防公式注入，手机号脱敏，导出行为本身写 audit.export 或 login_log.export（筛选条件、大小），超限 4225。登录失败、锁定、越权写 security.* 结构化日志，只记员工内部编号和来源 IP，不记账号名和口令。",
+          "database": "audit_logs（框架表，只追加，不提供更新和删除）。admin_login_logs：user_id、username、factor、success、reason、ip、user_agent、created_at，索引 (username, created_at)、user_id、created_at。留存：登录日志 186 天（不少于 6 个月，《网络安全法》第 23 条），审计建议 1 年，批量导出与越权操作建议 3 年；每日任务 admin_rbac.purge_login_logs 清理过期行。",
+          "tech": "依据 OWASP Logging Cheat Sheet 与 ASVS 16.3.1：记录全部认证尝试、授权失败、权限变更、管理员操作、敏感数据访问和导出，不记口令与令牌。日志字段统一为一行一条 JSON，带 trace_id，口令、令牌、手机号按字段名黑名单和正则脱敏。导出单次上限 [admin_rbac] export_max_rows（默认 50000），超出返回 4225，更大批量需要异步导出任务（报表模块）。",
+          "rules": [
+            "审计表只追加，接口和代码都不提供更新与删除",
+            "业务写入与审计在同一事务，业务回滚则审计也回滚，保证两者一致",
+            "查看明文手机号必须有 *:sensitive 权限和原因，审计只记脱敏值",
+            "导出必须有单独权限、脱敏、限量并写审计，CSV 防公式注入"
+          ],
+          "exceptions": [
+            "导出行数超过上限返回 4225，提示缩小筛选范围",
+            "日志写入失败不能静默吞掉，业务事务随之失败或告警",
+            "日志里出现手机号、令牌、口令时由脱敏过滤器替换为掩码",
+            "查询时间跨度过大的筛选返回 4001，要求缩小区间"
+          ],
+          "tests": [
+            "导出本身写入审计，导出的手机号已脱敏",
+            "CSV 中以 = 开头的单元格被加前缀",
+            "审计筛选覆盖操作者、动作、资源、日期区间、关键词",
+            "日志样本中搜不到口令、令牌和完整手机号"
+          ],
+          "source": "Luz-Dev/references/module-specs/admin.json features「审计查询」apis audit-logs; backend/22-admin-rbac/MODULE.md §3、§4 R6、§6、§9.2、§11; backend/SECURITY.md §4、§8; backend/SPEC.md §3.4、§13"
+        }
+      ]
+    },
+    {
+      "id": "tenant",
+      "name": "租户、门店与多主体隔离",
+      "dev_module": "store",
+      "kind": "基础",
+      "summary": "维护租户（门店或企业）档案、营业时段与营业状态、供应设置，并保证每个主体只能看到和改动自己的数据。",
+      "functions": [
+        {
+          "id": "BF-TENANT-01",
+          "name": "租户与门店档案",
+          "surfaces": [
+            "admin",
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "后台维护门店或企业的名称、编码、地址坐标、联系电话、时区；小程序按定位选择门店。",
+          "frontend": "后台列表每页 20 条，行内启用开关，可批量；编辑用居中面板：名称 2 到 30 字、编码（字母数字，创建后不可改，用于门店码或邀请码）、详细地址加地图选点（保存经纬度）、对会员公开的客服电话、时区。编码重复就近提示。小程序门店选择页先请求定位，用户拒绝时改按城市列表展示，不反复弹授权；选中的门店存本地，之后的接口带 store_id；列表显示距离、营业中或已打烊状态。",
+          "backend": "POST /api/v1/admin/stores 创建、PATCH 修改（store:write，写审计，改前后值入审计）；编码唯一且创建后不可改。GET /api/v1/app/stores 按定位排序：用 12 位 geohash 前缀粗筛，再用 Haversine 距离精排，营业状态按门店时区实时计算，无定位参数时按 city_code 返回。关闭或停用前检查未结事项（有效会员卡、在途订单等），有则返回 4090 并列出数量。删除为软删除，保留历史单据引用。后台每次写使 version 加 1。",
+          "database": "stores：code 唯一、name、city_code CHAR(6)、address、latitude/longitude NUMERIC(9,6)、geohash（12 位，索引）、contact_phone、timezone、status、status_version、version、deleted_at；索引 (city_code, status)。唯一约束改为部分唯一索引 WHERE deleted_at IS NULL。负责人个人手机号如需保存，用加密列加哈希列。",
+          "tech": "坐标统一用 GCJ-02（小程序地图坐标系）。门店信息缓存 store:{id} 5 分钟，后台保存或开业、停业时删除，缓存 key 带 version。多租户 SaaS 时租户本身是一张主体表（含邀请码与启用状态），门店挂在租户下。定位被拒是常态，降级路径（城市列表）必须可用。",
+          "rules": [
+            "门店编码唯一，创建后不可修改",
+            "容量改得小于当前在场人数允许保存，但降到容量以下前拒绝新入场",
+            "关闭门店前必须处理完有效会员卡或在途订单，否则返回 4090 并列出数量",
+            "停用的主体不能登录绑定和下单，已有历史数据保留"
+          ],
+          "exceptions": [
+            "用户拒绝定位时按城市列表展示，不重复弹授权",
+            "两人同时修改同一门店，按 version 条件更新，后者返回 4090 并提示刷新",
+            "缓存未及时失效导致状态陈旧，状态读取以数据库为准，缓存仅用于展示",
+            "地图服务不可用时用直线距离，不阻塞门店列表"
+          ],
+          "tests": [
+            "编码重复被拒绝，创建后修改编码被拒绝",
+            "附近门店按距离升序，拒绝定位时城市列表可用",
+            "有有效会员卡时关闭门店返回 4090",
+            "门店信息变更后缓存失效，小程序下次拉取得到新值"
+          ],
+          "source": "Luz-Dev/references/module-specs/store.json features、inputs、apis、tables stores; backend/02-store/code/store/models.py; backend/SPEC.md §11 缓存; backend/MODULES.md 02-store"
+        },
+        {
+          "id": "BF-TENANT-02",
+          "name": "多主体数据隔离",
+          "surfaces": [
+            "backend",
+            "admin",
+            "miniapp"
+          ],
+          "kind": "基础",
+          "summary": "每张业务表带租户或门店字段，所有查询由数据访问层统一过滤，上下文缺失时拒绝执行，越权访问统一返回不存在或越界。",
+          "frontend": "后台的主体范围取自 GET /auth/me，不由前端传 store_id 或 tenant_id 作为权限依据；顶栏提供门店或企业切换器，只列有权限的主体，切换后清空列表、筛选和缓存并重新请求。「全部门店」总部视图只对持有全部范围的账号显示。4031 越界按不存在页处理。小程序不传任何身份参数，顾客只访问自己的数据，他人资源返回 4040，统一显示「内容不存在」。",
+          "backend": "默认方案是共享表加租户与门店字段：业务表带 tenant_id（多租户 SaaS 时）和 store_id，由数据访问层统一注入条件，不在每个接口手写。顾客端按 WHERE id=? AND user_id=? 限定归属，他人资源与不存在统一返回 4040；后台经 apply_store_scope(查询, 员工, 列) 加范围，assert_in_scope 越界返回 4031。条件取自服务端会话，不接受客户端传来的 user_id、store_id、tenant_id。租户上下文缺失时拒绝执行而不是退化成不过滤；平台管理员和显式系统任务才能跳过，且跳过的表在白名单里逐表说明理由（如租户表、账号表、操作日志表）。",
+          "database": "每张业务表带 store_id（BIGINT，显式索引），多租户再加 tenant_id；业务唯一约束包含租户字段（如租户加工号、租户加手机号）；列表常用复合索引 (tenant_id 或 store_id, 时间)。没有租户字段的表集中登记在白名单，新增表必须声明属于哪一类，并有自动检查防止遗漏。",
+          "tech": "三种隔离方案：共享表加字段（默认，成本低，但一处遗漏即越权，所以必须统一拦截）、每租户独立 Schema、每租户独立数据库（合规要求高的大客户）；选择写进技术方案。Python 栈用声明式的 apply_store_scope 助手和查询过滤；Java 栈可用 MyBatis-Plus 的 TenantLineHandler 在 SQL 层追加条件，上下文缺失时抛异常。缓存 key、日志字段、导出文件名都带主体标识，避免串数据。",
+          "rules": [
+            "门店 A 的账号读取、修改、导出门店 B 的数据一律失败",
+            "客户端提交的 user_id、store_id、tenant_id 不作为授权依据，由服务端会话注入",
+            "租户上下文缺失时拒绝执行，不得退化成不过滤查询",
+            "会员与储值是否跨门店通用由商户决定，写进方案的待确认事项，不在代码里预设"
+          ],
+          "exceptions": [
+            "新增业务表忘记加租户字段，自动检查发现未登记的无字段表并让构建失败",
+            "后台定时任务需要跨租户处理时，必须显式进入系统上下文并记录日志",
+            "越权访问同时返回 4031 或 4040 并写 security.authz_fail 日志，不泄露对象是否存在",
+            "总部账号切换到某门店后，导出和统计仍只含该门店数据"
+          ],
+          "tests": [
+            "每个按 id 访问的接口都有门店 A 账号访问门店 B 数据的测试，期望 4031 或 4040",
+            "列表、详情、导出、统计四类接口都带范围条件",
+            "缺少租户上下文的查询被拒绝",
+            "缓存 key 与导出文件按主体隔离，A 的缓存不会被 B 读到"
+          ],
+          "source": "Luz-Dev/references/patterns/multi-store.md; backend/SPEC.md §3.5、§5; backend/SECURITY.md §2; backend/22-admin-rbac/MODULE.md §4 R5.3; references/standards.json AUTHZ-001、AUTHZ-002; 对照已交付的多企业项目的租户拦截实现"
+        },
+        {
+          "id": "BF-TENANT-03",
+          "name": "供应设置（渠道、起送与配送费、出餐）",
+          "surfaces": [
+            "admin",
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "商户按门店设置供应渠道开关、配送半径、起送价、配送费、包装费、出餐与截单时间，保存即生效，只影响之后的订单。",
+          "frontend": "后台「经营设置」页按门店分组：渠道开关（堂食、配送、自提）、配送半径（米）、起送价、配送费（可分阶梯）、包装费、免配送费门槛、出餐分钟、截单分钟；金额以元输入、提交整数分。能按门店覆盖的项显示「全局值、本店值、生效值与来源」，可取消覆盖；保存后提示「已生效，只影响之后的订单」。小程序结算页只显示服务端试算结果，不自己算费用；起送价不足显示差额；渠道关闭时隐藏对应入口。",
+          "backend": "起送价、配送费、包装费登记为经营设置 store.*（允许按门店覆盖），业务代码按门店值、全局值、登记默认值的顺序取值，读到的值写进订单快照，之后改设置不影响已下的单。渠道开关、配送半径、出餐分钟、截单分钟存在门店行上。费用与配送范围集中在报价服务计算：配送费按距离阶梯 [{up_to_m, fee_cents}] 取值，坐标为 GCJ-02，范围外返回 4222。修改按 version 条件更新，冲突返回 4090 带最新值。",
+          "database": "stores：delivery_radius_m、min_order_cents、delivery_fee_cents、free_delivery_threshold_cents、fee_tiers_json、cutoff_minutes、prep_minutes、dine_in、delivery、pickup、auto_accept、version；或登记为经营设置时存 business_settings（store_id 空表示全局、key、value_json、version，唯一 (store_id, key) NULLS NOT DISTINCT）。金额一律整数分，后缀 _cents。",
+          "tech": "金额只用整数分，折扣用万分比 _bp，不用浮点。配送距离由地图服务计算，地图不可用时降级为直线距离乘系数 1.3，无结果时让用户手动选址（SPEC 降级矩阵）。这类运营经营规则放数据库由运营在后台改，运行参数仍放配置文件，两者分开。修改与恢复默认同事务写审计，记前后值。",
+          "rules": [
+            "订单快照记录下单当时的起送价与配送费，之后改设置不影响已下的订单",
+            "修改只影响之后发生的业务，不追溯已生成的订单",
+            "渠道关闭后该渠道不能下单，前端隐藏入口，服务端同样拒绝",
+            "配送费阶梯按距离取第一个满足 up_to_m 的档位，范围外不可配送"
+          ],
+          "exceptions": [
+            "设置值超出登记范围返回 4001 validation_failed，并说明允许范围",
+            "两人同时修改同一项，后保存者返回 4090 带最新值",
+            "配送半径外下单返回 4222，前端在地址行提示",
+            "库里的值被改坏时读取退回默认值并记日志，业务不中断"
+          ],
+          "tests": [
+            "改起送价后新单按新值、历史订单快照不变",
+            "渠道关闭后下单被拒绝，小程序入口隐藏",
+            "配送费阶梯边界值（刚好等于 up_to_m）计算正确",
+            "门店覆盖值优先于全局值，取消覆盖后回到全局值"
+          ],
+          "source": "Luz-Dev/references/module-specs/store.json features「经营设置」flows「读取经营设置」; backend/02-store/code/store/models.py（履约参数）; references/module-specs/business.json; backend/23-app-settings/MODULE.md §4.1; backend/SPEC.md §9"
+        },
+        {
+          "id": "BF-TENANT-04",
+          "name": "营业时段与营业状态",
+          "surfaces": [
+            "admin",
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "营业状态只存一份，下单、支付、支付回调三处都校验；营业时段到点自动开关，含跨午夜和节假日例外。",
+          "frontend": "小程序门店栏与门店详情显示营业中、休息中、暂停营业，并写明预计恢复时间；非营业中时菜单仍可浏览，加购和结算按钮变为不可点的「暂停营业」，首次进入弹一次强公告。收到 4221 STORE_NOT_OPEN 时不当作报错，刷新门店状态并显示停业说明与可预约时段。前端置灰只是提示，校验以服务端为准。后台门店编辑页用按星期的时段选择（支持全天 24 小时、同日多段、跨午夜），节假日例外按日期添加。",
+          "backend": "营业状态存在 stores.status 一处，创建订单、发起支付、支付回调三处都读它，非营业中返回 4221 并附恢复时间，不创建订单、不发起预支付；读取不走可能过期的缓存，或缓存在切换时同步删除。定时任务每分钟按门店时区、营业时段和节假日例外计算应处状态，在营业中与休息中之间切换；人工停业（暂停）的门店不被定时任务恢复。时段 close_time 小于 open_time 表示次日。状态切换用 status_version 条件 UPDATE 防并发，并写营业日志。",
+          "database": "stores：status（preparing、open、paused、resting、closed）、status_version、pause_reason、resume_at、timezone。store_hours：store_id、weekday（0 到 6）、open_time、close_time（HH:MM）、seq（同日多段）。store_holidays：UNIQUE(store_id, date)、closed、open_time、close_time。营业日志见一键开停业功能。",
+          "tech": "时间一律 UTC 存储、按门店时区计算和展示。营业时段定时任务 store-business-hours 每分钟运行，任务幂等，带分布式锁。门店状态是下单、支付、入场、设备、外卖平台共同读取的唯一事实，不各自另存一份。错误码 4221 表示门店休息或不在可售时段，前端据此显示停业说明。",
+          "rules": [
+            "营业状态只存一份，下单、支付、支付回调三处都校验",
+            "非营业中不能创建订单也不能发起预支付，返回 4221 并带恢复时间",
+            "人工暂停营业的门店不被定时任务自动恢复，只能手动开业或到达恢复时间并通过开业检查",
+            "营业时段按门店时区计算，节假日例外优先于每周时段"
+          ],
+          "exceptions": [
+            "营业时段跨午夜（18:00 到 02:00）按次日结束计算，不被拆成两天",
+            "停业前已发起、停业后才到账的支付，回调再查一次营业状态并按停业时的策略处理",
+            "定时任务重复执行结果一致，不产生多条切换日志",
+            "旧页面或缓存页面在停业后继续下单，被服务端 4221 拦截"
+          ],
+          "tests": [
+            "停业后下单、发起支付、支付回调三处都返回或处理 4221",
+            "营业时段边界（刚好开始、刚好结束、跨午夜、节假日例外）切换正确",
+            "人工暂停的门店不被定时任务恢复",
+            "缓存在状态切换时失效，下一次读取为新状态"
+          ],
+          "source": "Luz-Dev/references/module-specs/store.json features「门店状态」「停业联动」flows「停业后的下单与支付」「营业时段自动开关」; references/function-catalog.json store.order-gate; backend/02-store/code/store/models.py StoreHour、StoreHoliday; backend/SPEC.md §4、§11"
+        },
+        {
+          "id": "BF-TENANT-05",
+          "name": "一键开业与停业（预览影响、开业检查、联动）",
+          "surfaces": [
+            "admin",
+            "backend",
+            "miniapp"
+          ],
+          "kind": "可选",
+          "summary": "店长在后台一键停业或开业，停业前预览影响并选择在途订单处理方式，开业前逐项检查，设备和外卖平台联动。",
+          "frontend": "后台顶栏状态胶囊可一键切换，门店列表行内开关，支持批量。点停业先 GET close-preview 显示进行中订单数、待支付订单数、将切换的设备及停业动作；确认框里选原因、恢复方式（手动或 resume_at）、在途订单处理（继续制作或退款）、是否允许预约、同时暂停的范围（储值、买卡、续费、积分兑换）和公告文案，提交带 status_version 与 Idempotency-Key。开业先 GET open-check，逐项显示通过或阻断及处理入口，阻断项清零才可点「开业」，检查结果 5 分钟过期。设备回执逐台显示已切换、重试中、失败，失败项可重试。",
+          "backend": "POST /api/v1/admin/stores/{id}/close 在一个事务里用条件 UPDATE（WHERE status_version=:v）把状态改为 paused，写 store_status_logs 和停业公告，并在发件箱写设备指令与外卖平台置休任务，事务提交即生效。待支付订单默认关闭并释放库存与券；进行中订单按策略继续制作或逐单原路退款并通知用户。设备指令主题 store/{id}/business-state，带 command_id、签名、限时，设备按 command_id 去重并回执，失败重试 3 次后告警，不回滚停业。开业 POST open 带 check_id 条件更新为 open；检查超过 5 分钟或期间状态变化要求重新检查。定时恢复先做开业检查，不通过则保持停业并通知店长。",
+          "database": "stores：status_version、pause_scopes（JSONB）、resume_at。store_status_logs：store_id、from_status、to_status、source（manual、schedule、platform）、operator_id、reason、options（JSONB）、impact（JSONB），索引 (store_id, created_at)，只追加。store_device_commands：command_id UUID 唯一、device_id、target_state、status（pending、acked、failed）、attempts、last_error，索引 (store_id, status)。",
+          "tech": "状态先生效、设备异步追平，两者解耦，设备离线不影响停业。设备指令防重放（签名、限时、command_id 去重）。开业检查项：支付通道、收银与打印、关键设备在线、售罄与库存、营业时段，阻断项（支付通道、收银）不通过不能开业。操作仅店长与总部运营，按门店范围授权，每次切换写审计。",
+          "rules": [
+            "两人同时切换状态只有一个成功，后到者返回 STATUS_CHANGED 与最新状态",
+            "停业时待支付订单关闭并释放库存与券，进行中订单按所选策略处理",
+            "开业必须先通过开业检查，阻断项不通过不能开业",
+            "每次切换写营业日志：原因、选项、受影响订单数、设备结果、操作人"
+          ],
+          "exceptions": [
+            "设备下发失败重试 3 次后告警，设备列表标出失败并可手动重试，停业不回滚",
+            "开业检查结果超过 5 分钟返回 OPEN_CHECK_EXPIRED，要求重新检查",
+            "定时恢复时检查不通过，保持停业、通知店长并写日志",
+            "停业瞬间到账的支付按停业时选择的策略继续制作或自动原路退款，不出现悬空订单"
+          ],
+          "tests": [
+            "并发切换只有一个成功，营业日志完整",
+            "无权限账号调用停业接口返回 4030，越门店返回 4031",
+            "停业后三处校验（下单、支付、回调）都生效",
+            "一台设备离线时停业照常生效并告警"
+          ],
+          "source": "Luz-Dev/references/module-specs/store.json features「一键开业与停业」flows 一键停业、一键开业; references/function-catalog.json store.open-close、store.device-sync; references/admin.md Writes and audit; Luz-System/references/admin-design.html「营业状态」"
+        }
+      ]
+    },
+    {
+      "id": "catalog",
+      "name": "商品与套餐",
+      "dev_module": "catalog",
+      "kind": "基础",
+      "summary": "维护商品、规格（SKU）与套餐，管理上下架、图片、排序和批量导入；改价只影响之后的订单，历史单据用快照。",
+      "functions": [
+        {
+          "id": "BF-CATALOG-01",
+          "name": "商品与规格（SKU）维护",
+          "surfaces": [
+            "admin",
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "运营在后台新建、修改商品及其规格、价格、购买规则；顾客端只读上架商品。",
+          "frontend": "商品编辑用居中面板：名称 2 到 60 字、分类、封面与详情图、规格表（每行一个 SKU：规格值、售价、划线价、编码）。金额以元输入、最多 2 位小数，提交前换算为整数分；保存时校验「每个 SKU 售价大于 0、编码唯一」，错误显示在字段旁。保存遇到 4090 版本冲突时显示最新内容并保留用户输入。改价弹确认窗，写明改前改后和「只影响之后的订单」。列表每页 20 条，可按分类、状态、关键词筛选。",
+          "backend": "POST /api/v1/admin/products 在一个事务里创建商品和 SKU，PUT 修改，权限 product:write，价格变更写审计（改前后值）。金额为整数分 price_cents；sku_code 唯一；规格组合存 spec JSON。改价只影响之后的订单，订单明细保存名称、规格、单价快照；删除为软删除，有订单引用的 SKU 不物理删除。服务端不接受客户端写入 status、库存终值。顾客端 GET /api/v1/app/products 游标分页（默认 10、上限 20），详情下架时返回 OFF_SALE。商品或 SKU 可带购买规则（起售件数、单笔上限、每人限购件数与次数、统计周期、统计范围、新客专享），保存时按同一规则校验，下单时由订单模块校验计数。",
+          "database": "products：name VARCHAR(60)、category_id、cover_file_id、description、sale_status（on_sale、off_sale）、sort、deleted_at，索引 (category_id, sale_status, sort)。product_skus：product_id、sku_code UNIQUE、spec JSONB、price_cents、available、reserved、low_stock_threshold、purchase_rule JSONB，CHECK(available >= 0 AND reserved >= 0)。软删除唯一约束用部分唯一索引 WHERE deleted_at IS NULL。库存数值由库存功能的条件 UPDATE 维护，商品维护不直接覆盖。",
+          "tech": "金额用整数分，所有价格计算在服务端，前端只展示。分类与商品列表缓存 catalog:{store_id}:{category}:{v} 5 分钟，商品详情缓存 product:{id}:{version} 10 分钟，商品或套餐变更使 catalog_version 自增使旧缓存失效。商品列表这类业务排序（销量、价格）在列表声明里按字段白名单提供。服务类商品（次卡、课程包）购买后生成权益，与预约、核销关联。",
+          "rules": [
+            "每个 SKU 售价大于 0，sku_code 全局唯一",
+            "改价只影响之后的订单，历史订单使用下单时的价格快照",
+            "有订单引用的商品和 SKU 只能软删除，不能物理删除",
+            "购买规则保存时校验：起售不大于单笔上限和件数上限，周期与范围取值合法，写错的规则拒绝保存"
+          ],
+          "exceptions": [
+            "两人同时修改同一商品，按版本条件更新，后者返回 4090 并显示最新内容",
+            "SKU 编码重复返回 4090，价格非正数返回 4001 并指明字段",
+            "下架商品详情返回 OFF_SALE，前端显示已下架并给返回入口",
+            "客户端提交价格或状态字段被忽略，价格只取服务端数据"
+          ],
+          "tests": [
+            "改价后历史订单金额不变，价格变更写入审计",
+            "SKU 编码唯一、价格大于 0 的校验",
+            "购买规则非法组合（起售大于上限、周期取值未知）被拒绝",
+            "商品变更后缓存失效，顾客端下次读取为新数据"
+          ],
+          "source": "Luz-Dev/references/module-specs/catalog.json features、inputs、apis、tables products、product_skus; references/patterns/catalog-cart.md §1; references/patterns/purchase-rules.md §2; backend/SPEC.md §3.5、§11; backend/MODULES.md 03-catalog"
+        },
+        {
+          "id": "BF-CATALOG-02",
+          "name": "套餐（组合商品）与价格快照",
+          "surfaces": [
+            "admin",
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "把若干菜品或服务打包成套餐售卖；菜单、活动和订单引用套餐时保存名称、价格、图片快照，修改套餐不影响已发布内容。",
+          "frontend": "套餐编辑：名称（不超过 100 字）、简介（255 字内）、内含说明（1000 字内，显示字数）、价格（元，最多 2 位小数，范围 0 到 99999999.99）、单张 16:9 图片、排序、启用状态。选择套餐的下拉只列启用项。小程序套餐卡片显示图片、名称、价格和简介，停用的套餐不出现；图片加载失败显示默认占位。套餐停用前确认，写明「不影响已发布菜单和已有订单」。",
+          "backend": "套餐有独立的创建、修改、启停接口，权限 setmeal:write（查看 setmeal:read），每次写同事务记操作日志（含旧价与新价）。被菜单或活动选用时把套餐名称、简介、图片、价格复制为快照（如菜单项的 bundle_name、price_cents），下单时再把快照写入订单行，所以修改或停用套餐不影响已发布菜单和已有订单；停用后不能加入新菜单。列表按 sort 升序、id 降序，关键词模糊匹配名称，并转义 % 与 _。同一菜单内同一套餐只能出现一次（唯一约束）。",
+          "database": "product_bundles（套餐）：name、summary、price_cents、dishes_desc、image_file_id、status（启用、停用）、sort INT 默认 0，CHECK(price_cents >= 0)。引用表（如菜单项）保存快照列 bundle_name、price_cents、summary、image，并加 UNIQUE(menu_id, bundle_id) 防重复加入。订单行保存套餐名与单价快照。",
+          "tech": "快照原则：任何会被后改的主数据（名称、价格、图片），在被业务单据引用的那一刻复制进单据，之后主数据再改也不动历史。套餐在全局共用或按租户拥有，由方案确定；变更使 catalog_version 自增使缓存失效。服务类套餐（次卡、课程包）购买后生成权益（次数、有效期），与预约和核销关联。",
+          "rules": [
+            "套餐引用时复制价格和名称快照，之后修改套餐不影响已发布内容与订单",
+            "停用的套餐不能加入新菜单，也不在顾客端出现",
+            "价格不能小于 0 且最多两位小数，名称不能为空",
+            "同一菜单内同一套餐只能加入一次"
+          ],
+          "exceptions": [
+            "套餐被多处引用时停用，仅阻止新引用，已有引用保持不变",
+            "名称超长或价格格式不对，返回 4001 并指明字段",
+            "同名套餐重复创建，由方案决定是否允许；允许时批量导入按名称匹配会失败并提示",
+            "图片文件未通过审核，套餐保存时提示更换图片"
+          ],
+          "tests": [
+            "改价后已发布菜单与历史订单价格不变",
+            "停用套餐后不能加入新菜单，旧菜单不受影响",
+            "价格边界值（0、最多两位小数、最大值）校验",
+            "同一菜单重复加入同一套餐被唯一约束拒绝"
+          ],
+          "source": "Luz-Dev/backend/MODULES.md 03-catalog「分类、商品、规格 SKU、套餐」; references/patterns/catalog-cart.md §1; module-specs/catalog.json products; 实战校验：套餐与快照实现"
+        },
+        {
+          "id": "BF-CATALOG-03",
+          "name": "上下架、图片与排序",
+          "surfaces": [
+            "admin",
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "运营在列表行内一步上下架，管理图片和排序；下架后不可加购和下单，购物车里的条目标记失效。",
+          "frontend": "列表行内开关一步上下架，不进编辑页；下架前确认，写明「购物车内将标记失效」。图片管理支持上传、删除、设为封面、改说明、拖动排序（也能用方向键），标出数量上限（上限由方案确定，评价图常用 9 张）和建议比例 16:9，上传中显示进度和取消。排序可拖动，提交新顺序，数值越小越靠前。小程序按展示尺寸请求缩略图，预留固定占位避免布局跳动。已下架商品详情页显示「已下架」并给返回入口，购物车里的失效条目单独分组且不可结算。",
+          "backend": "上下架（权限 product:publish）用条件 UPDATE 修改 sale_status，下架后加购和下单试算都重新读取可售状态，不可售返回 OFF_SALE 并标出商品。排序接口接收 [{id, sort}] 一次更新，同事务完成；分类（权限 category:write）用同样的排序与启停规则，分类停用时其下商品对顾客端不可见。图片字段只存文件编号 file_id（来自文件上传功能），由文件服务生成访问地址，不接受任意外链。商品、套餐、上下架、排序变更都使 catalog_version 自增，缓存失效。顾客端列表默认按 sort 升序，业务排序（销量、价格）用字段白名单声明。每次上下架和改排序写审计。",
+          "database": "products：sale_status、sort、cover_file_id；详情图用 product_images（product_id、file_id、sort、is_cover）或 JSONB 的 file_id 列表，数量上限在服务端校验。索引 (category_id, sale_status, sort) 支撑顾客端列表。购物车条目按当前可售状态实时判断，不存价格。",
+          "tech": "图片走文件上传功能（预签名直传、后台出缩略图），前端永远不压缩原图，展示用服务端或 CDN 的缩略图。状态类字段放行内开关，任何日常修改最多两次点击（含确认）。缓存按 catalog_version 失效，不依赖 TTL 到期。购物车不存价格，每次按当前价格计算，价格变化时提示。",
+          "rules": [
+            "下架后不可加购、不可下单，已在购物车的标记失效且不可结算",
+            "已发布内容和历史订单使用快照，下架不改变历史订单",
+            "图片数量超过上限由服务端拒绝，封面必须是该商品的图片之一",
+            "排序数值越小越靠前，同值按 id 倒序保证稳定"
+          ],
+          "exceptions": [
+            "下架与下单并发：下单试算与提交都复查可售状态，下架后提交返回 OFF_SALE",
+            "图片文件未通过审核或已删除，商品展示默认占位，后台标出需要更换",
+            "两人同时排序，后提交的覆盖前者，页面刷新后显示最终顺序",
+            "缓存未更新导致顾客端仍显示已下架商品，下单时由服务端拦截"
+          ],
+          "tests": [
+            "下架后加购和下单失败，购物车条目显示失效",
+            "排序提交后顾客端列表顺序与后台一致",
+            "图片超过上限、封面不属于该商品被拒绝",
+            "上下架后缓存失效，顾客端下次拉取为新状态"
+          ],
+          "source": "Luz-Dev/references/patterns/catalog-cart.md §1、§2; module-specs/catalog.json（sale_status、sort、cover_file_id）; backend/SPEC.md §11; Luz-System/references/admin-design.html「内容维护闭环」「操作成本」"
+        },
+        {
+          "id": "BF-CATALOG-04",
+          "name": "批量导入（Excel 逐行校验）",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "运营下载模板填写 Excel 批量导入或更新商品或套餐；逐行校验，返回新建、更新、失败汇总，失败行可下载修正。",
+          "frontend": "列表页「导入」打开对话框：下载模板（含填写说明工作表）、拖入 xlsx，上传前先校验扩展名和文件大小。提示「名称相同则更新价格，留空的列保持不变」「一次最多 500 行」。导入时按钮禁用并显示进度，完成后显示新建数、更新数、失败数和失败清单（行号加原因），失败清单可下载，修正后只重传失败行。别人正在导入时提示「有其他人正在导入，请稍后再试」。图片不在表格里，导入后另行上传。",
+          "backend": "POST /api/v1/admin/products/import（权限 product:write，套餐为 setmeal:write，multipart）。读取时就限制行数不超过 500 行，整个文件在一个事务内导入，并用命名锁或分布式锁串行化，避免两人同时导入重复新建同名商品。逐行校验：名称非空且不超过 100 字、与文件内前面行不重复、价格非空且为 0 到 99999999.99 的数字最多两位小数、简介不超过 255 字、说明不超过 1000 字、排序为整数。已有同名则更新价格和填写了的列，不存在则新建为启用，库内同名多条的行失败。成功返回 {created, updated, failed[{row, reason}]}，操作日志记录汇总。",
+          "database": "不新增业务表，导入落到商品或套餐表，用名称（在主体内唯一）匹配已有行。操作日志记录文件名、操作者、新建数、更新数、失败数。失败清单随响应返回，不落库长期保存。",
+          "tech": "Excel 解析库在读取阶段限制行数和文件大小，防止大文件撑爆内存。锁在独立连接上，保证在导入事务提交之后才释放（MySQL GET_LOCK 或 PostgreSQL 的咨询锁或 Redis 锁）。批量操作遵循部分成功规范：给出总数、成功数、失败数，失败项可下载，只重试失败项；整体不能只返回 success。员工名单等类似导入沿用同一做法，行数上限按业务设定（如 1000）。",
+          "rules": [
+            "一次最多导入 500 行，超过时拒绝并提示分批",
+            "同名商品更新价格及填写了的列，留空的列保持不变，不存在则新建",
+            "文件内名称重复的后一行失败，并写明与第几行重复",
+            "同一时刻只允许一人导入同类数据，其他人收到明确提示"
+          ],
+          "exceptions": [
+            "表头与模板不符时整体拒绝，提示使用导入模板",
+            "某行价格格式错误只让该行失败，其他行照常导入",
+            "导入中途服务重启，事务回滚，不留下半份数据",
+            "文件被改名成 xlsx 但内容不是表格，按格式不正确拒绝"
+          ],
+          "tests": [
+            "混合文件（新建、更新、错误行）返回的计数与失败行号准确",
+            "两个导入并发，只有一个获得锁，另一个被拒绝",
+            "超过行数上限被拒绝",
+            "导入后价格变化不影响历史订单快照"
+          ],
+          "source": "实战校验：套餐与 Excel 导入实现（命名锁、逐行校验、上限）; references/function-catalog.json result.partial-success; references/admin.md Lists, filters and export; Luz-System/references/admin-design.html"
+        }
+      ]
+    },
+    {
+      "id": "config",
+      "name": "配置、文案与功能开关",
+      "dev_module": "config",
+      "kind": "基础",
+      "summary": "把运行参数、前台文案与展示、经营设置分开放：开发改配置文件并热加载，运营改文案与经营设置并即时生效，客户端拉取可见部分并带兜底默认值。",
+      "functions": [
+        {
+          "id": "BF-CONFIG-01",
+          "name": "运行配置文件、校验与热加载",
+          "surfaces": [
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "超时、上限、限流阈值、功能开关等运行参数写在代码仓库的配置文件里，服务端启动与文件变化时整份校验并热加载，坏配置不上线。",
+          "frontend": "运行参数不做后台页面，也不由前端维护。后台顶栏的版本信息面板显示前端版本、后端版本、配置版本（内容摘要前 12 位）、发布时间和运行环境，便于排查；页面发现服务端版本变化时在顶部提示「有新版本，刷新后使用」，不强制刷新、不丢失正在填写的内容。小程序只读取客户端可见的键，见客户端下发功能。",
+          "backend": "配置目录 config/runtime：base.toml 写全部键的默认值，每个键上方一行注释写用途、单位、范围；dev、staging、prod 文件只写差异。字段说明用类型模型（禁止未登记的键，默认值也校验，支持跨字段校验），登记类型、范围、单位（写进键名如 timeout_ms）、作用范围、能否热加载、是否下发客户端、风险级别。启动时整份校验，失败逐条打印键、当前值（秘密打码）、原因和允许范围，以退出码 2 退出。运行中监听目录变化（防抖 1.5 秒，不可用时轮询）或 POST /internal/config/reload，整份通过后一次性替换不可变快照，失败保留旧快照并告警。每个请求开始取一次快照，处理中途不变。",
+          "database": "config_loads：instance_id、config_version CHAR(12)、source_commit、trigger（startup、file_change、reload_api、signal）、result（loaded、unchanged、rejected）、changed_keys_json、restart_keys_json、error_summary，索引 (instance_id, created_at)、(config_version)。每个实例每次加载一行，只记键名不记值。配置本身不放业务库。",
+          "tech": "配置版本取规范化内容的 SHA-256 前 12 位。需要重启的键（连接池大小、监听端口、并发数）热加载时不应用，记入 restart_keys 并写警告。内部接口 GET /internal/config 返回版本、加载时间、来源提交、待重启的键、最近失败，不返回值；只对内网开放并校验运维令牌（不少于 32 字符），外网 404，缺令牌 403。CI 对每个环境文件各加载一次并做秘密扫描；发布脚本先写临时文件再改名整份替换；容器编排整目录只读挂载（子路径与环境变量注入不会自动更新）。多实例版本不一致超过 5 分钟告警。",
+          "rules": [
+            "运行参数写在配置文件，不写死在代码里，也不放进后台页面或业务表",
+            "秘密不进配置文件，只来自密钥服务或受限文件；配置文件里出现秘密则 CI 失败",
+            "校验失败时服务继续使用旧配置，启动时失败则进程退出，不带着坏配置就绪",
+            "回滚就是还原配置文件的提交并重新同步，各实例热加载后回到旧版本"
+          ],
+          "exceptions": [
+            "编辑器分多次写入或同步到一半，防抖后读取到不完整文件按校验失败处理",
+            "改了需要重启的键，热加载保留当前值并记录待重启，下次滚动重启生效",
+            "多个线程同时重载只产生一次 loaded，其余为 unchanged",
+            "内部接口被外网访问返回 404，内网缺运维令牌返回 403"
+          ],
+          "tests": [
+            "每个环境文件按字段说明各加载一次，CI 必须通过",
+            "写错类型、超范围、未登记键的文件被拒绝且旧值保留",
+            "重载成功、未变化、被拒三种结果都写 config_loads",
+            "请求处理中途热加载，本请求读到的仍是开始时的快照"
+          ],
+          "source": "Luz-Dev/references/module-specs/config.json features、flows、apis、tables config_loads; references/function-catalog.json config.file-reload; backend/23-app-settings/MODULE.md §3、§6、§8、§9; backend/SPEC.md §14; references/standards.json OPS-005"
+        },
+        {
+          "id": "BF-CONFIG-02",
+          "name": "客户端配置下发与功能开关",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "客户端启动和回到前台时拉取自己可见的参数与开关（上传上限、最低版本、维护模式等），拉不到就用缓存和安装包默认值。",
+          "frontend": "启动先用本地缓存的上次有效配置和安装包内置默认值，同时异步调 GET /api/v1/app/config?platform=&client_version=&config_version=；版本未变（304）不处理；回到前台时距上次拉取不足 config_refresh_s（默认 300 秒）不重复拉。立即生效的键马上应用，下次启动生效的键等冷启动，结算与支付进行中不切换。非法值丢弃并继续用上次有效值，拉取失败不提示错误。低于最低版本提示重启更新；maintenance_mode 为 true 时显示维护页。开关与上限只做显示和预检查，执行以服务端同一值为准。",
+          "backend": "GET /api/v1/app/config 无需登录，只读内存快照不查库。只下发标为 client_visible 的键，按端（platform）、客户端版本（client_since）和命中的覆盖规则计算值，不带端时只给各端通用的键。响应含 config_version 和 values（分组.键 对应值）并带 ETag，版本相同返回 304。绝不下发秘密、内部地址和服务端专用键。功能开关、最低版本、维护模式都是运行配置键，可按门店、渠道、客户端版本灰度；百分比覆盖只对服务端 config_for(user_ref) 生效，因为该接口没有登录用户。请求头 X-Client、X-Client-Version、X-Config-Version 用于灰度与排查。",
+          "database": "无业务表，数据来自内存配置快照；加载情况记在 config_loads。覆盖规则写在环境配置文件的 overrides 里，维度限于键声明的范围（门店、渠道、客户端版本、用户分桶百分比）。",
+          "tech": "同一参数全系统只存一份：客户端只用来显示与预检查，服务端按同一值执行（如文档上传上限 upload.doc_max_mb，选择文件时预提示，服务端按同值拒收）。依据 RFC 9110 的 ETag 与 304。灰度流程：环境文件里写覆盖值、热加载、观察错误率与关键指标，正常则把值写进主体并删除覆盖，异常则还原提交；发布开关全量后按期清理。旧版本客户端只收到自己认识的键。",
+          "rules": [
+            "只下发 client_visible 的键，秘密、内部地址、服务端专用键永不下发",
+            "同一参数前后端只存一份值：客户端预检查，服务端按同一值最终判定",
+            "新键只给支持它的客户端版本，客户端丢弃不认识或非法的值",
+            "维护模式开启后顾客端写接口返回 5030，客户端显示维护页"
+          ],
+          "exceptions": [
+            "配置接口不可用时客户端用缓存或安装包默认值，业务照常",
+            "客户端版本低于最低可用版本，提示重启更新，必须修复的问题同时在小程序后台设最低版本",
+            "多条灰度规则同时命中时合并后的值也必须合法，否则整份配置在加载时被拒绝",
+            "结算或支付过程中配置变化，当前流程使用开始时的值"
+          ],
+          "tests": [
+            "断网启动照常可用，改配置文件热加载后客户端下次拉取得到新值",
+            "旧版本客户端拿不到新键，不带 platform 只返回通用键",
+            "ETag 与 304：版本相同不返回正文",
+            "响应中不含任何秘密和服务端专用键"
+          ],
+          "source": "Luz-Dev/references/module-specs/config.json features「客户端下发」flows「客户端拉取」; references/function-catalog.json config.client-fetch; backend/23-app-settings/MODULE.md §3、§6、§12; backend/config/runtime/base.toml [client]、[features]; references/standards.json OPS-005"
+        },
+        {
+          "id": "BF-CONFIG-03",
+          "name": "文案与展示设置",
+          "surfaces": [
+            "admin",
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "小程序上每处提示、空状态、须知和展示开关由后端下发，运营在后台按页面行内修改，保存即生效，不用发版。",
+          "frontend": "小程序每处可见文字有文案键（页面.位置，如 order_confirm.pay_hint），启动先用缓存，再调 GET /api/v1/app/content?content_version=&store_id=；每个页面 onShow 带内容版本检查，有新版本就替换缓存并刷新本页。变量（如 {store_name}）在端上替换；缺键、拉取失败、值非法时用安装包默认文案，不显示空白或键名；超长文字截断加省略号。后台「文案与展示」页按小程序页面分组，列出位置说明、当前文案、默认文案、字数上限、可用变量，行内编辑，保存提示「已生效」并说明在小程序里的位置；可恢复默认、查看历史并恢复上一版；冲突时显示最新内容。",
+          "backend": "PUT /api/v1/admin/content/texts/{key}（text、version）：去首尾空白，空值表示使用默认文案；字数超限 content_text_too_long，使用未登记变量 content_variable_unknown，内容安全检测不通过 content_unsafe（检测服务异常不保存，5020）；按 version 条件更新，冲突返回 4090 content_conflict 并带最新内容。每次修改或恢复同事务追加修订记录（编号即内容版本）并写审计。后台不可见的隐藏键（通用控件词、系统级提示、法规固定文字）不进后台列表，修改返回 4030 content_key_hidden，只能改种子文件，发布时幂等同步。展示设置生效值：登记默认、全局值、门店值逐级覆盖。恢复历史等于撤销那次修改并生成新版本。",
+          "database": "ui_texts：key UNIQUE、page、slot_label、text、default_text、max_length、variables、allow_empty、admin_visible、sort_order、version、updated_by。display_settings：store_id（空表示全局）、key、value_json、admin_visible、version，唯一 (store_id, key) NULLS NOT DISTINCT。content_revisions：target_type（text、display）、target_key、store_id、old_value_json、new_value_json、changed_by、source（admin、migration、restore），只追加。",
+          "tech": "内容版本取修订表最大编号，拉取时先取版本再读内容，最坏情况客户端多拉一次，不会把新内容配旧版本号。内容安全检测做成可替换钩子，因为微信文本检测要求近 2 小时访问过的用户 openid，后台员工用不上。文案键小写蛇形不超过 80 字；保存即生效，不设草稿与发布两步。12 个线程以同一版本改同一文案只有 1 个成功。文案对全部门店生效，只有全门店员工能改；展示设置的门店值按员工门店范围校验。",
+          "rules": [
+            "文案不超过登记字数上限，只能使用登记的变量，通过内容安全检测才保存",
+            "隐藏键只通过种子文件与迁移修改并经代码评审，后台接口拒绝修改",
+            "每次修改、恢复默认、恢复历史都生成新内容版本并写审计",
+            "种子同步产生的记录不能被恢复，恢复历史仅限运营修改"
+          ],
+          "exceptions": [
+            "两人同时改同一文案，后保存者返回 content_conflict 并看到最新内容",
+            "旧版本小程序没有新键，忽略不认识的键，新键只在新版本使用",
+            "内容接口不可用时用缓存和安装包默认文案，服务恢复后下次页面显示时更新",
+            "运营误改，在历史里恢复上一版或恢复默认，恢复也写审计"
+          ],
+          "tests": [
+            "后台改一处文案，小程序再次进入该页显示新文案；断网启动显示默认文案",
+            "超长、未知变量、违规内容被拒并说明原因",
+            "12 线程并发修改同一文案只有 1 个成功",
+            "隐藏键不出现在后台列表且修改被拒绝，种子同步重复执行幂等"
+          ],
+          "source": "Luz-Dev/references/module-specs/content.json; references/function-catalog.json content.client-fetch、content.admin-edit; backend/23-app-settings/MODULE.md §2、§4、§6、§8; references/standards.json MP-006、ADMIN-005; Luz-System/references/miniprogram-design.html「文案与展示下发」"
+        },
+        {
+          "id": "BF-CONFIG-04",
+          "name": "经营设置（全局值、门店覆盖、高风险再验证）",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "商户日常要调的经营规则（退款手续费、扣减顺序、退券策略、起送价等）在后台维护，保存即生效并写审计，只影响之后的业务。",
+          "frontend": "后台「经营设置」页按业务模块分组（储值、优惠券、会员卡、门店）：每项显示名称、一句影响说明、单位、范围或选项（单选项显示中文名而不是代码）、默认值、全局值、门店值、生效值与来源。行内修改，保存提示「已生效，只影响之后的业务」。影响资金的高风险项先弹重新验证（4011 reauth_required），确认框写清改前改后与影响范围，原因必填（200 字内）。可恢复默认或取消门店覆盖；门店员工只看到并只能改自己门店的覆盖值；冲突时显示最新值。",
+          "backend": "键形如 模块.名称（64 字内），由业务模块在导入时登记：类型（开关、整数、单选）、默认值、单位、范围或选项、能否按门店覆盖、风险级别、是否后台可见；默认值登记时也校验。PUT /api/v1/admin/settings/{key}（store_id、value、version、reason）按登记类型与范围校验，不能按门店的键带门店返回 store_override_not_allowed，隐藏键返回 business_key_hidden，按 version 条件更新，冲突返回 setting_conflict。高风险键要求 5 分钟内完成认证。同事务写审计（前后值、门店、原因）。业务代码按门店值、全局值、默认值取生效值，并把读到的值写进业务单据，如退款单记下手续费比例。",
+          "database": "business_settings：store_id（空表示全局）、key VARCHAR(64)、value_json、version、updated_by，唯一 (store_id, key) NULLS NOT DISTINCT（等价于两个部分唯一索引）。没有行时使用登记的默认值。修改前后的值进审计表，不进内容版本。",
+          "tech": "与运行参数分开：运营日常要改的放这里（数据库、后台、写审计），只有开发才改的放配置文件（热加载、不在后台展示）；与文案分开放。库里的值被改坏时读取退回默认值并记日志，业务不中断。原来写在配置文件里的取值，改为后台维护后没有行时用登记的默认值，项目改过取值的上线后在后台填一次。全局值只有全门店员工能改。",
+          "rules": [
+            "修改只影响之后发生的业务，已生成的退款单与已核销的券按当时的规则",
+            "影响资金的键修改与恢复默认要求最近完成过完整认证并填写原因",
+            "不能按门店覆盖的键不接受门店值，隐藏键后台一律拒绝修改",
+            "门店员工只能改本门店覆盖值，全局值只有全门店员工能改"
+          ],
+          "exceptions": [
+            "设置值超出范围返回 validation_failed 并写明允许范围",
+            "进行中的退款申请和报价按生成时的值，不受新设置影响",
+            "两人同时修改同一项，后保存者返回 setting_conflict 并显示最新值",
+            "新旧取值来源切换（配置文件改后台）时，未填写的项使用登记默认值"
+          ],
+          "tests": [
+            "修改手续费后新退款试算用新值，已生成的退款单不变",
+            "高风险键未重新验证身份时返回 4011，验证后成功并写审计",
+            "门店覆盖优先于全局值，取消覆盖后回到全局值",
+            "非法值、隐藏键、不可覆盖键三类错误码正确"
+          ],
+          "source": "Luz-Dev/references/module-specs/business.json; references/function-catalog.json business.admin-edit; backend/23-app-settings/MODULE.md §1、§4.1、§6; Luz-System/references/admin-design.html「经营设置」"
+        }
+      ]
+    },
+    {
+      "id": "legal",
+      "name": "协议、隐私与授权同意",
+      "dev_module": "legal",
+      "kind": "基础",
+      "summary": "用户协议、隐私政策和专项条款按版本管理，用户主动同意并留痕，条款变更后重新同意，专项授权可撤回。",
+      "functions": [
+        {
+          "id": "BF-LEGAL-01",
+          "name": "协议版本管理与发布",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "后台按类别维护协议草稿并发布；已发布版本不可修改，变更只能发布新版本，同类旧版本自动退役。",
+          "frontend": "后台「协议管理」按类别（用户协议、隐私政策、人脸单独同意、预付卡条款、退款规则、活动规则、购买条款）列出各版本及状态。新建草稿填写版本号（如 2026.10）、标题、正文（富文本，发布前可预览）、变更摘要（500 字内）和「需要重新同意」开关。发布确认框写明「发布后不可修改，同类旧版本自动退役，已同意的用户可能需要重新同意」。已发布版本只读，想改只能基于它新建草稿。发布按钮需要 legal:publish 权限，无权限则禁用并说明。",
+          "backend": "POST /api/v1/admin/legal/documents 创建草稿，(类别, 版本) 唯一，重复返回 4090；POST /{id}/publish 只允许 draft 发布：同事务把同类 published 旧版本置 retired、本版本置 published 并写生效时间，发布前校验正文哈希与草稿一致，写审计 legal.publish（类别、版本、哈希）。同一类别同一时刻只有一个生效版本。GET /api/v1/app/legal/{kind} 返回当前生效版本的 version、title、content、summary_of_changes，登录前即可访问。富文本入库前白名单清洗，后端不返回可执行脚本。",
+          "database": "legal_documents：kind、version、title、content TEXT、content_sha256 CHAR(64)、summary_of_changes、need_reconsent、status（draft、published、retired）、effective_at、published_by。UNIQUE(kind, version)，并加部分唯一索引 UNIQUE(kind) WHERE status='published'。状态机：draft 到 published 到 retired，不可回退。",
+          "tech": "正文摘要用 SHA-256，发布时固定，之后任何同意都要带这个摘要。协议文本由模板起草，商户确认，建议律师审核，方案里记录确认人与日期（LEGAL-003）；开发方不替商户做法律判断。小程序后台的「用户隐私保护指引」另行填写并与隐私政策一致。成品协议另做 PDF 文档，不引用「见另一份文件」。",
+          "rules": [
+            "已发布的协议文本不可修改，变更只能发布新版本",
+            "同一类别同一时刻只有一个生效版本，发布新版本时旧版本退役",
+            "发布必须有 legal:publish 权限并写审计，记录发布人、类别、版本和哈希",
+            "实质变更（处理目的、方式、范围变化）必须打开「需要重新同意」"
+          ],
+          "exceptions": [
+            "版本号重复返回 4090，提示换一个版本号",
+            "草稿内容在发布前被改动导致哈希不一致，发布被拒绝",
+            "两人同时发布同类草稿，条件更新使只有一个成功，另一个得到状态冲突",
+            "已发布协议发现错字，不允许直接改，发布新版本并写明变更摘要"
+          ],
+          "tests": [
+            "发布后同类旧版本变 retired，生效版本唯一",
+            "已发布文本无法修改，草稿可修改",
+            "发布写审计，且无 legal:publish 权限返回 4030",
+            "生效版本接口返回正确的版本与摘要，登录前可访问"
+          ],
+          "source": "Luz-Dev/references/module-specs/legal.json features、flows「发布协议」、tables legal_documents; backend/27-legal/MODULE.md §1–§3、code/legal/__init__.py publish、current; references/legal-documents.md §1、§4; references/standards.json LEGAL-001、LEGAL-003"
+        },
+        {
+          "id": "BF-LEGAL-02",
+          "name": "登录同意与留痕",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "登录页展示当前协议，用户主动勾选同意；服务端核对版本与文本摘要后写入只追加的同意记录。",
+          "frontend": "登录页的协议复选框默认不勾选，用户协议与隐私政策各自可点开阅读（同屏分别可读），未勾选时登录按钮置灰。提交的是当前展示文本的 {document_id, version, sha256}。4220 agreement_required 弹出协议弹窗；版本与服务端不一致（4090，data.current_version）时重新拉取协议再让用户确认。隐私政策首次运行就提示，进入主界面后不超过 4 次点击能再次打开（我的、设置、隐私政策）。用户明确不同意时只浏览不需要个人信息的公开内容，不反复弹窗。",
+          "backend": "登录接口把 agreements 交给协议模块的 accept：只接受当前生效版本，且客户端展示文本的 SHA-256 必须与库内一致，防止对旧文本或被篡改的文本「同意」；同一用户同一文档重复提交返回已有记录。必需类别（用户协议、隐私政策）未同意则不建号，老会员登录返回 pending_agreements。记录用户、文档、类别、版本、文本哈希、渠道（miniprogram、admin_on_behalf、web）、同意时间和脱敏 IP。后台代客录入时，同意必须由用户本人在其设备上完成或保留书面证据。购买条款：下单时存在已发布的购买条款则必须同意，缺失 4220 terms_required，版本过期 4220 terms_outdated 并带当前版本，通过后记一次同意并把版本号写进订单。",
+          "database": "user_consents：user_id、document_id、kind、version、content_sha256、channel、accepted_at、withdrawn_at、ip、user_agent；索引 (user_id, kind, created_at DESC)。同意记录只追加，同一用户同一文档未撤回时只保留一条有效记录。登录同意与专项同意共用此表，用场景字段区分。",
+          "tech": "依据 LEGAL-001：不得默认勾选；记录用户、文档、版本、文本摘要、时间、渠道。以默认选择同意隐私政策等非明示方式取得的同意，监管认定为未经同意。摘要比对由服务端完成，前端只负责提交它展示的那份文本的摘要。购买条款检查器在订单模块的下单事务里调用，确保同意与订单同提交。",
+          "rules": [
+            "协议复选框默认不勾选，用户主动勾选才能登录",
+            "只接受当前生效版本，且提交的文本摘要必须与库内一致",
+            "同意记录保存用户、文档、版本、摘要、渠道和时间，可追溯",
+            "下单时存在生效的购买条款则必须同意，版本过期要求重新确认"
+          ],
+          "exceptions": [
+            "提交的版本不是当前生效版本，返回 4090 带当前版本，前端重新拉取后再同意",
+            "重复提交同一文档的同意，返回已有记录，不重复写入",
+            "没有已发布的必需协议时登录不会被阻塞，所以上线前检查必须确认协议已发布",
+            "后台代客录入没有本人设备同意，必须补书面证据，否则不得代录"
+          ],
+          "tests": [
+            "新用户首次登录产生用户协议与隐私政策两条同意记录",
+            "旧版本、被篡改文本的摘要提交被拒绝",
+            "未同意必需协议不建号，老会员协议更新后返回 pending_agreements",
+            "购买条款：缺失、过期、通过三种情形，订单记录版本号"
+          ],
+          "source": "Luz-Dev/references/module-specs/legal.json features「登录时同意」apis consents、tables user_consents; backend/27-legal/MODULE.md §3、code/legal/__init__.py accept、purchase_terms_checker; backend/01-identity/MODULE.md §4.2、§12; references/legal-documents.md §3"
+        },
+        {
+          "id": "BF-LEGAL-03",
+          "name": "协议更新重新同意、专项同意与撤回",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "协议实质变更后用户下次进入需重新同意；人脸、预付卡等专项条款单独同意；用户可撤回专项授权，撤回后停止处理并删除数据。",
+          "frontend": "启动和登录后检查 GET /api/v1/app/legal/pending，非空时弹「协议更新」窗，显示变更摘要和全文链接；同意后继续原操作，拒绝则只能浏览公开内容。专项条款（人脸录入、首次储值、购买预付卡）在进入对应功能前单独弹出、单独勾选，不得默认勾选，不得与其他协议合并。隐私设置页列出已授权项，每项有「撤回」，确认框写明后果（如「人脸入场将关闭，人脸数据将被删除」），成功后显示 effects 并切换到替代方式（如动态码）。用户协议与隐私政策不能单独撤回，引导到账号注销。",
+          "backend": "GET /app/legal/pending 返回必需类别当前版本中，该用户没有有效（未撤回）同意记录的文档。需要专项同意的业务接口在服务端再次校验存在有效同意记录，缺失返回 4220 CONSENT_REQUIRED 并带类别与待同意清单，不能只靠前端拦截。发布新版本后旧版本的同意不再算当前同意，用户下次写操作需重新同意。撤回 POST /app/legal/consents/{kind}/withdraw：条件 UPDATE 置 withdrawn_at，同事务发 consent.withdrawn 事件；持有数据的模块（人脸等）消费事件删除数据并覆盖第三方，调用方立即停止相应处理。不满 14 周岁的用户，人脸等敏感信息不开放，需监护人同意。",
+          "database": "user_consents.withdrawn_at 标记撤回，不删除历史行，证据保留；有效同意 = 当前版本且 withdrawn_at 为空。事件通过发件箱发布（consent.withdrawn，含用户、类别、时间），消费者按 event_id 去重。legal_documents.need_reconsent 控制实质变更是否要求重新同意。",
+          "tech": "依据 LEGAL-002 与《个人信息保护法》：实质性变更后下次进入时展示变更摘要并重新同意，未同意的不处理新增目的的数据；用户不同意提供非必要个人信息时不得拒绝基本功能；用户明确不同意后不得频繁征求同意。撤回要同时删除第三方持有的数据（如人脸库）。专项同意的场景字段：face_enroll、recharge、purchase、settings。",
+          "rules": [
+            "实质变更后用户下次进入必须展示变更摘要并重新同意",
+            "专项条款单独同意，不默认勾选，不与其他协议捆绑",
+            "撤回后立即停止相应处理并删除相关数据，覆盖第三方",
+            "用户不同意非必要信息时不得拒绝提供基本功能服务"
+          ],
+          "exceptions": [
+            "撤回用户协议或隐私政策时返回 CANNOT_WITHDRAW，引导走账号注销",
+            "撤回时第三方删除失败，事件重试并告警，不能只清本地",
+            "未成年人（不满 14 周岁）尝试开通人脸等敏感功能，直接拒绝并说明需监护人同意",
+            "业务接口缺少有效专项同意，服务端返回 4220，即使前端绕过了弹窗"
+          ],
+          "tests": [
+            "发布新版本后旧用户 pending 非空，同意后清空",
+            "撤回专项授权后数据被删除，对应功能自动切换到替代方式",
+            "绕过前端直接调业务接口，缺少同意被服务端拒绝",
+            "撤回事件重复投递只处理一次"
+          ],
+          "source": "Luz-Dev/references/module-specs/legal.json features「重新同意」「撤回同意」「专项单独同意」flows、exceptions; backend/27-legal/MODULE.md §3、code/legal/__init__.py pending、withdraw; references/standards.json LEGAL-002、PII-004; references/legal-documents.md §3"
+        }
+      ]
+    },
+    {
+      "id": "file",
+      "name": "文件与图片上传",
+      "dev_module": "upload",
+      "kind": "基础",
+      "summary": "头像、凭证、商品图、合同等文件通过限定的上传凭证直传，服务端核对类型与大小、做内容安全检测、后台统一出原档与缩略图，并按用途控制访问。",
+      "functions": [
+        {
+          "id": "BF-FILE-01",
+          "name": "上传凭证与直传",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "按用途申请限定类型、大小和路径的上传凭证，文件直传对象存储；没有对象存储时走服务端专用上传入口。",
+          "frontend": "小程序用 wx.chooseMedia 选原图、后台用上传组件选文件；前端只接收并上传原图，不压缩，对拍照和相册图片不按文件大小拦截。选择前按用途校验类型（图片 jpg、png、webp；合同 pdf），文档类文件在选择时写明上限（取自客户端配置 upload.doc_max_mb，仅预提示，服务端按同值拒收）。流程：POST /api/v1/app/files/upload-ticket（purpose、mime、size）、按 upload_url 与 form_fields 直传、POST /files/{id}/complete。上传中显示进度与取消，失败可重试，凭证过期（expires_in）自动重新申请。",
+          "backend": "upload-ticket 按用途（avatar、feedback、contract、store_photo 等）校验允许的类型与大小，创建 files 记录（pending）并返回预签名直传地址与表单字段，凭证限定类型、大小范围和存储路径，有效期短。文件名由服务端生成（UUID，目录含年月），不使用用户提供的文件名。图片不因大小拒收，对象存储侧只设防滥用上限 100 MB；文档类上限取运行配置 [upload] doc_max_mb（默认 5，范围 1 到 100）。没有对象存储的项目走服务端专用上传入口，网关与应用只对这一入口放宽请求体到防滥用上限，其余接口保持 256KB；落盘到非执行目录。后台同样提供 /api/v1/admin/files/upload-ticket。写接口带 Idempotency-Key。",
+          "database": "files：purpose VARCHAR(32)、storage_key VARCHAR(256) UNIQUE、mime、size_bytes、digest CHAR(64)、visibility（private、public）、status（pending、reviewing、active、rejected、deleted）、risk_result JSONB、uploader_type（member、admin）、uploaded_by，索引 (status, created_at)。storage_key 形如 {purpose}/{yyyy}/{MM}/{uuid}.{ext}。",
+          "tech": "对象存储用 S3 兼容服务（MinIO、OSS、COS）的预签名直传，应用服务器不中转大文件；签名调用超时 10 秒、上传 30 秒，失败返回 5020，评价等场景可无图提交。依据 OWASP File Upload：类型白名单、服务端重命名、非执行目录。拍照原图常在 10 MB 以上，前端压缩会损失画质且在低端机上不稳，所以由后台统一处理。",
+          "rules": [
+            "文件类型走白名单，按用途限定允许的类型，文件名由服务端生成",
+            "拍照和相册图片不因大小拒收，只有超过防滥用上限（100 MB）才返回 FILE_TOO_LARGE",
+            "文档类文件上限取运行配置 doc_max_mb，前端预提示、服务端同值拒收",
+            "上传凭证短时有效，限定类型、大小范围和存储路径"
+          ],
+          "exceptions": [
+            "凭证过期后上传失败，前端自动重新申请凭证并重试一次",
+            "用途不允许该类型返回 FILE_TYPE_NOT_ALLOWED，前端在选择阶段就应拦截",
+            "对象存储不可用返回 5020，前端提示稍后重试并保留已填内容",
+            "项目没有对象存储时，其他接口的请求体上限不被放宽"
+          ],
+          "tests": [
+            "用手机原图（10 MB 以上）上传成功，前端代码里没有压缩逻辑",
+            "伪装扩展名、路径穿越文件名、超过防滥用上限的文件被拒绝",
+            "用途与类型不匹配、凭证过期、重复申请的错误码",
+            "文档上限改配置后，客户端预提示与服务端拒收同时变化"
+          ],
+          "source": "Luz-Dev/references/module-specs/upload.json features、flows「上传文件」、apis; references/standards.json FILE-001; backend/SECURITY.md §3; backend/SPEC.md §9、§1; backend/config/runtime/base.toml [upload]; references/miniprogram.md Performance"
+        },
+        {
+          "id": "BF-FILE-02",
+          "name": "完成确认、类型校验与内容安全检测",
+          "surfaces": [
+            "backend",
+            "miniapp",
+            "admin"
+          ],
+          "kind": "基础",
+          "summary": "上传后服务端核对对象大小、类型与文件头，再做内容安全检测，通过后文件才生效；图片同时由后台出原档、副本和缩略图。",
+          "frontend": "直传成功后立即调 complete，拿到 status（active 或 reviewing）与 url。reviewing 时显示「审核中」占位而不是展示图片，并按 1、2、4、6、8 秒有界轮询文件状态直到终态。FILE_MISMATCH 提示「文件格式不对，请重新选择」；未通过审核在原页面提示「图片未通过审核，请更换」，不展示该文件，并保留表单其余输入。业务保存时只提交 file_id，不提交 URL。处理期间前端用本地预览或占位，不要求用户重传。",
+          "backend": "complete 时读取对象元数据核对大小与类型，并读文件头按魔数校验（JPEG FFD8FF、PNG 89504E47 0D0A1A0A、WEBP 的 RIFF 与 WEBP 标记、PDF 的 %PDF），扩展名与内容类型都必须在白名单；不符则 status=rejected、删除对象、返回 FILE_MISMATCH。一致则 pending 到 reviewing（条件 UPDATE）并提交内容安全检测：图片、音频用微信 mediaCheckAsync（30 分钟内以事件推送，用 trace_id 对应），文本用 msgSecCheck；通过后 reviewing 到 active，不通过到 rejected。检测服务不可用时保持 reviewing 由任务重试，超过 1 小时转人工审核，绝不因接口失败直接放行。通过后交给后台任务异步处理图片（原档、副本、缩略图），失败重试 3 次后告警，文件保持待处理，不让用户重传。",
+          "database": "files.status 状态机：pending、reviewing、active 或 rejected、deleted。risk_result JSONB 存 label、trace_id、decided_at；digest（SHA-256）用于去重；处理产物存 variants JSONB 或 file_variants 表（file_id、kind 为 original、copy、thumb、storage_key、width、height、size_bytes），缩略图档位由项目在方案中确定。",
+          "tech": "图像处理产物：高质量原档（保持尺寸与清晰度，重新编码并去除 EXIF 含 GPS）、清晰度优先的副本（长边超过 2048 像素或大于 2 MB 时先缩到长边 2048 再降质量，编码为 JPEG 或 WebP，供设备等受限端使用）和缩略图，成功后删除原始上传。内容安全依据 FILE-002：违规内容不展示，异步结果回来前按待审核处理；文本检测要求 openid 近 2 小时访问过小程序；推送经统一入口验签解密并去重。处理库用成熟实现（如 libvips 或 Pillow），任务按 file_id 加版本幂等；后台应提供人工复核入口。",
+          "rules": [
+            "声明的大小与类型和实际对象不一致，文件置为 rejected 并删除对象",
+            "未通过内容安全检测的文件不展示，检测结果回来前按待审核处理",
+            "检测服务不可用时保持 reviewing 重试，超过 1 小时转人工，不得直接放行",
+            "处理成功后只保留原档与副本，原始上传文件删除；元数据（EXIF、GPS）一律去除"
+          ],
+          "exceptions": [
+            "实际文件与声明不符返回 FILE_MISMATCH，对象被删除",
+            "后台处理失败重试 3 次仍失败，告警并保持待处理，不让用户重传",
+            "同一检测结果重复推送只处理一次，非本系统 trace_id 的推送忽略",
+            "检测超时（异步结果迟迟不回）记 timeout，转人工审核"
+          ],
+          "tests": [
+            "伪装扩展名的文件（内容不是图片）被魔数校验拒绝",
+            "违规样例图片被拦截，不展示",
+            "检测服务不可用时文件保持 reviewing，恢复后自动完成",
+            "处理后的文件不含 EXIF，长边不超过 2048 的副本尺寸正确"
+          ],
+          "source": "Luz-Dev/references/module-specs/upload.json features「完成确认」flows「后台统一处理」states、exceptions; references/standards.json FILE-001、FILE-002; backend/28-wechat-mp/MODULE.md §4.11–4.12; backend/SECURITY.md §3"
+        },
+        {
+          "id": "BF-FILE-03",
+          "name": "文件访问控制与过期清理",
+          "surfaces": [
+            "backend",
+            "admin",
+            "miniapp"
+          ],
+          "kind": "基础",
+          "summary": "私有文件只通过短时签名地址访问，公开文件走 CDN；未确认的上传和已删除的文件由任务清理。",
+          "frontend": "私有文件（合同、售后凭证等）由接口返回短时签名地址，前端每次展示前取地址，遇到 403 过期就重新取一次再试，不缓存签名地址。公开文件（门店图、商品图）走 CDN 缩略图地址。后台文件列表可按用途、状态、上传人筛选，显示 rejected 的原因；超过 1 小时未出检测结果的文件进人工审核队列，可通过或驳回并写审计。后台删除文件前确认并显示被引用位置。",
+          "backend": "访问控制按 visibility：private 只通过短时签名 URL 访问，签发前校验归属（上传人、业务引用方、持权限的员工），他人文件返回 4040；public 走 CDN。删除时引用方删除或手动删除置 deleted，对象异步删除。定时任务清理超过 24 小时未确认的 pending 记录与对象，以及已删除文件的对象。存储位于非执行目录，响应带 X-Content-Type-Options: nosniff。检测通过前的文件不能被业务引用为有效内容，业务只存 file_id。",
+          "database": "files：visibility、status（含 deleted）、uploaded_by、uploader_type、created_at；清理任务按 (status, created_at) 索引分批扫描。业务表只存 file_id，不存对象路径；对象路径只在 files.storage_key 中。",
+          "tech": "签名地址有效期以分钟计，数值取运行配置。CDN 只服务公开前缀，私有对象不开放公开读。清理任务幂等，按时间窗口加状态条件处理，带分布式锁。头像等需检测的文件在检测通过后才展示。依据 OWASP File Upload：存放在对象存储或非执行目录，不使用用户提供的文件名作为路径。",
+          "rules": [
+            "私有文件只能通过短时签名地址访问，签发前校验归属",
+            "超过 24 小时未确认的上传由任务删除记录与对象",
+            "业务只引用 file_id，对象路径不对外暴露",
+            "已删除文件的对象由任务异步清理，记录保留为 deleted"
+          ],
+          "exceptions": [
+            "签名地址过期访问失败，前端重新取地址，不缓存",
+            "访问他人的私有文件返回 4040，不泄露文件是否存在",
+            "清理任务重复执行结果一致，不重复删除报错",
+            "对象存储中已不存在但记录还在，访问返回 4040 并写日志待清理"
+          ],
+          "tests": [
+            "他人的 file_id 获取不到签名地址，返回 4040",
+            "过期的 pending 上传在 24 小时后被清理",
+            "公开文件走 CDN，私有文件不能直接访问",
+            "清理任务重复运行幂等"
+          ],
+          "source": "Luz-Dev/references/module-specs/upload.json features「访问控制」「清理」states; references/standards.json FILE-001; backend/SECURITY.md §3; backend/MODULES.md 21-media"
+        }
+      ]
+    },
+    {
+      "id": "notify",
+      "name": "消息通知",
+      "dev_module": "notification",
+      "kind": "可选",
+      "summary": "业务事件经发件箱触发订阅消息、短信和站内信；记录订阅额度，按场景映射模板，失败重试，非紧急消息避开静默时段，关键场景短信兜底。",
+      "functions": [
+        {
+          "id": "BF-NOTIFY-01",
+          "name": "订阅授权与额度",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "用户在合适的时机授权订阅消息，服务端按模板记录可发送次数；发送前占用、失败退回、被拒绝时校正。",
+          "frontend": "只在用户点击或支付回调之后调 wx.requestSubscribeMessage：先 GET /api/v1/app/notifications/subscribe-plan?scenes=a,b 取模板 id（一次最多 5 个，一次性与长期模板不能混在同一次授权里，否则 4220），授权后把结果 {模板id: accept、reject、ban、filter} 提交 POST /subscriptions。拒绝不影响业务流程，不得用奖励诱导订阅。「我的、消息提醒设置」页展示各提醒剩余次数，为 0 时引导再次开启。",
+          "backend": "一次性模板每个 accept 加 1，上限 quota_cap_per_template（默认 50）；reject 或推送的 change(reject) 清零并标 rejected，ban 标 banned，filter 忽略；只接受已配置的模板 id。发送前条件 UPDATE（available > 0 AND status='active'）占用 1 次，与投递行标记同事务提交；发送成功消耗 +1；任何未送达结果退回占用。微信返回 43101（用户没有额度）不算消耗，退回占用后按配置把本地可用次数清零，以微信为准。长期模板不扣次数。额度来源只能二选一：前端上报或微信推送，同时计数会翻倍。",
+          "database": "notification_subscriptions：(member_id, template_id) 唯一、available、long_term、status（active、rejected、banned）、accepted_total、consumed_total、last_accept_at、last_reject_at。notification_subscribe_events：dedupe_key 唯一（防推送重投）、source（frontend、push）、event、member_id、template_id、status、error_code、counted。",
+          "tech": "依据微信订阅消息规范：一次性订阅用户每 accept 一次可下发一条；推送事件 popup、change、sent 由统一的小程序服务端入口验签解密后交给通知模块。运营规范禁止诱导订阅和用订阅消息营销骚扰，所以不提供群发营销订阅消息。额度来源开关 [notification] quota_source、43101 处理开关 on_43101 在运行配置，热加载。50 个线程抢 10 次额度恰好成功 10 次。",
+          "rules": [
+            "只在用户点击或支付回调后调起订阅授权，不得强制或奖励诱导订阅",
+            "额度发送前条件占用，未送达退回占用，发送成功才记消耗",
+            "收到 43101 不算消耗，退回占用并按配置校正本地额度",
+            "额度来源只能选前端上报或微信推送之一，避免重复计数"
+          ],
+          "exceptions": [
+            "用户拒绝授权，业务照常进行，站内信仍可查看",
+            "一次授权混用一次性与长期模板返回 4220，一次超过 5 个模板返回 4001",
+            "推送事件重复投递按 dedupe_key 去重，不重复加额度",
+            "并发修改同一订阅记录返回 4090，客户端重试"
+          ],
+          "tests": [
+            "50 线程抢 10 次额度恰好成功 10 次",
+            "accept、reject、ban、filter 四种结果的记账",
+            "43101 不扣次数，reset 与 keep 两种配置的校正结果",
+            "推送计数模式下重复投递幂等"
+          ],
+          "source": "Luz-Dev/references/module-specs/notification.json features「订阅授权」flows「订阅授权」; backend/20-notification/MODULE.md §0、§3、§4.6–4.7、§6、§8、§9.2、§12; backend/28-wechat-mp/MODULE.md §4.10"
+        },
+        {
+          "id": "BF-NOTIFY-02",
+          "name": "通知场景、模板与渠道映射",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "后台为每个业务场景配置订阅消息、短信、站内信模板和关键词映射；保存时校验格式，发送时按类型安全截断。",
+          "frontend": "后台「通知模板」页按场景列出名称、类别（交易、提醒、安全、营销、员工告警、系统）、受众（会员、员工）、是否紧急、短信策略（关闭、兜底、总是）和启用开关。编辑渠道模板时填写小程序后台申请的模板 id、关键词与业务字段的对应（thing1 对应哪个字段）、站内信标题与正文模板、跳转页面；保存即校验关键词类型、占位符和页面路径，错误就近显示。外部渠道模板 id 留空表示停用该渠道。",
+          "backend": "场景形如 order.paid；PUT /api/v1/admin/notifications/scenes/{scene}/templates/{channel}（notification:template，幂等）保存前校验。关键词按 key 前缀取类型：thing 超 20 字截为 19 字加省略号，name 截到 10 个汉字或 20 个字母，phrase 只允许汉字并截到 5 个，letter 截到 32；number、character_string、amount、phone_number、car_number、time、date、enum 不合规直接判无效、不截断以免改变编号或金额含义。整数金额按分格式化为 ¥12.34；时间按门店时区格式化。模板占位符只允许 {标识符}，拒绝属性、下标和格式说明；缺字段的投递记为 skipped。无效数据从不发给微信。",
+          "database": "notification_scenes：scene 唯一、name、category、audience（member、staff）、urgent、sms_mode（off、fallback、always）、enabled。notification_templates：(scene, channel) 唯一、channel（subscribe、sms、inapp）、template_ref、keywords_json、title_tpl、body_tpl、page、long_term、enabled、version。默认种子场景外部模板 id 留空停用。",
+          "tech": "关键词类型规则取自微信订阅消息发送接口：thing 不超过 20 字、number 不超过 32 位、symbol 不超过 5 个、phone_number 不超过 17 位、amount 为币种符号加不超过 10 位数字。本地预检在统一的小程序服务端客户端内再做一遍，不合规返回 4001 不发出。营销群发和人群圈选不在范围内。短信渠道通过可替换的发送器接入，生产未配置时显示失败而不是静默成功。",
+          "rules": [
+            "关键词类型不合规的数据不发给微信，投递记为 skipped 并写明原因",
+            "占位符只允许 {标识符}，禁止属性访问、下标和格式说明，防止模板注入",
+            "number、amount 等含义敏感的类型不截断，宁可不发",
+            "场景停用后新请求记为 skipped，已排队的投递在发送前再检查一次"
+          ],
+          "exceptions": [
+            "模板保存时关键词类型或占位符非法返回 4001 并指出字段",
+            "业务数据缺少模板需要的字段，该次投递 skipped，不阻塞其他渠道",
+            "场景重名返回 4090，删除场景时历史投递保留",
+            "外部渠道模板 id 为空，该渠道视为停用，生产环境用显式失败而不是假发送"
+          ],
+          "tests": [
+            "每种关键词类型的合法、截断、无效三类输入",
+            "控制字符、零宽字符被清除，占位符注入被拒绝",
+            "金额按分格式化为 ¥12.34，时间按门店时区显示",
+            "模板 CRUD 与校验，场景重名 4090"
+          ],
+          "source": "Luz-Dev/references/module-specs/notification.json features「事件通知」; backend/20-notification/MODULE.md §0、§3、§4.3–4.5、§6、§13; backend/28-wechat-mp/MODULE.md §4.10"
+        },
+        {
+          "id": "BF-NOTIFY-03",
+          "name": "异步投递、重试、静默时段与短信兜底",
+          "surfaces": [
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "业务事务内写通知请求，worker 异步投递；失败按退避重试，永久失败分类，非紧急消息避开静默时段，关键场景订阅失败后补发短信。",
+          "frontend": "用户侧没有操作：业务页面只在支付成功页、预约成功页等位置引导开启提醒；是否收到消息不影响业务流程。通知未送达时用户仍可在消息中心看到站内信。后台运维通过投递日志观察状态，见后台日志功能。",
+          "backend": "业务调用 notify(场景, 会员, 数据, dedupe_key) 只写发件箱事件 notification.requested，与业务写同事务；(场景, 受众, 收件人, dedupe_key) 唯一，业务重复调用或发件箱重复投递不会重复发送。worker 把请求受理成按渠道的投递行，领取用条件 UPDATE（pending 到 sending）多实例只有一个成功；外部调用在事务外经超时 3 秒、熔断的封装发出。微信错误分类：-1、43108、45011、40001 一类可重试，按 60、300、1800、7200 秒退避，最多 5 次后 failed 并触发短信兜底；45009 延后到次日；43101 记 skipped；其他永久失败。非紧急场景在门店时区 22:00 到 08:00 不发，延后到结束时刻且不计失败次数；每会员每门店每天非紧急外部消息最多 5 条。短信频控：同号每分钟 1 条、每小时 5 条、每天 10 条，全店日预算可配。",
+          "database": "notification_requests：(scene, audience, recipient_id, dedupe_key) 唯一、data_json、source_event_id。notification_deliveries：(request_id, channel) 唯一、status（pending、sending、sent、failed、skipped）、attempts、next_attempt_at、errcode、errmsg、provider_msg_id、quota_reserved、fallback_from_id、sent_at，索引 (status, next_attempt_at)。notification_counters：(key, bucket) 唯一，手机号只存摘要前缀。手机号和 openid 不落本模块表，发送瞬间由收件人解析器取得。",
+          "tech": "至少一次语义加去重键保证不重发；进程在 sending 中崩溃，任务 notification.reclaim 每 60 秒把超过 300 秒的 sending 退回 pending，已占用的额度保留不重复扣。dispatch 任务每 15 秒投递到期 pending，每批 100 条。短信渠道通过可替换发送器接入。紧急场景（交易、安全、员工告警）不受静默与频控限制。参数全在运行配置 [notification]，热加载。50 线程上限 7 的频控计数恰好 7 次。",
+          "rules": [
+            "同一场景、收件人、去重键只受理一次，重复调用不重复发送",
+            "非紧急消息在静默时段内延后到结束时刻，紧急场景照发",
+            "订阅消息未送达（无额度、43101、格式、永久失败、重试耗尽）的关键场景补发一条短信",
+            "可重试错误按 60、300、1800、7200 秒退避，最多 5 次后记 failed"
+          ],
+          "exceptions": [
+            "发送中进程崩溃，超过 300 秒后由回收任务退回待发，额度不重复扣",
+            "微信日调用量超限（45009）延后到门店次日 00:00:05 再发",
+            "短信厂商的频控码记 skipped 不重试，系统错误码按可重试处理",
+            "多个 worker 同时领取同一投递，条件 UPDATE 保证只发送一次"
+          ],
+          "tests": [
+            "10 线程领取同一投递只发送 1 次",
+            "-1 重试退避、传输错误耗尽后 failed 并生成短信兜底",
+            "静默时段跨午夜、门店时区、紧急场景不受限",
+            "45009 与日上限延后，格式错误不发送，卡死回收不重复扣额度"
+          ],
+          "source": "Luz-Dev/references/module-specs/notification.json flows「发送通知」exceptions; backend/20-notification/MODULE.md §4.1–4.3、§4.8–4.13、§5、§8、§9.2; backend/SPEC.md §6.6、§9"
+        },
+        {
+          "id": "BF-NOTIFY-04",
+          "name": "站内信",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "通知同时写入站内信，未授权订阅或短信失败时用户仍能在消息中心查看；员工告警也进后台站内信。",
+          "frontend": "小程序消息中心用游标列表（默认每页 10、最多 20），可按类别和已读状态筛选，底部标签或「我的」入口显示未读角标（GET /messages/unread-count 返回总数与分类数）。点击消息标记已读并跳转到 page 指定的页面，支持「全部已读」（可按类别）和左滑删除。后台顶栏有铃铛显示员工站内信与未读数，用于设备离线、安全告警等。列表为空显示空状态和下一步入口。",
+          "backend": "站内信模板启用即在受理时直接写收件箱，总是发送，不受静默时段与频控限制，所以订阅消息失败后用户仍能看到。会员接口 GET /api/v1/app/notifications/messages、POST /messages/{id}/read、POST /messages/read-all、DELETE /messages/{id}（软删除并视为已读），写接口带 Idempotency-Key；只能读写自己的消息，他人消息返回 4040；标记已读幂等。员工站内信走 /api/v1/admin/notifications/inbox，登录即可，无需 notification 权限码。每日任务清理超过保留天数（默认 180 天）和删除超过 30 天的站内信。",
+          "database": "notification_inbox：recipient_type（member、staff）、recipient_id、request_id（唯一）、scene、category、title、body、page、read_at、deleted_at，索引 (recipient_type, recipient_id, deleted_at, read_at)。request_id 唯一保证同一通知请求只产生一条站内信。",
+          "tech": "游标签名防篡改，绑定排序与筛选条件。站内信不依赖微信额度和短信费用，是最可靠的触达渠道，因此交易类通知默认同时写站内信。未读数按分类统计，角标用该接口。保留期可配 [notification] inbox_retention_days（默认 180），由每日任务 notification.purge 清理。",
+          "rules": [
+            "站内信只能读写自己的消息，访问他人的返回 4040",
+            "标记已读幂等，删除为软删除并视为已读",
+            "站内信总是发送，不受静默时段和每会员频控限制",
+            "超过保留天数的站内信由任务清理"
+          ],
+          "exceptions": [
+            "重复受理同一通知请求，request_id 唯一约束使站内信只有一条",
+            "点击消息跳转的页面已不存在，回到消息中心并提示",
+            "游标被篡改或超过 3 天失效，按参数错误处理，前端从第一页重新加载",
+            "会员会话被吊销后访问消息接口返回 4010"
+          ],
+          "tests": [
+            "站内信全流程：写入、列表、未读数、已读、全部已读、删除",
+            "他人消息返回 4040，同一消息重复标记已读幂等",
+            "订阅消息失败时站内信仍然送达",
+            "保留期任务清理过期站内信"
+          ],
+          "source": "Luz-Dev/references/module-specs/notification.json features「站内消息」apis; backend/20-notification/MODULE.md §3、§4.3、§4.16、§6、§8、§12; backend/SPEC.md §3.4"
+        },
+        {
+          "id": "BF-NOTIFY-05",
+          "name": "后台投递日志、统计、导出与重发",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "运维在后台查看每条通知的投递状态与失败原因，按条件统计和导出，对失败的投递手动重发。",
+          "frontend": "后台「通知日志」页列表每页 20 条，可按场景、渠道、状态、错误码、受众、门店、尝试次数区间、创建与发送时间、关键词（会员号、场景、消息 id）筛选，筛选进 URL。失败行显示错误码含义，只有 failed 行显示「重发」，点击弹窗可填原因。统计页展示发送量、渠道乘状态分布、失败错误码分布和额度不足率，时间范围最长 92 天。导出沿用当前筛选，范围最长 31 天、最多 5000 行，超出提示缩小范围。",
+          "backend": "GET /api/v1/admin/notifications/deliveries（notification:read）用声明式筛选，未知参数 4001；GET …/deliveries/export（notification:export）与列表同筛选，不超过 31 天与 5000 行，超出 4225，写审计。POST …/deliveries/{id}/resend（notification:resend，幂等）只允许 failed 到 pending，尝试次数清零并立即到期，其他状态 4090，不存在 4040，写审计。GET …/stats（notification:read）聚合发送量、渠道乘状态、错误码分布、额度不足率。场景与模板的增删改见模板功能（notification:template）。",
+          "database": "查询 notification_deliveries 与 notification_requests，常用索引 (status, next_attempt_at)、(audience, recipient_id)、provider_msg_id。投递记录保留 180 天（delivery_retention_days），之后由任务清理。审计表记录重发操作者、对象、原因。",
+          "tech": "权限码 notification:read、export、resend、template，支持 notification:* 通配，后台固定通过统一权限模块校验，不信任令牌里的声明。投递层错误码原样保存（微信 errcode、短信厂商码，以及 no_quota、no_openid、format、missing_field、member_rate_limited、sms_rate_limited、quiet_hours、daily_cap 等内部原因），便于按码排查。导出防公式注入并脱敏。",
+          "rules": [
+            "只有 failed 的投递可以重发，重发写审计并清零尝试次数",
+            "导出需 notification:export 权限，范围不超过 31 天与 5000 行，并写审计",
+            "投递记录里不保存明文手机号和 openid，只保存检索用的无敏感标识",
+            "统计的时间范围不超过 92 天"
+          ],
+          "exceptions": [
+            "重发非 failed 状态的投递返回 4090，投递不存在返回 4040",
+            "导出范围超过 31 天或行数超过 5000 返回 4225 或 4001，提示缩小范围",
+            "无 notification:read 权限返回 4030，越门店返回 4031",
+            "同一投递并发重发，条件 UPDATE 只允许一次成功"
+          ],
+          "tests": [
+            "列表筛选、导出、统计的参数与权限校验",
+            "failed 到 pending 的重发状态边与审计记录，其他状态返回 4090",
+            "导出脱敏且限量",
+            "未知筛选参数返回 4001"
+          ],
+          "source": "Luz-Dev/references/module-specs/notification.json（RES、tables）; backend/20-notification/MODULE.md §4.15、§6、§10、§11、§12; backend/SPEC.md §3.4; references/standards.json ADMIN-002"
+        }
+      ]
+    },
+    {
+      "id": "order",
+      "name": "订单",
+      "dev_module": "order",
+      "kind": "基础",
+      "summary": "统一的订单骨架：服务端试算、幂等下单与价格快照、条件更新状态机、取消与超时关闭、履约钩子与自动完成；带支付的交易订单（待支付到已支付到履约）和无支付的预约、报餐类订单（成交即已预约，凭码核销）共用同一套骨架，只是履约方式不同。",
+      "functions": [
+        {
+          "id": "BF-ORDER-01",
+          "name": "订单试算与报价令牌",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "用户在确认页看到服务端算好的价格明细或可预约状态，试算不写库；提交时凭报价令牌校验价格没有变化。",
+          "frontend": "确认页从商品详情、购物车或预约页带入 items（item_type、item_id、quantity），进入页面和每次改数量、换券、换时段时调用 POST /api/v1/app/orders/preview。页面只渲染服务端返回的行实付、活动与券优惠明细、不可用券原因和应付金额，前端不自己算价。issues 非空时禁用提交按钮并逐条写出原因与出路；条款勾选框默认不勾选；quote_token 只放页面内存，4223 或令牌过期（600 秒）时静默重新试算并提示价格已更新。预约、报餐类没有价格，改为展示可约状态、剩余名额和截止时间。",
+          "backend": "preview 是只读接口：按行种类 resolve 读取商品当前价格与上下架状态，请求体里的价格字段一律忽略；顺序固定为活动、券（门槛按活动后金额判断）、分摊，每项优惠只在适用行之间按金额比例用最大余数法分摊，行实付 = 原价 − 活动 − 券。券不可用时不报错，返回 coupon_error（below_threshold、expired、no_scope_items、stack_conflict 等）并按无券计价，同时给出可用与不可用券列表和推荐券。库存不足和购买规则问题写入 issues，submittable=false。预约类试算改为校验开放时间窗（open_at ≤ 现在 < deadline_at）、名额和重复报名。",
+          "database": "order_quotes 保存报价：token（唯一）、user_id、store_id、request_json、request_hash、result_json、total_cents、expires_at、used_at、order_id，索引 (user_id, id)。金额一律整数分，字段后缀 _cents。试算不扣库存、不锁券、不占名额，因此不写其他业务表；过期报价建议由清理任务按保留期删除（标准实现只做令牌过期校验）。",
+          "tech": "试算与提交共用同一个计价函数（price_with_coupons 一类），菜单、购物车、结算、订单详情用同一套算法，杜绝两处口径不一致。折扣向下取整到分（商户少让利），最大余数法保证分摊合计严格等于优惠额。报价令牌有效期取运行配置 quote_ttl_seconds，默认 600 秒，范围 30 到 3600 秒；令牌绑定用户、门店、商品版本与优惠版本。",
+          "rules": [
+            "价格只来自服务端，请求体里的单价、实付字段一律忽略",
+            "试算顺序固定为活动、券、分摊，顺序要让商户确认并写进方案",
+            "券不可用时试算仍成功，返回原因并按无券计价",
+            "每行优惠不超过该行金额，整单应付不小于 0，任何一行实付不为负",
+            "预约、报餐类订单试算只返回可约状态与剩余名额，不返回金额"
+          ],
+          "exceptions": [
+            "商品下架或门店休息：返回 OFF_SALE 或 4221，确认页提示原因并禁用提交",
+            "报价令牌过期或不存在：返回 4223，前端重新试算并提示价格已更新",
+            "库存或名额不足：写入 issues，submittable=false，不扣任何库存",
+            "优惠后应付为 0：按 0 元订单处理，提交即成交，不调起支付"
+          ],
+          "tests": [
+            "同一商品连续试算结果一致，且库存、券、名额都不变化",
+            "请求体篡改单价和实付，试算结果不受影响",
+            "分摊随机 500 组：合计等于优惠额，每行实付不为负",
+            "不可用券返回 below_threshold 并给出还差多少元",
+            "他人的报价令牌拒绝，过期令牌返回 4223"
+          ],
+          "source": "Luz-Dev/references/module-specs/order.json features 订单试算, flows 订单确认页加载, apis preview; backend/08-order/MODULE.md §4.1-4.5, §6, §9; references/patterns/order.md §1; references/patterns/pricing.md §1-§3; Luz-System/references/commerce-design.html 结算页; 实战校验：开放时间窗规则"
+        },
+        {
+          "id": "BF-ORDER-02",
+          "name": "购买规则与名额计数",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "按人限制每单、每个周期最多买几件、谁能买；名额与订单同事务计入，取消和关单原数退回，预约类用唯一索引保证一人一餐期一单。",
+          "frontend": "商品页和规格弹层在数量旁写规则与本人剩余（例如每日限购 2 件，今日还可买 1 件），数据来自 POST /api/v1/app/orders/purchase-status。步进器下限取起售数，上限取库存、单笔上限、剩余件数三者最小，到边界置灰并写明原因；剩余为 0 时按钮改为已达购买上限，不隐藏商品。购物车只提示不占名额，结算页逐条列出不满足的规则并给一步出路（改为 1 件、去绑定手机号、移除）；4225 按 data.reason 取文案。后台商品或活动编辑页有购买规则分组，保存时校验起售不大于上限。",
+          "backend": "规则存在商品数据的 purchase_rule 里：起售数、单笔上限、周期（不分周期、每日、每周、每月）内件数与次数上限、统计范围（全部门店合计或按店）、共享限额键、是否同时按手机号计、新客专享口径、退款后是否退回名额、超出部分是否按原价。提交订单的同一事务里调用 consume：对计数行做条件自增（qty + n ≤ 上限 且 orders + 1 ≤ 上限），0 行即返回 4225，data.reason 区分 below_min_qty、over_order_limit、purchase_limit、purchase_times_limit、new_customer_only、phone_required。按手机号计时，会员与手机号哈希两个主体都要满足。",
+          "database": "order_purchase_quotas：subject（user:会员编号 或 phone:手机号哈希）、counter_key（规则键|all 或 store:门店|周期键，如 service:5|all|d20261030）、qty、orders、window_end_at；UNIQUE(subject, counter_key)，INDEX(window_end_at)。周期键按门店时区计算，行快照记下本单计入的计数键，周期结束 7 天后由定时任务删除计数行。预约型订单另用 UNIQUE(employee_id, menu_date, meal_type, active_flag) 兜底，active_flag 是由状态推导的生成列。",
+          "tech": "计数用先建行（INSERT … ON CONFLICT DO NOTHING）再条件 UPDATE 自增，不先查后改，由数据库裁决并发。周期键里带日期，保证昨天的订单今天取消时退回的是昨天的名额。规则保存在后台可维护的商品或活动数据里，不写死在代码、不放运行配置文件。预约、报餐类的一人一餐期一单是同一思路的简化：用唯一索引替代计数行。",
+          "rules": [
+            "名额在提交订单时按人计入，包含待支付订单；取消和超时关单按下单时的周期键原数退回",
+            "退款是否退回名额由规则决定，默认退回，新人福利可设为不退回，改规则不追溯",
+            "新客专享要在商品页提前标注，不等付款才拒绝；一人多号用手机号维度兜底",
+            "开启超出部分按原价时，超出件数拆成原价行，不计名额；未开启时超出即拒绝",
+            "预约与报餐类：同一员工同一日期同一餐期只能有一笔有效订单（已预约或已核销）"
+          ],
+          "exceptions": [
+            "同一个人并发提交多单抢限购：计数行条件自增，只成功上限内的单，其余返回 4225",
+            "名额被别人先用掉导致报价不再一致：按价格变化返回 4223，请顾客重新确认，不直接按原价扣款",
+            "规则要求按手机号计但会员未绑定：返回 4225 phone_required，前端给出去绑定入口",
+            "昨天下的单今天取消：按行快照里的周期键退回昨天的名额，不影响今天额度"
+          ],
+          "tests": [
+            "50 线程同一人抢每日限购 2 件，恰好成功 2 件",
+            "取消和超时关单后名额回到下单时的周期",
+            "只能买一次与新客专享在并发下只成一单",
+            "两个会员绑定同一手机号时共享手机号维度的额度",
+            "预约类同一员工同一餐期并发提交，只留下一笔有效订单"
+          ],
+          "source": "Luz-Dev/references/module-specs/order.json features 购买规则校验与计数, writes order_purchase_quotas, exceptions; backend/08-order/MODULE.md §3, §4.4, §4.7, §8; references/patterns/purchase-rules.md; Luz-System/references/commerce-design.html 购买规则：起售、限购与资格; 实战校验：一人一时段一单的唯一索引"
+        },
+        {
+          "id": "BF-ORDER-03",
+          "name": "提交订单、幂等与价格快照",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "用户确认后一次提交生成订单：服务端重新计价，同一事务完成预占、锁券、写订单与明细快照和事件；重复点击只生成一张订单。",
+          "frontend": "提交按钮点击后立即置灰防抖，每个提交意图生成一个 Idempotency-Key（UUID，重试沿用同一个，成功后丢弃）。请求带 quote_token、terms_accepted、terms_version、remark（不超过 200 字）。成功后：带支付的订单立即进入收银，无支付订单直接进结果页展示取餐码或预约信息。错误码处理：4223 提示价格变化并重新试算；4091 库存不足提示后返回；4225 按 reason 取文案；4092 一秒后用同一个键重试；4093 换新键；网络超时不换键，先查订单列表再决定是否重提。",
+          "backend": "POST /api/v1/app/orders 经 run_idempotent 执行：作用域为操作者加用例名加键，同键同体返回首次结果，同键不同体 4093，首个请求仍在处理 4092。依次校验会员状态与手机号、条款（terms_accepted 必须为 true，版本不符 4220）、门店营业状态、购买规则；重新计价，任一行单价、数量、实付或券集合变化返回 4223；报价令牌用条件 UPDATE used_at IS NULL 置已用。同一事务写 orders（pending_payment，pay_deadline_at = 现在 + 15 分钟）与 order_items 快照、计入名额、按 sku_id 升序预占库存、锁券、写状态日志与 outbox 事件 order.created。预约、报餐类校验员工与租户启用、菜单已发布、开放时间窗后直接写已预约状态，死锁时整体重试最多 3 次。",
+          "database": "orders：order_no（唯一）、user_id、store_id、status、items_cents、campaign_discount_cents、coupon_cents、total_cents、paid_cents、refunded_cents、pay_deadline_at、terms_version、terms_accepted_at、quote_token、version，CHECK(refunded_cents ≤ paid_cents)。order_items 保存名称、规格、unit_price_cents、qty、gross_cents、campaign_alloc_cents、coupon_alloc_cents、paid_cents、returnable、snapshot_json；Σ明细实付 = 订单总额。order_status_logs 只追加。索引 (user_id, status)、(status, pay_deadline_at)、(store_id, created_at)。预约型加 UNIQUE(menu_date, pickup_code)。",
+          "tech": "一个用例一个事务，事务内不调用外部接口。订单号 = 前缀（不超过 4 位）+ 北京时间 yyMMddHHmmss + 毫秒 + 6 位随机数字（不超过 25 位），时间有序且不可枚举，可直接作为微信支付 business_no；唯一约束碰撞时换号重试 3 次。快照保存下单时的名称、规格、单价、数量、分摊优惠和实付，历史订单、退款、对账只读快照，不再读商品表。待支付有效期取运行配置 pay_timeout_minutes，默认 15，范围 1 到 1440 分钟。",
+          "rules": [
+            "金额只以服务端计算为准，前端金额仅用于一致性比对",
+            "订单与明细保存价格快照和优惠分摊结果，商品改价不影响历史订单",
+            "购买条款必须用户主动勾选，记录条款版本与同意时间，不得默认勾选",
+            "下单、发起支付、支付回调三处都要校验门店营业状态，停业后不能下单",
+            "无支付的预约、报餐类订单提交成功即成交，没有待支付环节"
+          ],
+          "exceptions": [
+            "同一 Idempotency-Key 重复提交：返回第一次创建的订单，不重复占用资源",
+            "库存、锁券、名额任一步失败：整单回滚，库存、券、名额都不残留",
+            "前端篡改金额：忽略客户端金额，服务端重算后与令牌比对，不一致返回 4223",
+            "订单号碰撞：换号重试 3 次，仍失败按内部错误处理并记日志"
+          ],
+          "tests": [
+            "同一 Idempotency-Key 并发 20 次只产生 1 张订单",
+            "同一报价令牌并发 20 次只成功 1 单",
+            "任一 SKU 库存不足时不生成订单、不占任何库存、不锁券",
+            "商品改价后历史订单金额不变，改价后提交返回 4223",
+            "预约型：同一员工同一餐期并发提交，只留下一笔有效订单"
+          ],
+          "source": "Luz-Dev/references/module-specs/order.json features 提交订单, flows 提交订单, apis POST orders, exceptions 重复提交; backend/08-order/MODULE.md §3, §4.5-4.9, §6, §8; references/patterns/order.md §1, §4; references/patterns/consistency.md §1-§2; ORDER-001, ORDER-002, ORDER-005, ORDER-007; 实战校验：下单流程"
+        },
+        {
+          "id": "BF-ORDER-04",
+          "name": "取消与超时关闭",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "未履约的订单可由用户取消、后台关闭或到期自动关闭；关闭一次性释放券、库存和名额，并保证不会和支付成功同时生效。",
+          "frontend": "订单详情按服务端返回的 can_pay、can_cancel 显示按钮；待支付订单用 pay_deadline_at 做倒计时（以服务端时间为准），按钮是继续支付和取消订单。取消前弹居中确认框写清后果，提交后按钮转加载并防重复；返回 4090（已支付）时刷新详情，5020（渠道不可用）提示稍后再试且订单仍为待支付。关闭后显示已关闭与原因，按钮是重新购买。预约、报餐类在截止时间前显示取消，截止后隐藏并写明已过截止时间。后台关单必须填写原因并二次确认。",
+          "backend": "POST /api/v1/app/orders/{id}/cancel（需 Idempotency-Key）只允许待支付订单：已发起过支付的先向渠道查单，已支付按支付成功处理并返回 4090，未支付则关闭渠道单，渠道不可用返回 5020 且订单保持待支付。确认后在同一事务条件 UPDATE pending_payment 为 cancelled，释放库存，解锁券（券已过期置为 expired，不回到可用），按行快照退回购买名额，写 order.cancelled 事件。超时关单任务每分钟扫描 pay_deadline_at 已过的待支付订单，规则相同，终态为 closed，逐单独立提交。预约型订单员工取消先 SELECT … FOR UPDATE 锁单，截止前才可取消；平台可随时取消，必须填原因。",
+          "database": "orders.status、cancel_type（user、admin、timeout）、cancel_reason、cancelled_at 或 closed_at、cancel_by；扫描用 INDEX(status, pay_deadline_at)，可建部分索引只含待支付行。order_status_logs 记录谁、何时、从哪到哪、原因。库存、券、名额的释放与状态变化同事务，释放动作靠流水唯一键保证可重入。",
+          "tech": "触发方式默认定时扫描（每分钟，延迟可接受、天然可重试），订单量大时可叠加 Redis 有序集合或 MQ 延迟消息，但必须保留扫描兜底；三种触发方式共用同一个关单函数。固定顺序：查单、已付按成功处理或未知则本轮跳过、未付则关渠道单、关本地订单、释放资源。渠道调用放在业务事务之外；每批处理数取运行配置 close_batch，默认 100。",
+          "rules": [
+            "用户只能取消待支付订单；已支付的订单走售后退款，不能走取消",
+            "关单前必须先向渠道查单，已支付则不关闭",
+            "渠道查询或关闭失败时保留库存与券，下一轮再查，不推断结果",
+            "已过期的券释放后记为已过期，不放回可用",
+            "预约、报餐类只能在截止时间前自助取消，已核销的订单不能取消，平台取消必须填原因并写操作日志"
+          ],
+          "exceptions": [
+            "关单与支付回调同时发生：两者都是条件更新，只有一个生效；关单前查到已支付则不关",
+            "订单关闭后才收到支付成功：记为迟到支付，自动发起全额原路退款并通知会员",
+            "支付渠道不可用：本轮跳过，库存与券原样保留，下一轮再查",
+            "查到渠道已付但订单钩子曾拒绝：关闭订单并标记需人工处理（支付模块已自动退款）"
+          ],
+          "tests": [
+            "已付不取消、查询失败不取消、关单失败不取消、重复执行不重复回补",
+            "取消后库存、券、名额各回补一次且仅一次",
+            "支付与关单竞争 10 轮，每轮只有一方生效",
+            "预约型：截止后取消被拒，截止前取消成功并可重新报名",
+            "取消他人订单返回 4040"
+          ],
+          "source": "Luz-Dev/references/module-specs/order.json features 待支付与超时, flows 取消与超时关闭, exceptions; backend/08-order/MODULE.md §4.13-4.14, §5, §8; references/patterns/order.md §3, §5; ORDER-004; 实战校验：用户取消与平台取消"
+        },
+        {
+          "id": "BF-ORDER-05",
+          "name": "状态机与履约钩子",
+          "surfaces": [
+            "backend",
+            "admin",
+            "miniapp"
+          ],
+          "kind": "基础",
+          "summary": "订单所有状态变化走同一个条件更新状态机；下单成功或支付成功后按订单类型履约（发卡、入账、确认预约、发货），超过期限自动完成。",
+          "frontend": "订单详情页按状态展示时间线和可执行操作（确认收货、继续支付、申请售后），按钮显隐只看服务端返回的 can_* 标记。支付返回后统一 replace 到支付结果确认页，按 1、2、4、6、8 秒轮询服务端状态，页面隐藏时暂停；履约结果（会员卡、预约信息）在详情里展示。后台详情页显示状态日志、支付与退款记录，发货表单要求快递公司与单号必填；需人工处理的订单在列表里带标记并可筛选。",
+          "backend": "所有流转走 StateMachine.advance：UPDATE … WHERE id = ? AND status = 旧状态，rowcount 为 0 返回 4090，同时 version 加一并写 order_status_logs。交易型：pending_payment 到 paid（支付钩子在保存点内核对金额与付款人，核销券、确认库存预占）；再按行种类 fulfil（发会员卡同事务且 issue_ref 唯一，确认预约，实物 ship 到 fulfilling）；全部行即时交付则直接 fulfilled；确认收货或自动完成到 completed。钩子抛错则订单状态不变，由支付模块标记需人工并自动退款。自动完成任务：fulfilled 超过 auto_complete_days 且无处理中售后则置 completed。",
+          "database": "orders.status 枚举：交易型 pending_payment、paid、fulfilling、fulfilled、completed、cancelled、closed、refunded，预约型 booked、verified、cancelled；另有 paid_at、fulfilling_at、fulfilled_at、completed_at、needs_manual、manual_reason、refund_status。order_items.fulfil_status、fulfil_ref、fulfilled_at 记录每行履约对象。order_status_logs（order_id, from_status, to_status, actor_type, actor_id, reason）只追加，不可修改。",
+          "tech": "订单模块不直接依赖支付，履约通过行种类钩子注册（resolve、reserve、release、confirm、fulfil、refund_cap、on_refunded），新增卡、课程、门票只需新增行种类。事件经发件箱异步投递，消费者按 event_id 去重。自动完成天数取运行配置 auto_complete_days，默认 7，范围 1 到 30 天，每批 200 单；渠道和第三方调用都不放在业务事务内。",
+          "rules": [
+            "非法流转与并发流转一律返回 4090，不覆盖新状态；cancelled、closed、refunded 是终态",
+            "履约失败时订单停在 paid，事件重试，超过次数告警人工，不影响资金记录",
+            "无支付的预约型订单没有 paid 环节，成交即 booked，履约方式是凭码核销，其余骨架相同",
+            "有处理中售后的订单不自动完成，也不能发货",
+            "每次状态变化都写状态日志，记录操作者、原因和时间"
+          ],
+          "exceptions": [
+            "重复回调或重复事件：条件更新影响 0 行，直接按幂等成功返回",
+            "发会员卡异常：订单停在 paid，事件按退避重试，超过次数告警人工处理",
+            "支付成功但订单已关闭：支付模块记迟到支付并自动全额退款，订单保持 closed",
+            "金额或付款人核对不符：钩子拒绝，订单不变，支付单标记需人工"
+          ],
+          "tests": [
+            "状态机全部合法边与非法边各测一遍，并发流转只有一个成功",
+            "履约钩子抛错时订单状态不变且支付被标记需人工",
+            "自动完成任务只处理满足条件的订单，重复执行结果不变",
+            "同一事件重复投递，只发一张卡",
+            "确认收货在未记录交付时间时以确认时间为交付时间"
+          ],
+          "source": "Luz-Dev/references/module-specs/order.json features 履约, flows 支付成功履约, states; backend/08-order/MODULE.md §4.12, §4.15-4.17, §5, §7, §13; references/patterns/order.md §2; ORDER-001, ORDER-006; 实战校验：订单状态与履约规则"
+        },
+        {
+          "id": "BF-ORDER-06",
+          "name": "核销码与凭码核销",
+          "surfaces": [
+            "miniapp",
+            "admin"
+          ],
+          "kind": "可选",
+          "summary": "预约、报餐、自提类订单成交后生成二维码和数字码（取餐码、预约码、提货码），到点凭码核销，每单只核销一次，错误核销可由管理员撤销。",
+          "frontend": "订单详情展示二维码和 8 位数字码，展示时调亮屏幕、离开恢复，已核销或已取消后码置灰并显示核销时间或取消时间。核销端先调 lookup 识别（二维码内容或数字码），展示姓名、预约内容、日期与时段、状态以及是否当天，确认后调 confirm；重复核销提示已于几点由谁核销。核销页顶部显示当日各时段的有效数与已核销数。平台管理员在订单详情可撤销核销，必须填写原因并二次确认。",
+          "backend": "POST /verify/lookup 识别内容：8 位数字码只在当日、本租户订单中查找；二维码先验签再按订单号查询。POST /verify/confirm 先校验订单状态与日期，再条件 UPDATE status = verified WHERE id = ? AND menu_date = 当天 AND status = booked，影响 0 行则重新读取并返回已核销或已取消，同事务写 verify_record。撤销核销只有平台管理员可做，条件 UPDATE verified 回 booked，原因必填，新增一条撤销记录并写操作日志。租户身份由登录信息决定，改参数访问不到别的租户订单。",
+          "database": "orders：pickup_code（CHAR(8)）、verified_at、verified_by、verified_by_name；UNIQUE(menu_date, pickup_code) 保证同一日数字码唯一，碰撞时重新生成最多 10 次。verify_record：order_id、action（verify、revoke）、method（qr、code）、operator_id、operator_name、operator_role、reason，索引 (enterprise_id, created_at) 与 order_id，只追加。",
+          "tech": "二维码内容为固定前缀 + 订单号 + 签名，签名取 HMAC-SHA256(订单号, 服务端密钥) 十六进制前 16 位，验签用常量时间比较；密钥缺失时启动即失败。数字码 8 位随机，只能当日使用，不可连续枚举，识别接口加限流。只有已预约状态才返回二维码内容。核销用条件更新而不是先查后改，并发核销只有一次成功。",
+          "rules": [
+            "只有已预约的订单能核销，已取消的不能核销，每单只核销一次并记录核销人与时间",
+            "推荐只核销当天的订单，防止提前用其他日期的码核销",
+            "撤销核销只有平台管理员可做，必须填写原因，订单回到已预约并留下撤销记录",
+            "租户停用后其核销员不能登录，每次请求都检查状态，不只在登录时检查",
+            "二维码内容不含个人信息，只含订单号和签名"
+          ],
+          "exceptions": [
+            "重复核销：条件更新影响 0 行，返回已于几点由谁核销",
+            "签名错误或不属于本租户：提示无效码或 4040，不泄露订单是否存在",
+            "核销已取消的订单：拒绝并提示已取消",
+            "核销非当天订单：返回不是今天的订单，提示核对日期"
+          ],
+          "tests": [
+            "50 线程同时核销同一订单，恰好成功 1 次",
+            "篡改签名、错用其他租户的码均被拒绝",
+            "撤销核销后订单回到已预约并新增撤销记录",
+            "数字码同日唯一，碰撞时能自动换码",
+            "核销非当天订单被拒绝"
+          ],
+          "source": "Luz-Dev/backend/08-order/MODULE.md §4.15 mark_fulfilled, §5; references/patterns/reservation.md §2 签到; 实战校验：凭码核销（取餐码、预约码核销，Luz-Dev 无对应模块规格）"
+        },
+        {
+          "id": "BF-ORDER-07",
+          "name": "订单查询、后台管理与导出",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "会员查看自己的订单列表与详情；后台按门店、状态、时间查询、备注、关单，并用同一筛选导出。",
+          "frontend": "我的订单页签为全部、待支付、进行中、已完成、退款，默认先显示要办的（待使用、待取餐），已取消和已退款排最后；页签角标取服务端 counts，游标翻页（每页 10 条），页签可左右滑动，每个页签保留自己的滚动位置。预约型订单分近期和历史两个范围。后台订单页默认近 30 天、每页 20 条（可选 10、20、50、100），外露筛选不超过 4 个，筛选和页码写进 URL；按钮写为导出筛选结果（共 N 条）；列表底部显示有效订单数与金额汇总。",
+          "backend": "顾客列表 GET /api/v1/app/orders?tab=&cursor=&limit= 用游标（签名防篡改，绑定排序与筛选，3 天失效，limit 上限 20），他人订单详情一律 4040。后台列表 GET /api/v1/admin/orders 用 ListSpec 声明可筛选字段（status、kind、store_id、金额区间、创建与支付时间区间）和关键词（订单号、手机号片段，完整 11 位手机号按哈希精确匹配），排序字段白名单，未声明参数返回 4001，门店范围外按 4040。汇总用 GROUP BY 一条 SQL，有效订单 = 未取消，金额取快照价。备注与关单写审计。",
+          "database": "索引 (member_id, created_at DESC)、(store_id, status, created_at)；按日期范围统计的场景加覆盖索引 (menu_date, meal_type, status, tenant_id, price)，避免只按日期查询时全表扫描。手机号用 AES-GCM 加密列加哈希列加脱敏列三份存储。order_notes：order_id、staff_id、text，只追加。",
+          "tech": "列表与导出共用同一个 ListSpec，不写两套筛选；后台页码要求 page × page_size ≤ 10000，更深翻页要求缩小筛选。导出不超过 5000 行时同步返回，更多走异步导出任务（见 BF-EXCHANGE-04），单次硬上限 20 万行。响应只返回约定字段，手机号默认脱敏，明文需单独权限并审计。",
+          "rules": [
+            "会员只能查询本人订单，他人订单返回 4040，不暴露是否存在",
+            "后台列表和导出必须使用同一组筛选参数，导出的就是列表里看到的",
+            "导出写审计，手机号脱敏；需要明文须单独权限并记录用途",
+            "汇总金额按订单快照价格计算，不用商品当前价格",
+            "后台门店范围由服务端按账号过滤，前端筛选只是界面"
+          ],
+          "exceptions": [
+            "拼错的筛选参数：返回 4001，不被静默忽略",
+            "游标过期或被篡改：返回 4001，前端回到第一页",
+            "导出超过硬上限：返回 4225，提示缩小日期或筛选范围",
+            "跨门店访问订单：按 4040 处理"
+          ],
+          "tests": [
+            "他人订单详情返回 4040，后台范围外订单返回 4040",
+            "列表与导出在同一筛选下行数一致",
+            "完整手机号关键词按哈希精确命中，脱敏片段按模糊命中",
+            "未声明筛选参数返回 4001",
+            "历史订单金额不随商品改价变化"
+          ],
+          "source": "Luz-Dev/references/module-specs/order.json features 订单查询, apis; backend/08-order/MODULE.md §4.20, §6, §12; backend/SPEC.md §3.4; references/admin.md Lists, filters and export; Luz-System/references/admin-design.html 列表与导出; 实战校验：订单列表、汇总与导出"
+        }
+      ]
+    },
+    {
+      "id": "payment",
+      "name": "微信支付与对账",
+      "dev_module": "payment",
+      "kind": "可选",
+      "summary": "微信支付 JSAPI 的下单与调起、支付结果通知验签、主动查单补偿、先查后关、原路退款与异常退款、每日账单对账。没有在线支付的项目（例如无支付的预约、报餐）整个模块不用；选用时前三项必须一起用。",
+      "functions": [
+        {
+          "id": "BF-PAY-01",
+          "name": "支付下单与调起",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "用户点击去支付后，服务端创建或复用支付单、向微信下单并签名，前端用返回的参数调起支付。",
+          "frontend": "确认页或收银台的去支付按钮点击后防抖，调 POST /api/v1/app/orders/{id}/pay（或通用的 POST /api/v1/app/payments，带 business_type 与 business_id），请求带 Idempotency-Key。拿到 pay_params（timeStamp、nonceStr、package、signType、paySign）后调 wx.requestPayment；无论成功、取消还是失败，都 replace 进支付结果确认页，由服务端状态决定展示。用户取消时订单保持待支付与倒计时，按钮显示继续支付。返回 5020 payment_unavailable 时提示稍后再试；余额足够时才显示余额支付选项，不足则置灰并写出差额。",
+          "backend": "create_payment 校验业务对象处于待支付且未过期、金额大于 0（金额只取自业务对象，不采信客户端）、商品类型不是纯线上虚拟内容（否则 4220）。同一业务同一时刻只允许一个未完成支付单，已支付返回 4090 already_paid。参数一致且未过期时复用 prepay_id（6900 秒内），过期后用 request_json 原样重新下单；参数变化或超过截止时间则先查单，已付落库并返回 4090，未付先关渠道单再换新单号。JSAPI 下单的 time_expire 取订单支付截止时间，对 appId、timeStamp、nonceStr、package 用商户私钥签名生成 paySign。可重试错误（SYSTEM_ERROR、429、超时）时支付单保持 created，用户再点用同单号同参数。",
+          "database": "payment_records：business_type、business_id、business_no、user_id、goods_kind、out_trade_no（唯一）、amount_cents、status（created、paying、paid、closed、failed）、prepay_id、prepay_at、expires_at、request_json（首次下单报文）、channel_txn_id（唯一）、trade_state、needs_manual。部分唯一索引 (business_type, business_id) WHERE status IN ('created', 'paying') 保证同一业务一个未完成支付单；INDEX(status, next_query_at) 供补偿任务使用。",
+          "tech": "微信支付 APIv3 的 JSAPI 下单；out_trade_no = 前缀（不超过 4 位）+ 北京时间 yyMMddHHmmss + 10 位随机，长度不超过 26，description 去掉 4 字节字符且不超过 127。商户私钥与 APIv3 密钥只放环境变量或密钥服务，生产启动时检查假客户端、密钥长度（32 字节）、回调地址为 https 且不带查询参数。所有外部调用统一加熔断与舱壁（并发上限 30），下单超时 8 秒且不自动重试，调用前先结束数据库事务。余额支付是另一条路径：同事务扣钱包并成交，不支持混合支付。",
+          "rules": [
+            "一个订单同一时间只有一笔待支付渠道单，重复点击复用未过期的 prepay_id",
+            "调起参数在服务端签名，商户私钥不出服务端",
+            "纯线上虚拟内容不能走普通微信支付，必须用平台的虚拟支付",
+            "支付金额以业务对象为准，客户端传的金额不采信",
+            "可重试的下单错误沿用原单号和原参数，不换号重下"
+          ],
+          "exceptions": [
+            "用户多次点击支付：复用同一支付单，不重复向微信下单",
+            "微信下单超时或系统繁忙：支付单保持 created，提示稍后再试，用户再点沿用原单号",
+            "订单已超过支付截止时间：返回订单已过期，前端引导重新购买",
+            "渠道熔断打开：返回 5030 或 5020，提示稍后支付，不伪造成功"
+          ],
+          "tests": [
+            "创建支付单并校验 paySign；同订单重复点击只产生一个支付单",
+            "prepay_id 在复用期内被复用，过期后用原单号原报文重新下单",
+            "参数变化时先查单再关单换号，已支付时返回 4090",
+            "SYSTEM_ERROR、超时、PARAM_ERROR 三类下单错误的状态与重试行为",
+            "虚拟商品被拒绝，熔断打开时返回稳定错误"
+          ],
+          "source": "Luz-Dev/references/module-specs/payment.json features 调起支付, flows 发起支付, apis pay; backend/09-wechat-pay/MODULE.md §3-§4 (1-7), §6, §9, §12; references/result-patterns.md §4; PAY-002, PAY-003, PAY-004, PAY-012, PAY-015"
+        },
+        {
+          "id": "BF-PAY-02",
+          "name": "支付结果通知与验签",
+          "surfaces": [
+            "backend",
+            "admin",
+            "miniapp"
+          ],
+          "kind": "可选",
+          "summary": "微信把支付结果推送到回调地址，服务端验签、解密、核对事实后在一个事务内更新支付单和订单，并在 5 秒内应答。",
+          "frontend": "前端不接收通知，支付结果确认页以 GET /api/v1/app/payments/{out_trade_no} 的状态为准：成功、失败、关闭为终态，处理中继续轮询（间隔 1、2、4、6、8 秒，页面隐藏时暂停）。轮询到上限仍未知，显示支付结果确认中并写明请勿重复支付，提供手动刷新和查看订单。成功页只展示服务端返回的金额、订单号、支付方式、完成时间，不展示渠道签名和客户端回传金额。后台支付详情展示回调日志：验签结果、事件类型、来源（回调或查单）。",
+          "backend": "回调接口 POST /api/v1/webhooks/wechat/pay：用原始报文验签（按 Wechatpay-Serial 选择平台公钥或平台证书，时间戳偏差超过 5 分钟拒绝，签名探测流量要正确应答），再用 APIv3 密钥 AEAD_AES_256_GCM 解密 resource，核对 appid、mchid、out_trade_no、金额、币种和交易状态。通过后在一个事务里条件 UPDATE created 或 paying 为 paid 并写 channel_txn_id，在保存点内调用业务 on_paid 钩子，写发件箱 payment.succeeded，204 应答。验签失败 401，报文或核对失败 400 并标记需人工，未知单号 404，重复通知直接 204，内部错误 500 让微信重试。",
+          "database": "pay_notify_logs：kind（pay、refund）、notify_id、event_type、out_trade_no、channel_txn_id、serial、verified、result、reason、source（notify、query）、received_at，只追加且不存明文和 openid。payment_records.channel_txn_id 唯一；processed_events 以 (consumer, event_id) 唯一去重。",
+          "tech": "并发回调靠 channel_txn_id 唯一约束加状态条件 UPDATE 兜底（20 线程并发只结算一次）。金额不一致时不改状态，写 PAY_AMOUNT_MISMATCH 告警交财务处理。平台公钥与平台证书可并存，轮换时新旧同时加载按序号选择。回调里只做验签、解密、核对和落库，慢操作放发件箱异步；回调内不调用外部接口，不在日志里记录回调明文。",
+          "rules": [
+            "支付结果只以服务端验签后的回调或主动查单的事实为准，客户端回执只触发查询",
+            "解密后必须核对商户号、应用号、单号、金额、币种、状态再推进状态",
+            "回调 5 秒内应答，重复通知持续应答成功",
+            "验签失败、时间戳过期的请求不处理并写安全日志",
+            "支付成功钩子失败不回滚支付事实，改为标记需人工并自动退款"
+          ],
+          "exceptions": [
+            "通知重复送达：processed_events 唯一约束与状态条件更新使其只生效一次",
+            "通知金额与支付单不一致：不改状态，写告警交财务，仍按渠道要求应答",
+            "长时间收不到通知：补偿任务和前端轮询触发主动查单兜底",
+            "商户证书或平台公钥轮换：新旧公钥同时加载，按序列号选择"
+          ],
+          "tests": [
+            "官方签名测试向量通过，篡改、过期、未来时间戳、未知序列号、缺头均被拒绝",
+            "20 线程并发回调同一支付单，只结算一次",
+            "重复通知返回 204 且不重复触发履约",
+            "金额不符、appid 不符、未知单号、非成功事件的处理结果",
+            "业务钩子拒绝时支付仍记 paid 并标记需人工、自动发起退款"
+          ],
+          "source": "Luz-Dev/references/module-specs/payment.json features 支付结果通知, flows 支付结果通知, exceptions; backend/09-wechat-pay/MODULE.md §4 (8-9), §6, §7, §8, §11; references/result-patterns.md §4; PAY-001, PAY-005, PAY-006, PAY-007, PAY-008, PAY-009"
+        },
+        {
+          "id": "BF-PAY-03",
+          "name": "查单补偿、先查后关与迟到支付",
+          "surfaces": [
+            "backend",
+            "admin",
+            "miniapp"
+          ],
+          "kind": "可选",
+          "summary": "回调丢失或延迟时主动向微信查单补齐结果；关单前先查单；订单关闭后才到账的款项自动退回。",
+          "frontend": "用户端结果页如果收到 degraded=true（渠道故障）显示支付结果确认中，而不是失败。后台支付详情提供人工查单和人工关单按钮（权限 payment:reconcile），点击前弹确认框并填写原因；列表可按需人工筛选待处理项。迟到支付自动退款后，向会员推送订单已关闭、款项将原路退回的通知，订单详情显示退款进度。",
+          "backend": "补偿任务按 5 秒、30 秒、1 分钟、3 分钟、5 分钟、10 分钟、30 分钟的时间点主动查单；前端轮询时同一单最短间隔 3 秒才触发一次查单。查单与回调走同一个落库函数，只有 SUCCESS 或 REFUND 才记已支付，NOTPAY 只更新 trade_state。过了 time_expire 或订阅到 order.cancelled 登记待关单时，先查单再关单：已付落库，未付关渠道单并置 closed，渠道查无此单且已到期则本地关闭。关单后仍收到支付成功、业务钩子抛错、同一业务第二笔支付：支付仍记 paid，标记需人工并自动发起全额退款。",
+          "database": "payment_records：query_count、next_query_at、last_queried_at、closed_at、close_reason（replaced、channel_closed、expired、business_cancel、never_created、admin_close）、close_requested_at、needs_manual、manual_reason。允许 closed 转 paid（关单后仍收到成功事实），INDEX(status, next_query_at) 支撑补偿扫描。",
+          "tech": "补偿任务固定间隔运行（例如 30 秒），任务内按每单 next_query_at 判断是否到点，逐单独立提交。渠道返回未知或失败时本轮跳过，不推断结果，保持库存与券。自动退款默认开启（运行配置 auto_refund_orphans），退款提交由任务完成，不在回调里调用。外部调用统一设置查单超时 5 秒、最多尝试 3 次。",
+          "rules": [
+            "不能只依赖回调，必须有主动查单补偿",
+            "关单前必须先查单，已支付则不关，查询失败则本轮跳过",
+            "订单关闭后到账的款项记为已支付并标记需人工，同时自动全额原路退款",
+            "同一业务第二笔重复支付同样自动退款",
+            "渠道无此单且已超过截止时间才允许本地关闭"
+          ],
+          "exceptions": [
+            "渠道查单失败或超时：保持原状态，下轮重试，不当作未支付",
+            "关单接口失败：不取消本地订单，下轮再试",
+            "用户支付成功但订单已被取消：保留支付事实，进入人工处理并自动退款，不倒回订单成功",
+            "补偿任务多实例同时运行：条件更新保证同一单只落库一次"
+          ],
+          "tests": [
+            "查单成功补齐支付、查单失败保持原状态、到期且渠道无单时本地关闭",
+            "关单前查到已付则落库并拒绝关单",
+            "关单后到账触发自动全额退款并标记需人工",
+            "补偿节奏符合 5 秒到 30 分钟的时间点，重复执行结果不变",
+            "顾客查询只能看到自己的支付单，渠道故障时降级且节流"
+          ],
+          "source": "Luz-Dev/references/module-specs/payment.json features 主动查单, exceptions; backend/09-wechat-pay/MODULE.md §4 (9-11), §5, §8; references/patterns/order.md §3; backend/SPEC.md §6 规则 7; PAY-010, PAY-011, PAY-014, ORDER-004"
+        },
+        {
+          "id": "BF-PAY-04",
+          "name": "渠道退款与异常退款",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "向微信发起原路退款并跟踪到终态；退款额度、次数、间隔和期限由一条条件更新裁决，渠道异常转人工处理。",
+          "frontend": "后台退款发起前展示该笔支付的已退金额、剩余可退金额、已退次数和距上次退款是否满一分钟；退款单列表按状态（受理中、成功、异常、已关闭、失败）和需人工筛选，详情显示渠道返回的入账账户。异常退款（用户银行卡无效等）提供异常退款表单，要求二次验证和原因，银行卡信息只提交不回显。会员端通过售后进度页看到已提交、退款中、已到账三步，不单独出现渠道细节。",
+          "backend": "create_refund 用一条条件 UPDATE 同时裁决：支付已成功、累计退款不超过实付、退款次数小于 50、距上次退款不少于 60 秒、支付后不超过 365 天，违规分别返回 4220 exceeds_refundable、4225、4220 refund_interval（带 retry_after_s）、4220 refund_window_expired。退款单号为 R + 支付单号 + 两位序号，重试永远沿用原单号和原报文。可重试错误（SYSTEM_ERROR、超时、FREQUENCY_LIMITED、NOT_ENOUGH、5xx）进入 pending，任务先查询：渠道已受理则采纳，RESOURCE_NOT_EXISTS 才重新提交，5 次仍未受理转 failed 并释放额度。退款回调与查询结果驱动 succeeded、closed、abnormal，并发出 refund.succeeded、refund.failed、refund.abnormal 事件。",
+          "database": "refund_records：payment_id、business_ref、out_refund_no（唯一，不超过 64 位）、channel_refund_id、amount_cents、reason（不超过 80 字节）、status（pending、processing、succeeded、abnormal、closed、failed）、refund_channel、user_received_account、attempts、last_error_code、next_attempt_at、query_count、next_query_at、submitted_at、succeeded_at、needs_manual。payment_records 增 refunded_cents、refund_succeeded_cents、refund_count、last_refund_at。索引 (status, next_query_at)。",
+          "tech": "受理不等于成功，终态以回调或查询为准。查询节奏：受理后每 60 秒，5 分钟后依次 5、10、20、30 分钟，之后每 30 分钟。申请接口超时 10 秒且不自动重试，由任务重试；单笔支付最多部分退款 50 次、间隔不少于 1 分钟、支付后 365 天内可原路退款（超期转线下）。异常退款的银行卡号与姓名用平台证书 RSA-OAEP 加密提交，既不落库也不写审计。",
+          "rules": [
+            "累计退款不超过实付，额度、次数、间隔、期限由同一条条件更新裁决",
+            "退款失败重试沿用原退款单号，渠道侧按单号幂等",
+            "退款受理不等于成功，以回调或查询结果为准",
+            "渠道关闭或明确拒绝时释放额度并通知业务方，业务方再决定重试或线下处理",
+            "发起退款、异常退款需要退款权限与二次验证，并写审计"
+          ],
+          "exceptions": [
+            "商户账户余额不足：渠道返回 NOT_ENOUGH，退款进入 pending，任务延后重试",
+            "原卡已注销等导致退款异常：退款置 abnormal，标记需人工，后台走异常退款或线下转账并记录凭证",
+            "超过 365 天：不提交渠道，提示联系客服走线下转账并审计",
+            "退款申请应答丢失：任务先按原单号查询，已受理则采纳，不重复提交"
+          ],
+          "tests": [
+            "50 线程抢 1000 分，每笔 100 分，只成功 10 笔",
+            "1 分钟间隔、50 次上限、365 天期限各自被拒绝并返回对应原因",
+            "SYSTEM_ERROR 同单号重试；应答丢失后用查询采纳已受理的退款",
+            "CLOSED 释放额度后换新单号可再次申请",
+            "ABNORMAL 转人工，异常退款参数加密且不落库"
+          ],
+          "source": "Luz-Dev/references/module-specs/payment.json exceptions; backend/09-wechat-pay/MODULE.md §3, §4 (12-16), §5, §7, §8, §9; references/patterns/after-sales.md §3; RFD-001, RFD-002, RFD-003"
+        },
+        {
+          "id": "BF-PAY-05",
+          "name": "账单对账与发货信息录入",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "每天下载前一日交易与退款账单，与本地支付单逐笔核对并记录差异；交易类小程序同步录入发货信息。",
+          "frontend": "后台对账页列出批次（账单日期、状态、本地与渠道笔数、差异数），点进去看差异列表：差异类型、本地与渠道金额与状态、是否已处理，支持标记已处理并填写说明、按条件导出。差异中渠道已成功本地未成功的，提供一键唤醒查单。发货信息上传列表显示每笔的状态与失败码，失败的可手动重试。有未处理差异时在后台首页待办里提示。",
+          "backend": "对账任务在账单日 T+1 本地时间 10:00 之后、三个月内、非当天下载账单，GZIP 解压后核对 SHA1，逐笔比对 transaction_id、金额、状态，差异分为 missing_local、missing_remote、amount_mismatch、status_mismatch 四类；渠道成功而本地未成功的唤醒补偿查单；账单未生成（STATEMENT_CREATING）半小时后重试，NO_STATEMENT_EXIST 停止。重跑保留已处理的差异。发货信息仅对已支付订单上传：到店服务和会员卡按虚拟发货（logistics_type 3），无快递实物 4，快递 1；每笔支付只有一条上传记录，系统繁忙退避重试，已发货错误码视为成功，其余转人工。",
+          "database": "pay_recon_batches：bill_date（唯一）、status、attempts、next_attempt_at、hash_value、本地与渠道计数、diff_count、last_error。pay_recon_diffs：batch_id、diff_type、ref_type、ref_no、out_trade_no、本地与渠道的金额与状态、resolved、resolved_by、note，UNIQUE(batch_id, ref_type, ref_no, diff_type)。pay_shipping_uploads：payment_id（唯一）、logistics_type、payload_json、status、attempts、next_attempt_at、last_errcode、uploaded_at。",
+          "tech": "账单金额单位是元，字段前带反引号，解析时按文本处理；download_url 有效期 5 分钟，下载超时 30 秒。对账任务固定间隔运行，任务体里判断账单日窗口，因此不依赖 Cron 表达式；差异进人工队列，不自动修平。发货信息上传默认开启（shipping_enabled），最多尝试 8 次，access_token 失效（40001、42001）时作废缓存重试一次。",
+          "rules": [
+            "每日对账，差异必须有人处理并留痕，不允许自动修平",
+            "账单日期必须是非当天且在三个月内，账单就绪前不判定缺失",
+            "差异重跑时保留已处理的结果，不重复告警",
+            "交易类小程序的已支付订单必须录入发货信息，到店服务按虚拟发货",
+            "对账结果和差异导出需要对账权限并写审计"
+          ],
+          "exceptions": [
+            "账单文件哈希不符：本批标记失败并告警，次日重试，不据此判定差异",
+            "账单生成中：半小时后重试，不当作无账单",
+            "渠道有而本地无：记 missing_local，立刻唤醒查单补偿，仍无则人工",
+            "发货上传遇到系统繁忙：按退避重试，超过最大次数转人工并可后台重试"
+          ],
+          "tests": [
+            "四类差异各构造一例并被正确识别",
+            "对账重跑幂等且保留已处理差异；哈希不符、非压缩账单、无账单、生成中各有用例",
+            "账单日期规则：当天与超过三个月的日期被拒绝",
+            "发货上传成功、幂等、繁忙重试、错误码处理、上限与人工重试",
+            "后台对账与差异导出的权限与审计"
+          ],
+          "source": "Luz-Dev/references/module-specs/payment.json features 对账, flows 对账, tables reconcile_records; backend/09-wechat-pay/MODULE.md §3, §4 (17-18), §6, §8, §9, §11; references/patterns/jobs.md §1; RFD-005; Luz-Dev/references/standard-modules.json payment"
+        }
+      ]
+    },
+    {
+      "id": "refund",
+      "name": "售后与退款",
+      "dev_module": "refund",
+      "kind": "可选",
+      "summary": "会员按订单行申请仅退款或退货退款，系统按行实付分摊计算可退金额，后台审批后原路退款；累计退款任何顺序下都不超过实付，退款失败转人工。没有已支付订单的项目（例如无支付的预约、报餐）不用。",
+      "functions": [
+        {
+          "id": "BF-REFUND-01",
+          "name": "售后申请与可退试算",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "会员在已支付订单上按行选择数量、原因和凭证提交退款申请，系统先给出可退金额并占用可退额度。",
+          "frontend": "订单详情的申请售后入口先调 GET /api/v1/app/after-sales/orders/{order_id}/refundable，按行展示可退数量、可退金额和申请截止时间。会员按行选数量，金额默认取上限，原因单选（搬家或转店、身体原因、服务不满意、其他），补充说明不超过 200 字，凭证图片最多 9 张（先走文件上传拿 media id）。七日无理由选项只对可退换的行显示并写明截止日。提交带 Idempotency-Key，成功后 replace 到申请结果页，显示申请编号、已提交、审核中、退款中、已到账步骤条；4220 的 reason（window_closed、not_returnable、exceeds_refundable）映射成就近提示。",
+          "backend": "POST /api/v1/app/after-sales 校验：订单属于本人（他人 4040）、已支付且未全退（未支付 4090，0 元订单 4220）、在申请窗口内（未签收随时可申，签收后无理由退货自签收次日起 7 日、其他原因 15 日，截止当地 24:00）、同一订单行没有进行中售后（4090 after_sale_open）。金额上限取订单模块的 refund_quote：行实付按累计公式 paid × (已占 + n) // qty − paid × 已占 // qty，退完剩余数量时等于剩余实付；会员卡等行种类可再设上限。通过后调订单的 reserve_refund 用条件 UPDATE 占用行级和单级额度，再写售后单与售后行，状态为 pending_review。",
+          "database": "after_sales：after_sale_no（唯一）、order_id、user_id、store_id、type（refund_only、return_and_refund）、status、reason_code、reason_text、evidence_json、amount_cents、route（wechat、balance）、due_at、version，索引 (user_id, status)、(status, due_at)、(order_id)。after_sale_lines：after_sale_id、order_item_id、qty、amount_cents、restock。after_sale_logs 只追加。订单侧行级 refund_reserved_qty、refund_reserved_cents、refunded_qty、refunded_cents，不变量 已退 ≤ 占用 ≤ 实付。",
+          "tech": "额度占用是订单模块的条件 UPDATE：占用后数量 ≤ 行数量、行占用金额 ≤ 行实付、单级占用 ≤ 实付，由数据库裁决，50 线程同时整行申请只成一单。可退金额一律按行实付（已分摊优惠）而不是原价，也不重新计算优惠。申请窗口、无理由天数、凭证数量取运行配置：no_reason_days 7（范围 7 到 30）、window_days 15、max_evidence 9。",
+          "rules": [
+            "只能对本人已支付且未全退的订单申请，他人订单一律 4040",
+            "退款金额按行实付计算，超过可退上限返回 4220 并带 max_cents",
+            "同一订单行同时只能有一个进行中的售后单",
+            "七日无理由只适用于下单快照标记可退换的商品，且不得少于 7 日",
+            "驳回、撤销、关闭都要释放已占用的额度"
+          ],
+          "exceptions": [
+            "超出申请窗口：返回 4220 window_closed，前端提示联系客服",
+            "并发申请同一行：额度条件更新只让一个成功，其余返回 4090",
+            "订单是 0 元订单：没有可退款项，返回 4220",
+            "申请期间会员卡等权益已被使用：由行种类的退款上限限制可退金额"
+          ],
+          "tests": [
+            "超出可退数量被拒，驳回后额度释放可再次申请",
+            "随机申请与驳回顺序下累计金额不超过实付，全部退完合计等于行实付",
+            "七日无理由窗口自签收次日起算，截止当地 24:00",
+            "50 线程整行申请只成功 1 单，逐件申请合计不超过实付",
+            "他人订单与未支付订单被拒绝"
+          ],
+          "source": "Luz-Dev/references/module-specs/refund.json features 退款试算, 退款申请, flows 申请退款, apis refund-preview; backend/10-after-sales/MODULE.md §3, §4 (1-8), §6, §12; references/patterns/after-sales.md §2; references/patterns/pricing.md §4; RFD-006, MONEY-003"
+        },
+        {
+          "id": "BF-REFUND-02",
+          "name": "审批与职责分离",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "审批人同意或驳回售后申请；同意要求近期二次验证，代客发起的申请审批人不能是发起人，驳回必须写原因。",
+          "frontend": "后台售后列表按状态页签（待审核、待收货、退款中、失败待处理、已完成、已驳回）和关键词（售后单号、订单号、退货单号）筛选，列表显示申请金额、原因、剩余处理时限。审核抽屉显示订单行、凭证图片、可退上限和已退金额；同意前触发二次验证（返回 4011 时弹验证框），同意金额不能超过上限；驳回原因必填 2 到 200 字并展示给会员。同意、驳回前的确认框写明对象、金额和后果，操作完成后行内更新状态。",
+          "backend": "POST /api/v1/admin/after-sales/{id}/approve 需权限 after_sale:approve 并要求近期二次验证（require_permission fresh=True，否则 4011）；代客发起的申请审批人不能与发起人相同（4030 separation_of_duties）。同意后：仅退款进入 refunding 并立即发起原路退款，退货退款进入 awaiting_return 并设置寄回截止（默认 7 天）。驳回需 reject 原因，状态 rejected 并释放额度。可选的商家逾期自动同意由任务以系统身份执行（auto_approve_days 默认 0 即关闭）。所有后台写操作写审计，门店范围外按 4040。",
+          "database": "after_sales：reviewed_by、reviewed_at、reject_reason、applied_by（user、staff）、applicant_staff_id、due_at；after_sale_logs 记录 from_status、to_status、actor_type、actor_id、note，只追加。审计表记录审批人、金额、意见、前后状态。状态机：pending_review 到 refunding、awaiting_return、rejected、cancelled。",
+          "tech": "状态流转用条件 UPDATE（WHERE status = 旧状态），非法流转返回 4090；释放额度与状态变化同事务。审批权限、二次验证、门店范围、职责分离都是服务端强制，前端只做展示。自动同意用系统身份、不做职责分离检查；商家逾期天数取运行配置 auto_approve_days，范围 0 到 30。",
+          "rules": [
+            "同意和驳回都需要退款权限，同意还需要近期二次验证，驳回必须填写原因",
+            "代客发起的申请，发起人不能自己审批，防止一人既申请又批准",
+            "审批金额不得超过当前可退上限，也不得超过实付减累计已退",
+            "已撤销、已驳回、已完成的申请不可再审核",
+            "每次审批写审计：谁、何时、对哪单、金额、意见、结果"
+          ],
+          "exceptions": [
+            "审批时额度已被其他售后占用：返回 4090，页面刷新后重新审批",
+            "会员在审批前撤销了申请：审核返回状态冲突，列表刷新",
+            "二次验证过期：返回 4011，前端弹验证框后原样重试",
+            "审批人的门店范围不含该订单：按 4040 处理，不暴露订单存在"
+          ],
+          "tests": [
+            "职责分离：发起人审批自己代客发起的申请被拒绝",
+            "同意前未做二次验证返回 4011，验证后成功",
+            "驳回必须有原因，驳回后额度释放",
+            "已撤销的申请不可审核，非法流转返回 4090",
+            "自动同意任务按天数触发且不做职责分离检查"
+          ],
+          "source": "Luz-Dev/references/module-specs/refund.json features 后台审核, apis approve reject, tables after_sales_requests; backend/10-after-sales/MODULE.md §4 (9-11, 16-18), §5, §6, §8, §9; RFD-001, AUTHZ-001, OBS-002"
+        },
+        {
+          "id": "BF-REFUND-03",
+          "name": "原路退款与退款结果处理",
+          "surfaces": [
+            "backend",
+            "miniapp"
+          ],
+          "kind": "可选",
+          "summary": "审批通过后按原支付方式退款：微信部分原路退回，余额部分冲回钱包；退款成功后统一补偿库存、券、订单状态。",
+          "frontend": "会员在售后详情看到步骤条（已提交、审核中、退款中、已到账），到账后显示金额和渠道（微信零钱或银行卡、储值余额），驳回时显示原因并提示可再次申请。退款中显示预计到账时限，不承诺具体时刻。余额支付订单显示退回钱包的本金与赠送金（赠送金回到赠送余额，不折现）。订单详情的状态在退款完成后更新为部分退款或已退款，退款记录可展开。收到到账通知后点击进入售后详情。",
+          "backend": "微信路径：事务提交后调用支付模块 create_refund（business_ref = after_sales:售后单号），提交前先按 business_ref 查有效退款单，崩溃重提也不会重复退款；规则性延后（refund_interval）或 5xx 由任务按 due_at 重提，超限等规则拒绝转 refund_failed 人工处理。余额路径：按消费流水调钱包 reverse 部分冲回（reversal_ref 幂等）。退款结果只经支付事件进入：refund.succeeded 到 completed 并执行本地补偿——订单计入已退、实物按规则回库、按券策略退券、全部实付已退则订单置 refunded；refund.failed 到 refund_failed；refund.abnormal 到 refund_abnormal，旧尝试的结果（refund_id 不符）忽略。",
+          "database": "after_sales：route、refund_id、out_refund_no、refund_attempts、refund_error、refunded_at、settle_note；订单侧 refunded_cents、refund_reserved_cents、refund_status（none、refunding、partially_refunded、refunded）由占用与已退推导。支付侧 refund_records 以 business_ref 关联。事件消费用 processed_events 按 event_id 去重，售后单状态机保证本地补偿只执行一次。",
+          "tech": "渠道调用不在业务事务内：先提交审批与额度占用，再调渠道；本地补偿只在渠道 SUCCESS 之后执行。退款单号固定为售后单号派生，失败重试沿用；渠道关闭后人工重试才生成新单号。是否退券由运行配置 return_policy 决定（never 不退、full_refund 整单全额才退、any_refund 任何退款都退），默认 full_refund；退款资金一律原路退回，不强制转余额、积分或代金券。",
+          "rules": [
+            "退款资金原路退回，不得强制退到余额、储值、积分或代金券",
+            "渠道受理不等于成功，只有成功事件才触发本地补偿",
+            "本地补偿（已退计入、回库、退券、订单置已退）只执行一次",
+            "余额支付部分按消费流水冲回钱包，本金与赠送金按原消费比例各自退回，赠送金不折现",
+            "超过原路退款期限（支付后 365 天）转线下退款并审计"
+          ],
+          "exceptions": [
+            "崩溃后重提：先按 business_ref 采纳已有的有效退款单，不重复退款",
+            "重复收到退款成功回调：事件去重加状态条件更新，补偿只执行一次",
+            "商户账户余额不足或原卡已注销：退款异常，进入人工，可改线下结清",
+            "退款成功时券已过期：券记为已过期，不放回可用"
+          ],
+          "tests": [
+            "仅退款全流程：提交、回调、订单 refunded、回库、退券、事件、重复回调幂等",
+            "发货后部分退款不回库；退货退款收到货后回库",
+            "崩溃后重提采纳已有退款；1 分钟间隔延后重提；不可重试错误转人工",
+            "余额原路冲回与部分冲回封顶",
+            "旧尝试的退款结果被忽略"
+          ],
+          "source": "Luz-Dev/references/module-specs/refund.json features 原路退款, 退款查询与通知, flows 审核与退款, 退款结果; backend/10-after-sales/MODULE.md §4 (7, 12-14), §5, §7, §8, §9; backend/08-order/MODULE.md §4.18-4.19; backend/09-wechat-pay/MODULE.md §4 (12-16); RFD-002, RFD-003, RFD-004"
+        },
+        {
+          "id": "BF-REFUND-04",
+          "name": "退货环节与失败转人工",
+          "surfaces": [
+            "admin",
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "退货退款需要买家寄回、商家收货后才退款；退款失败或异常的单进入人工处理（重试、线下结清、关闭）。",
+          "frontend": "同意退货后，会员端售后详情显示商家退货地址和填写快递公司、单号的表单，并用 due_at 展示寄回截止倒计时；超时未寄回显示已关闭。后台对 return_shipped 的单提供确认收货按钮（收货当时即发起退款）和收货驳回（货物不符）。失败或异常单在列表里标红并显示渠道错误，操作按钮为重试退款、线下结清、关闭，三者均要求二次验证；线下结清必须填写说明并提示需与消费者约定。",
+          "backend": "POST /api/v1/app/after-sales/{id}/return-shipment 写快递公司与单号，状态 awaiting_return 到 return_shipped；POST /api/v1/admin/after-sales/{id}/receive 确认收货后进入 refunding 并发起退款（满足收到退货后 7 日内退款）。人工动作需 after_sale:refund 权限与二次验证：retry-refund 使 refund_failed 回到 refunding（支付模块生成新退款单号）；manual-settle 使 refund_failed 或 refund_abnormal 直接 completed，说明必填；close 使 refund_failed 变 closed 并释放额度。任务 submit_refunds（60 秒）重提延后的退款，close_unshipped（每小时）关闭超期未寄回的单。",
+          "database": "after_sales：return_company、return_tracking_no、return_shipped_at、return_received_at、received_by、due_at、closed_at、settle_note；after_sale_lines.restock 标记收货后是否回库。状态：awaiting_return、return_shipped、refunding、refund_failed、refund_abnormal、completed、closed。after_sale_logs 记录每次人工动作与说明。",
+          "tech": "寄回截止天数取运行配置 return_ship_days，默认 7，范围 1 到 30；任务逐单独立提交、可重跑，每批 job_batch（默认 200）。退货运费计算与扣除、换货补发、仲裁都不在标准范围内，有需要时作为项目新增项在底座对照里说明。人工线下结清不改变金额口径，仍计入订单已退。",
+          "rules": [
+            "退货退款只适用实物商品且数量大于 0，服务类商品按使用情况折算",
+            "商家确认收到退货后才发起退款，并在收货后 7 日内完成",
+            "买家逾期未寄回自动关闭并释放额度",
+            "失败和异常的人工处理必须有二次验证、说明和审计",
+            "线下结清必须与消费者约定并保留凭证说明"
+          ],
+          "exceptions": [
+            "退款被渠道关闭：状态 refund_failed，后台重试时生成新退款单号",
+            "异常退款后渠道最终成功：由 refund_abnormal 转 completed，补偿只执行一次",
+            "货物不符：商家在收货环节驳回，额度释放，订单恢复",
+            "已发货的订单申请仅退款：不回库，按售后决定是否需要退货"
+          ],
+          "tests": [
+            "退货退款全流程：同意、寄回、确认收货、退款、完成",
+            "退款关闭后重试用新单号成功；异常单后续成功转 completed",
+            "线下结清、关闭失败单后额度正确释放",
+            "买家超时未寄回由任务关闭",
+            "人工动作缺少二次验证返回 4011，状态不合法返回 4090"
+          ],
+          "source": "Luz-Dev/backend/10-after-sales/MODULE.md §4 (10-11, 15-17), §5, §6, §8, §13; references/patterns/after-sales.md §1, §3; Luz-Dev/references/module-specs/refund.json exceptions 商户账户余额不足, 超过原路退款期限; RFD-003, RFD-004"
+        }
+      ]
+    },
+    {
+      "id": "card",
+      "name": "会员卡、月卡、次卡与期限卡",
+      "dev_module": "membership",
+      "kind": "可选",
+      "summary": "定义可售卡种（次卡、期限卡/月卡、时段卡）及赠送，支付成功后按购买时的快照发卡；管理剩余次数与有效期，使用扣次、冲正、请假冻结、转让、挂失补办、退卡试算与到期提醒；所有次数与期限变化写只追加流水。不卖预付卡的项目不用。",
+      "functions": [
+        {
+          "id": "BF-CARD-01",
+          "name": "卡种定义与预付限额",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "运营在后台配置可售卡种（类型、价格、次数或天数、赠送、适用门店与时段、冻结与转让规则），保存时按预付监管口径校验限额。",
+          "frontend": "后台卡种编辑页按分组填写：类型（次卡 count、期限卡 period、时段卡 time_slot）、售价与划线价（划线价不低于售价）、次数或有效天数及赠送、可用时段（周几加起止时间，结束不晚于开始表示跨午夜）、适用门店（单店、多店、全部）、每人限购、生效方式、冻结规则、转让规则、退卡手续费、条款全文。保存时就地校验并显示被哪条限额拦下（例如超过单张金额上限）；上下架在列表行内切换，已售卡不受影响，改动需填原因并写审计。",
+          "backend": "创建或修改卡种时校验：次卡用 sessions，期限卡与时段卡用 period_days，时段卡至少有一个时间窗口；单店卡种恰好一个门店。预付限额按门店解析 PrepaidPolicy：期限与时段卡的金额不超过 period_max_cents 且总天数不超过 period_max_days；次卡的金额不超过 count_max_cents 且总次数不超过 count_max_sessions；赠送单位与付费单位之比不超过 gift_ratio_max_bp。上架的卡种才可购买，卡种改价或下架不影响已售卡（已售卡按快照执行）。",
+          "database": "member_card_products：store_id、name、kind、price_cents、original_price_cents、sessions、gift_sessions、period_days、gift_days、slot_windows_json、activation_mode、store_scope、store_ids_json、per_member_limit、sale_start_at、sale_end_at、status、goods_kind、transferable、transfer_fee_cents、max_transfers、freezable、freeze_min_days、freeze_max_days、freeze_max_times、freeze_total_max_days、refund_fee_bp、entry_cooldown_minutes、terms_text、deleted_at（软删除）。卡种规则随卡快照到 member_card_cards.product_snapshot_json。",
+          "tech": "预付限额口径用 PrepaidPolicy 注入，预设有保守的全国单用途卡规则以及上海健身、北京等，运行配置 prepaid.policy 选择，连锁跨城市可按门店单独注入。例如上海口径：会籍类不超过 5000 元且 24 个月，课时类不超过 20000 元且 60 节，合计不超过 20000 元。限额数值以当地最新规定为准，写进方案由商户确认，不写死在代码里。",
+          "rules": [
+            "原价不低于实付价，免费卡种只能门店发放，不能线上购买",
+            "购买时按门店口径校验单张上限、续约后同类剩余单位上限和会员合计上限",
+            "赠送单位占付费单位的比例不得超过口径允许的上限",
+            "卡种修改只影响之后新发的卡，已售卡按购买时的快照执行",
+            "经营出现重大风险时可开启停止收取预付款开关，储值与会员卡同时停售"
+          ],
+          "exceptions": [
+            "金额或次数超过预付限额：保存时返回 4225 并写明是哪条限额，不允许保存",
+            "时段卡没有任何时间窗口：返回参数错误，指出缺少时段",
+            "卡种在售期间被删除：只做软删除，已售卡与历史订单不受影响",
+            "开启停止收取预付款后用户仍点击购买：服务端返回 prepaid_stopped，客户端同时隐藏入口"
+          ],
+          "tests": [
+            "卡种校验与限额：超限、非法时段、门店范围各有拒绝用例",
+            "上下架写审计，下架后已售卡仍可使用",
+            "续约后合计上限校验：续购使同类剩余单位或会员合计超限时被拒",
+            "修改卡种后已售卡的快照不变",
+            "停止收取预付款时购卡与储值入口都被拒绝"
+          ],
+          "source": "Luz-Dev/references/module-specs/membership.json features 卡种管理, tables card_products, inputs 卡种编辑页; backend/29-member-card/MODULE.md §0, §3, §4 (1-2), §9; references/standard-modules.json membership; Luz-System/references/admin-design.html 经营设置"
+        },
+        {
+          "id": "BF-CARD-02",
+          "name": "购卡、发卡与生效方式",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "会员选卡种、同意条款后下单支付，支付成功后按快照发一张卡；支持购买即生效、首次使用生效、指定日期生效。",
+          "frontend": "卡种列表按门店展示价格、划线价、次数或天数（含赠送）、适用门店与时段，详情页展示条款全文与退卡规则摘要，底部立即购买。确认页必须勾选预付卡条款与退款规则（默认不勾选）。提交购卡单后调起支付，支付结果以确认页为准，成功后显示开卡成功、卡名称、剩余次数或有效期，按钮是查看我的卡和去使用。我的卡页每张卡显示状态标签（生效中、待生效、冻结中、已用完、已过期）、剩余次数或到期日。",
+          "backend": "POST /api/v1/app/member-cards/orders 创建购卡单（需 Idempotency-Key）：校验卡种在售且在售卖窗口内、门店适用、限购（持有数加未过期待支付单）、未开启停止收取预付款，保存卡种与条款快照后先提交，再调支付模块下单。发卡由支付成功钩子在同一事务完成（主路径），payment.succeeded 事件作为补偿，issue_ref（order:订单号）唯一保证只发一张；金额不符转人工，needs_manual 的支付事件不发卡。生效：购买即生效按门店时区本地日算第 1 天、到期为第 N 天结束；首次使用激活，超过 activation_deadline_days 自动以截止时刻激活；也可指定日期；期限卡续购接在同卡种最晚到期之后。",
+          "database": "member_card_orders：order_no（唯一）、kind（purchase、transfer_fee）、user_id、product_id、card_id、amount_cents、status（pending、paid、closed）、payment_id、out_trade_no、expires_at、needs_manual、product_snapshot_json、goods_kind（offline_service）、invoice_tax_code（售卡为 601 不征税）。member_card_cards：card_no（唯一）、issue_ref（唯一）、status（inactive、active、frozen、used_up、expired、lost、disabled、refunding、refunded）、paid_cents、original_price_cents、paid_units、gift_units、total_units、sessions_remaining、starts_at、ends_at、activation_deadline_at、terms_snapshot、version。",
+          "tech": "购卡单先提交再调支付，外部调用不在业务事务内；购卡待支付超时取运行配置 pay_timeout_minutes，默认 15 分钟。迟到支付由支付模块自动退款。到店使用的会员卡属线下服务，goods_kind 记为 offline_service，走普通微信支付；纯线上内容会员须走平台虚拟支付，不在本模块范围。售卡开具普通发票，税务编码 601 不征税，不得开专票，这些信息随订单记录。",
+          "rules": [
+            "购买条款必须由用户主动勾选，卡上保存条款快照与退款方式",
+            "购买即生效时，到期时间按门店时区的本地日计算，第 N 天结束",
+            "同一支付只发一张卡，重复回调或事件补偿都不重复发",
+            "限购统计包含持有的有效卡与未过期的待支付单",
+            "支付金额与购卡单金额不一致时不发卡，标记需人工处理"
+          ],
+          "exceptions": [
+            "重复支付事件：issue_ref 唯一，直接按已发卡返回，不报错",
+            "关单后迟到支付：不发卡，标记需人工，由支付模块自动全额退款",
+            "支付上游失败：返回 5020，购卡单保留，可继续支付",
+            "首次使用生效的卡长期不用：超过激活期限自动以截止时刻激活，避免无限期搁置"
+          ],
+          "tests": [
+            "购卡分步支付，钩子发卡与事件补偿幂等，只发一张",
+            "金额不符与迟到支付不发卡并标记人工",
+            "限购、门店适用、停止收取预付款、上游失败各有用例",
+            "首次使用激活与截止自动激活；续购叠加与未到开始时间使用被拒",
+            "与支付模块联调：购卡、回调发卡、事件重复"
+          ],
+          "source": "Luz-Dev/references/module-specs/membership.json features 发卡, flows 发卡, apis card-products; backend/29-member-card/MODULE.md §0, §3, §4 (3-5), §5, §6, §7, §12; references/standard-modules.json membership"
+        },
+        {
+          "id": "BF-CARD-03",
+          "name": "使用扣次、时段校验、冲正与后台调整",
+          "surfaces": [
+            "backend",
+            "admin",
+            "miniapp"
+          ],
+          "kind": "可选",
+          "summary": "入场或上课时按规则扣一次（或记一次使用），失败可凭同一单号冲正；后台可补次、延期并留痕。",
+          "frontend": "会员在我的卡详情看到剩余次数、到期日、冻结记录和使用流水（时间、次数变化、原因、门店）。核销端（门禁、前台、后台）调用 consume 或按卡号核销，拒绝时按 data.reason 直接映射提示：卡已冻结、已过期、已挂失、已停用、退款中、未到生效时间、门店不适用、时段外（4221）、次数用完（4224）、防借卡间隔内。后台补次或延期弹框要求填写原因，展示调整前后数值，超过单次上限时在输入处拦截。",
+          "backend": "consume(card, store, at, ref)：同一 ref 返回首次结果（ref 属于其他卡返回 4090）；检查顺序：冻结、挂失、停用、退款中、已退、已过期、已用完，然后未到开始、过期、门店不适用、时段外（按门店时区，可跨午夜）、防借卡间隔。次卡用条件 UPDATE remaining >= 1 扣减，用完转 used_up，并追加使用记录与流水。冲正 reverse_use(ref)：使用记录由 done 条件流转为 reversed，次卡回补并从 used_up 回到 active，退款中或已退的卡不可冲正，重复冲正返回原记录。后台调整：原因必填，次数 |Δ| 不超过 50、天数 |Δ| 不超过 366（可配），不得调成负数，自动修正 used_up、expired、active 并写审计。",
+          "database": "member_card_usages：card_id、user_id、store_id、ref（唯一）、units、sessions_after、status（done、reversed）、operator、used_at、reversed_at。member_card_ledger（只追加）：card_id、kind、delta_sessions、delta_days、sessions_after、ends_at_after、status_after、ref、operator、note，UNIQUE(ref, kind)。member_card_cards 上 CHECK(sessions_remaining >= 0)，version 做乐观并发。",
+          "tech": "扣减不先查后改：UPDATE … SET remaining = remaining - 1 WHERE status = 'active' AND remaining >= 1 AND 在有效期内，数据库裁决并发（50 线程扣 10 次卡恰好成功 10 次，使用记录 10 条）。同一次入场重复扣次由 ref 唯一与流水唯一约束防止；开门失败需要退回次数时写冲正流水并关联同一入场单号。时段判定一律用门店时区，不用服务器时区。",
+          "rules": [
+            "每次扣次必须带业务单号 ref，同单号重放返回首次结果，不重复扣",
+            "冻结、挂失、停用、退款中、已退的卡不能使用，拒绝原因要给稳定的 reason",
+            "次卡剩余次数不得为负，次数变化只通过只追加流水体现",
+            "冲正只能回补原使用记录对应的次数，退款中或已退的卡不可冲正",
+            "后台补次与延期必须填写原因并写审计，单次调整量有上限"
+          ],
+          "exceptions": [
+            "并发入场扣次：条件更新保证不出现负数，流水唯一约束防止重复扣次",
+            "开门或履约失败需退回次数：用冲正把次数加回，关联同一入场事件",
+            "冻结期间尝试入场：返回 card_frozen，提示可提前解冻",
+            "调整后次数为负：返回 4224 sessions_negative，不写入"
+          ],
+          "tests": [
+            "次卡扣减、同 ref 重放、用完、冲正回补；ref 属于其他卡被拒",
+            "六种状态拒绝原因各有用例；时段外按门店时区判定，含跨午夜时段",
+            "防借卡间隔内重复使用被拒",
+            "50 线程并发扣 10 次卡恰好成功 10 次且不为负",
+            "后台调整的上限、原因必填与审计"
+          ],
+          "source": "Luz-Dev/references/module-specs/membership.json flows 入场扣次, tables card_usage_ledger, exceptions; backend/29-member-card/MODULE.md §3, §4 (6-7, 16), §6, §8, §10, §11; references/patterns/accounts.md; MONEY-004"
+        },
+        {
+          "id": "BF-CARD-04",
+          "name": "请假冻结、到期与提醒",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "会员按卡种规则请假冻结，冻结期间不能使用，到期日按实际冻结天数顺延；到期自动改状态，到期前按天数档提醒。",
+          "frontend": "会员在卡详情点请假，选择冻结天数（受卡种最小、最大天数限制），页面实时显示冻结至哪天和顺延后的到期日，超过次数或累计天数上限时在输入处说明；冻结成功后卡显示冻结中和恢复日期，提供提前解冻按钮并预览新的到期日。后台可代为冻结与解冻。到期前 7、3、1 天收到订阅消息提醒，卡列表对 7 天内到期的卡显示即将到期标签。冻结功能由开关控制（app_freeze_enabled）。",
+          "backend": "freeze 仅对 active、已生效且有到期日的卡开放：天数在 [freeze_min_days, freeze_max_days]，已冻结次数小于上限，累计冻结天数不超过上限；通过后条件 UPDATE active 为 frozen，到期日立即顺延计划天数。提前解冻按实际天数（不足 1 天按 1 天，至少 1 天）退回未用天数；冻结到期由任务自动解冻并保留全部顺延。冻结中的卡仍可申请退卡，不得限制解除合同。到期任务：active 或 used_up 且到期则置 expired；提醒任务在剩余天数进入 7、3、1 天档时各发一次，到期日变化后重新计。",
+          "database": "member_card_freezes：card_id、start_at、planned_end_at、planned_days、actual_end_at、actual_days、status（active、ended）、reason、operator。member_card_cards：freeze_count、frozen_days_total、ends_at、status。member_card_reminders：card_id、days_before、ends_at_key，三列唯一（提醒去重）。索引 (status, ends_at) 供到期扫描。",
+          "tech": "冻结次数与天数上限写进条件 UPDATE 的 WHERE，而不是先查后改；任务按业务键幂等、逐卡独立提交，运行配置 reminder_days 默认 [7, 3, 1]。未来日期开始的预约冻结和冻结审批流不在标准范围内（项目需要时作为新增项）。到期时刻按门店时区计算，到期当天最后一刻仍可使用。",
+          "rules": [
+            "只有生效中的卡可冻结，冻结期间不能使用也不会到期",
+            "冻结次数和累计天数受卡种上限约束，天数在卡种允许区间内",
+            "提前解冻按实际冻结天数重算到期日，未用天数退回",
+            "到期提醒按剩余 7、3、1 天各发一次，同一档不重复提醒",
+            "冻结中仍可退卡，退卡前先按当天结束冻结再报价"
+          ],
+          "exceptions": [
+            "卡种不支持冻结：返回 freeze_not_allowed，前端隐藏入口",
+            "冻结天数不在允许范围或次数用尽：返回 4225，写明是天数还是次数超限",
+            "冻结期间尝试入场：返回 card_frozen 并提示可提前解冻",
+            "到期日因冻结、延期变化：提醒记录按新到期日重新计，不漏提醒也不重复提醒"
+          ],
+          "tests": [
+            "冻结顺延与提前解冻重算到期日；冻结次数与天数上限被拒",
+            "冻结到期自动解冻并保留顺延",
+            "到期任务与 7、3、1 天提醒只发一次，重复执行结果不变",
+            "冻结中的卡申请退卡时先结束冻结再报价",
+            "开关关闭时会员自助冻结入口不可用"
+          ],
+          "source": "Luz-Dev/references/module-specs/membership.json features 冻结（请假）, flows 冻结, inputs 冻结页; backend/29-member-card/MODULE.md §4 (8, 13, 17), §9; references/standard-modules.json membership; 注：membership.json 的未来日期冻结与 29-member-card §13 冲突，此处按后者"
+        },
+        {
+          "id": "BF-CARD-05",
+          "name": "转让、挂失与补办",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "会员可在规则允许时把卡转给其他会员（可收手续费），记名卡可挂失补办；后台可停用与启用卡。",
+          "frontend": "转让页输入对方手机号或会员编号（二选一），页面提示规则：次数上限、冷却期、手续费和转让后本人不再持有；有手续费时进入支付页，支付成功后才完成转让。挂失页确认后卡立即不可使用，显示补办入口；补办换新卡号，权益全部保留。后台卡详情提供转让、挂失、解挂、补办、停用、启用按钮，停用需填写原因，转让可标注手续费已线下收取。转让与挂失受开关控制（app_transfer_enabled）。",
+          "backend": "转让：卡种允许、状态为 active 或 inactive、未过期、转让次数小于 max_transfers、距购买或上次转让满冷却期、受让人必须是已注册会员且不是本人、受让后合计限额仍满足；顾客发起且有手续费时生成手续费单（应税服务，不使用 601 编码），支付成功后过户；后台发起手续费线下收取。过户是就地更名，卡号、权益、流水不变。挂失：active、inactive、used_up、expired 可挂失，挂失中不可使用，补办换新卡号并恢复原状态，也可解挂。停用与启用由后台操作，原因必填并审计，冻结中、退款中、已退的卡不可停用。",
+          "database": "member_card_transfers：card_id、from_user_id、to_user_id、fee_cents、fee_order_id、fee_collected（none、online、offline、waived）、sessions_remaining、ends_at。member_card_cards：transfer_count、last_transfer_at、holder_name、holder_phone_masked、holder_phone_hash、status、prev_status（挂失与停用后恢复用）。member_card_orders 的 kind=transfer_fee 记录手续费单。",
+          "tech": "转让与过户用状态条件更新加版本号，防止并发转让和转让期间被使用。手机号查找走加密列加哈希列（盲索引），不明文比较。格式条款中不得排除记名卡的补办、转让、退卡权利，转让手续费与补办工本费（经营设置 member_card.replace_fee_cents，默认 0）都要在条款中明示。借转让之名多人共用的行为不做识别，只提供防借卡间隔。",
+          "rules": [
+            "转让须卡种允许、未超过转让次数、满足冷却期，且不能转给自己",
+            "受让人必须是已注册会员，受让后合计限额仍要满足",
+            "挂失中的卡不可使用，补办后原卡号作废、权益全部保留",
+            "停用、启用必须填写原因并审计，冻结、退款中、已退的卡不可停用",
+            "手续费与工本费必须事先在条款里写明，不得事后追加"
+          ],
+          "exceptions": [
+            "受让人手机号不存在：返回会员不存在，不创建账号，提示对方先注册",
+            "转让手续费支付超时未付：转让不生效，卡仍归原持有人",
+            "转让期间原持有人同时使用卡：版本号与状态条件更新使二者只有一个成功",
+            "手续费到账时发现转让条件已变化：标记孤儿手续费，通知人工并自动退款"
+          ],
+          "tests": [
+            "转让：手机号、转给自己、对方不存在、次数上限、冷却期、卡种不可转各有用例",
+            "手续费支付后才过户；钩子路径抛错触发自动退款，事件路径标记人工",
+            "挂失、解挂、补办权益保留且新旧卡号规则正确",
+            "停用与启用的状态限制与审计",
+            "转让后权益、流水、到期日不变，持有人变更"
+          ],
+          "source": "Luz-Dev/backend/29-member-card/MODULE.md §0, §3, §4 (9-11), §5, §6, §9.3, §11; Luz-Dev/references/module-specs/membership.json（无转让条目，依据 29-member-card）"
+        },
+        {
+          "id": "BF-CARD-06",
+          "name": "退卡试算与退款",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "会员先看退卡试算（可退金额与计算过程），再提交申请；审批通过后原路退款，期间卡暂停使用。",
+          "frontend": "会员在卡详情点退卡，先看 GET refund-quote：展示规则（七日内未使用全额退、其余按原价扣已使用部分）、已用次数或天数、折算金额、手续费、赠送部分不折现、预计到账时限，确认后提交申请，卡立即变为退款中。进度页步骤条为已提交、审核中、退款中、已到账；驳回时显示原因并恢复原状态。后台退卡单列表带审批、驳回、线下确认按钮，审批前展示计算明细，金额与审批都要二次验证。",
+          "backend": "退卡报价 quote_card_refund：七日内且未使用（use_count 为 0）全额退实付；经营者原因：已兑付 = ⌊实付 × 已用单位 ÷ 总单位（含赠送）⌋，可退 = 实付 − 已兑付 + 一年期 LPR 利息；消费者原因：已兑付 = min(实付, ⌊原价 × 已用单位 ÷ 付费单位⌋)，可扣手续费 refund_fee_bp；期限卡已用天数 = 总天数 − ⌈剩余天数⌉ 且扣除冻结中未过去的天数；已过期的卡消费者原因不予退款，经营者原因可退。申请即进入 refunding（不可使用、不可冲正）；顾客申请默认待审批；通过后在事务提交后调支付模块 create_refund（business_ref = member_card_refund:退款单号），每笔只提交一次；后台发卡或赠卡、转让过的卡、超过 365 天、只有利息可退时走线下退款，由财务确认。",
+          "database": "member_card_refunds：refund_no（唯一）、card_id、user_id、cause、rule、refund_cents、interest_cents、fee_cents、route（original、offline）、status、breakdown_json、due_at、submitted_at、channel_refund_id、submit_error。member_card_cards.status：refunding 到 refunded（终态），驳回或失败恢复 prev_status，成功后剩余次数清零。卡流水记 kind=refund。",
+          "tech": "试算是纯函数，输入快照里的实付、原价、赠送、已用量和 lpr_bp（发卡时写入），同一函数供会员报价、审批和测试使用。退款提交条件占位只提交一次，外部调用不在审批事务内。退款时限：七日全额退 5 天内、其他 15 天内，超期发 refund_overdue 事件；退款成功事件带 invoice_action=red_reverse 提示开红字发票。经订单购买的卡，退款走售后模块，售后完成事件终止该卡；本流程用于门店直售和线下卡。",
+          "rules": [
+            "付款后 7 日内且未使用，经营者或消费者都可全额退本金",
+            "经营者原因按折扣价折算并补一年期 LPR 利息，赠送部分不折现；消费者原因按打折前价格折算，超出实付不追要",
+            "已过期的卡消费者原因不予退款，经营者原因仍可退",
+            "冻结中的卡可以申请退卡，不得限制解除合同",
+            "申请后卡暂停使用，驳回、失败恢复原状态，成功后卡终止"
+          ],
+          "exceptions": [
+            "退款期间售后又退了同一购卡订单：标记退卡冲突转人工，避免重复退款",
+            "只有利息可退或超过 365 天：走线下退款，财务确认后完成",
+            "渠道拒绝或失败：退款单失败，卡恢复原状态，可重试",
+            "退款异常（卡已注销、商户余额不足）：保持处理中并告警，转线下处理"
+          ],
+          "tests": [
+            "退卡公式：七日全额、按原价折算、折扣加赠送摊薄加利息、手续费",
+            "期限卡已用天数与冻结抵扣；过期卡的退款规则",
+            "退卡成功、驳回、失败、异常、冻结中退卡；转让过的卡走线下",
+            "退款只提交一次，重试与规则拒绝路径",
+            "售后完成事件终止订单售卡，且退卡流程中冲突转人工"
+          ],
+          "source": "Luz-Dev/references/module-specs/refund.json features 退款试算, 原路退款（卡种退卡规则）; backend/29-member-card/MODULE.md §0, §3, §4 (12-15), §5, §7, §11, §13; backend/10-after-sales/MODULE.md §13"
+        }
+      ]
+    },
+    {
+      "id": "wallet",
+      "name": "储值钱包",
+      "dev_module": "wallet",
+      "kind": "可选",
+      "summary": "会员按储值方案充值，本金与赠送金分账、按批次记账；消费按比例扣减并可冲回，退款只退剩余本金且按批次原路退，所有变动写只追加流水并每日对账。不做预付储值的项目不用。",
+      "functions": [
+        {
+          "id": "BF-WALLET-01",
+          "name": "储值方案与充值入账",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "会员选择储值方案、同意预付卡条款后充值，支付成功后本金与赠送金分别入账。",
+          "frontend": "储值页以档位网格展示到账金额（本金加赠送，由服务端计算），只显示当前门店可用且在售卖窗口内的方案；首次储值必须主动勾选预付卡条款，旁边写明可退规则。点击充值后调起支付，结果以统一的支付确认页为准，成功页显示到账本金、赠送金和当前总余额，按钮是查看钱包；失败后可在充值单上继续支付。若开启自定义金额（默认关闭），输入框按最低金额校验。后台方案编辑页填写充值金额、赠送金额、赠送有效天数、每人每日次数，保存时就地校验上限。",
+          "backend": "创建充值单 POST /api/v1/app/wallet/recharge-orders（需 Idempotency-Key）：方案在售且在售卖窗口、门店适用、每人每日次数未超；预付口径校验单笔不超过 stored_value_max_cents，充值后余额（本金加赠送）不超过 stored_value_max_balance_cents，会员各类预付合计不超过 member_total_max_cents，开启停止收取预付款时拒绝，全部返回 4225 并用 data.reason 区分。充值单先提交再调支付。入账由支付钩子在同事务完成（主路径），payment.succeeded 事件补偿；条件 UPDATE pending 或 closed 为 paid，同一批次只入账一次；金额不符转人工不入账，needs_manual 的支付事件（关单后支付、重复支付）也不入账。",
+          "database": "wallet_recharge_plans：name、amount_cents、bonus_cents、bonus_valid_days、status、sale_start_at、sale_end_at、per_user_daily_limit、terms_text、deleted_at。wallet_recharge_orders（即入账批次）：order_no（唯一）、user_id、store_id、plan_id、source（payment、offline、adjust、gift、direct）、source_ref（唯一）、amount_cents、bonus_cents、principal_remaining_cents、bonus_remaining_cents、refunded_cents、status、payment_id、expires_at、bonus_expires_at、lpr_bp、terms_snapshot、invoice_tax_code（601）。wallet_accounts：principal_cents、bonus_cents、冻结本金与冻结赠送，四列 CHECK >= 0，user_id 唯一。",
+          "tech": "一笔充值就是一个批次，微信退款只能按原支付交易退，所以必须按批次记账。goods_kind 记为 offline_service，走普通微信支付。合同条款快照和发票信息（售卡与充值开普通发票，税率不征税，编码 601，不得开专票）随批次保存。待支付超时取运行配置 pay_timeout_minutes，默认 15 分钟。预付口径可按门店注入，连锁跨城市分别执行当地上限。",
+          "rules": [
+            "储值本金永不过期；赠送金可按方案设置有效天数，默认不过期",
+            "单笔充值、充值后余额、会员合计和赠送比例都不得超过预付口径的上限",
+            "首次储值必须主动勾选预付卡条款，不得默认同意",
+            "余额不可提现、不可转让、不可转赠",
+            "经营出现重大风险时可停止收取预付款，客户端同时隐藏入口"
+          ],
+          "exceptions": [
+            "重复支付事件：批次状态条件更新与 source_ref 唯一使其只入账一次",
+            "关单后迟到支付：不入账，标记需人工，由支付模块自动全额退款",
+            "支付金额与充值单金额不符：不入账，标记需人工",
+            "支付上游失败：返回 5020，充值单保留，可继续支付"
+          ],
+          "tests": [
+            "充值单与支付分步、事件幂等、金额不符、迟到支付、上游失败后继续支付",
+            "档位上下架与售卖窗口、每日次数、自定义金额、单笔与余额与合计与赠送比例上限",
+            "停止收取预付款时充值被拒",
+            "needs_manual 的支付事件不入账",
+            "与支付模块联调：充值、回调钩子入账、事件重复"
+          ],
+          "source": "Luz-Dev/references/module-specs/wallet.json features 储值方案, 充值入账, flows 充值, inputs; backend/15-recharge/MODULE.md §0, §3, §4 (1-5), §5, §6, §9, §12; references/standard-modules.json wallet; 注：统一订单入账与独立充值单两种写法在原文中并存"
+        },
+        {
+          "id": "BF-WALLET-02",
+          "name": "余额扣减与冲回",
+          "surfaces": [
+            "backend",
+            "miniapp"
+          ],
+          "kind": "可选",
+          "summary": "订单或门店用余额支付时，按本金与赠送金的比例扣减并记录落到哪些批次；订单取消或部分退款时按金额冲回。",
+          "frontend": "订单确认页的余额支付选项展示可用余额；余额不足时置灰并显示差额，可改用微信支付或先去充值。选择余额支付后直接显示成功，失败 4224 在行内提示余额不足。钱包页的流水里，消费显示总额，点开可见本金与赠送金各扣多少；冲回显示为退回。余额支付不支持与微信混合支付，页面不提供混合入口。",
+          "backend": "consume(user, amount, ref)：先锁账户行（条件 UPDATE），拆分策略默认按比例，赠送金向下取整、余数归本金（也可选先本金后赠送），账户四个余额都用条件 UPDATE 保证不为负，不足返回 4224；再按 FIFO（先入账先用）把本次扣减归属到批次并写分配记录。同一 ref 重放返回首次结果，ref 属于他人返回 4090。订单侧先查并关闭未完成的微信支付单（已付返回 4090，渠道不可用返回 5020），再扣款并同事务成交。冲回 reverse：不带金额为整笔冲回剩余未冲回部分；带金额和 reversal_ref 为部分冲回，累计不超过原消费（超出 4220 reverse_exceeds_consumed），本金与赠送金按原消费比例拆分、逐批次退回，原批次已退款时进入新的直接入账批次。",
+          "database": "wallet_ledger（只追加）：account_id、user_id、kind、principal_delta、bonus_delta、frozen_principal_delta、frozen_bonus_delta、principal_after、bonus_after、ref、batch_id、store_id、operator_id、note，UNIQUE(ref, kind)。wallet_batch_allocations（只追加）：ledger_id、batch_id、principal_cents、bonus_cents，记录一次扣减落到哪些批次。批次上 principal_remaining_cents、bonus_remaining_cents 的 CHECK >= 0；消费流水上的 reversed_cents 用条件 UPDATE 封顶。",
+          "tech": "同一会员的扣减通过先锁账户行串行化；账户、批次、冲回累计都是条件 UPDATE 加 rowcount 判断，不先查后改（50 线程并发消费，成功次数精确、余额不为负、对账一致）。冲回的赠送金累计应退 = ⌊原赠送 × 累计冲回 ÷ 原消费⌋，余数归本金，最后一笔补齐，保证累计相等。拆分策略放在经营设置里由商户选择，只影响之后的消费；外部支付调用不在业务事务内。",
+          "rules": [
+            "金额用整数分；消费按比例拆分本金与赠送金，向下取整规则固定且可复算",
+            "同一业务单号 ref 只扣一次，重放返回首次结果",
+            "冲回累计不得超过原消费，部分冲回用 reversal_ref 幂等",
+            "余额支付前必须先处理未完成的微信支付单，防止同一订单双重支付",
+            "余额不足时整笔回滚，不做部分扣款"
+          ],
+          "exceptions": [
+            "并发扣款：条件更新保证余额不为负，抢不到的返回 4224",
+            "同一 ref 属于他人：返回 4090，不扣款",
+            "订单的微信支付单已支付：返回 4090 already_paid，不再扣余额",
+            "冲回时原批次已在退款中或已退：冲回金额进入新的直接入账批次"
+          ],
+          "tests": [
+            "幂等扣减、拆分策略随机校验、整笔与部分冲回、多次冲回封顶、重放",
+            "50 线程并发消费：成功次数精确、余额不为负、对账一致",
+            "20 线程并发部分冲回不超额",
+            "冲回跨批次与冲回到退款中批次",
+            "余额不足整笔回滚且不写流水"
+          ],
+          "source": "Luz-Dev/references/module-specs/wallet.json features 余额支付, flows 余额支付扣款, exceptions 并发扣款; backend/15-recharge/MODULE.md §3, §4 (6-8), §7, §8, §10, §11; backend/08-order/MODULE.md §4.11, §4.18; MONEY-004; 注：wallet.json 写本金部分向下取整、其余扣赠送，15-recharge 写赠送金向下取整、余数归本金，此处按 15-recharge"
+        },
+        {
+          "id": "BF-WALLET-03",
+          "name": "余额退款",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "会员申请退还余额时按充值批次计算剩余本金，赠送金作废；申请即冻结，审批后原路退款。",
+          "frontend": "钱包页的申请退还余额入口先展示逐批次的报价：规则说明（七日内全额、其余按原价扣已用）、可退本金、作废的赠送金、手续费、预计到账时限；确认后提交，余额中对应部分显示为冻结。进度页步骤条为已提交、审核中、退款中、已到账，驳回时显示原因并释放冻结。后台退款单列表有审批、驳回、线下确认三个动作，均要求二次验证，审批页展示公式明细和利息。",
+          "backend": "退款按批次而不是整户：七日内且该批未动用全额退本金；经营者原因 可退 = A − ⌊已兑付 × A ÷ (A + B)⌋ + LPR 利息；消费者原因 可退 = max(0, A − 已兑付)，可扣手续费，且永不超过该批剩余本金，剩余赠送金全部作废。申请即预扣该批剩余本金与赠送金（移入冻结），批次置 refunding；顾客申请默认待审批，后台发起即审批；驳回或失败释放预扣、批次恢复 paid。审批事务提交后调支付模块 create_refund（business_ref = wallet_refund:退款单号），每笔只提交一次；成功清除冻结、批次 refunded，事件带 invoice_action=red_reverse。线下、调整、赠送入账的批次，超过 365 天或只有利息可退的走线下退款，由财务确认。",
+          "database": "wallet_refunds：refund_no（唯一）、batch_id、cause、rule、hold_principal_cents、hold_bonus_cents、refund_cents、interest_cents、fee_cents、bonus_forfeit_cents、retained_cents、route（original、offline）、status（pending_approval、processing、succeeded、failed、rejected）、breakdown_json、due_at、channel_refund_id、submit_error。批次状态：pending、paid、exhausted、refunding、refunded、closed。账户的冻结本金与冻结赠送列承接预扣。",
+          "tech": "预扣、审批、提交三步各自条件更新，外部调用不在审批事务内。退款时限：七日全额 5 天内、其他 15 天内（cooling_off_refund_days、refund_deadline_days），超期任务发 refund_overdue。利息按发卡时写入批次的 lpr_bp 单利按日计算，上线前和每月 LPR 公布后更新配置。是否需要审批取运行配置 refund_requires_approval，默认开启。",
+          "rules": [
+            "退款只退剩余本金，赠送金作废，不退现金",
+            "经营者原因按折扣价折算并补 LPR 利息，消费者原因按打折前价格折算",
+            "申请即冻结对应本金与赠送金，驳回或失败时完整释放",
+            "退款原路退回，超过 365 天或无法原路的走线下并由财务确认",
+            "审批、驳回、线下确认都要二次验证并写审计"
+          ],
+          "exceptions": [
+            "退款期间余额被消费：预扣冻结防止，已冻结部分不可再消费",
+            "渠道拒绝或失败：退款单失败，释放预扣，批次恢复 paid",
+            "退款异常（卡注销、余额不足）：保持处理中并告警，转线下处理",
+            "超期未退：任务发出 refund_overdue 告警，由运营跟进"
+          ],
+          "tests": [
+            "退款公式：七日、消费者原因、经营者原因加利息、手续费",
+            "预扣与成功、失败、驳回、异常四种结果后余额与冻结正确",
+            "提交一次、重试与规则拒绝；线下退款路径与免审批",
+            "到期时限与超期事件",
+            "冲回到退款中批次不破坏冻结"
+          ],
+          "source": "Luz-Dev/references/module-specs/wallet.json features 余额退还, exceptions 退还余额时有赠送; backend/15-recharge/MODULE.md §3, §4 (9-13), §5, §9; backend/10-after-sales/MODULE.md §13; 注：wallet.json 的 bonus_void 流水在 15-recharge 中表达为 wallet_refunds.bonus_forfeit_cents"
+        },
+        {
+          "id": "BF-WALLET-04",
+          "name": "流水、对账与后台调整",
+          "surfaces": [
+            "admin",
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "每笔余额变化都写只追加流水；每日对账校验余额与流水一致；后台可在上限内调整、线下充值并留痕。",
+          "frontend": "我的钱包页显示总余额，本金与赠送金分列，流水列表按类型显示文案（充值、消费、退款、冲回、调整、到期），退款中显示冻结金额；游标分页。后台账户页显示余额、冻结、近期流水，调整和线下充值表单要求填写原因，输入金额超过单次上限时在输入处拦截并要求二次验证；对账页列出差异账户，支持标记已处理。余额、流水导出时手机号脱敏并写审计。",
+          "backend": "后台调整 POST /api/v1/admin/wallet/accounts/{user_id}/adjust 需 wallet:adjust 权限与近期二次验证，原因必填，每项 |Δ| 不超过 adjust_max_cents（默认 50000 分即 500 元）；加款形成 adjust 批次，扣款按 FIFO。线下充值、门店扣款、冲回同样需权限、幂等键和审计。每日对账任务逐账户校验：余额 = Σ流水，冻结 = Σ冻结流水，可用余额 = Σ可用批次剩余，不一致写 wallet_mismatches（每账户每日一条）并发告警事件。赠送金到期任务只处理设置了有效期的批次，扣减该批剩余赠送金并写 expire 流水。",
+          "database": "wallet_mismatches：account_id、user_id、check_date、detail_json、resolved，UNIQUE(account_id, check_date)。wallet_ledger 只追加，代码层不提供修改与删除，建议数据库层也只给应用账号插入权限；kind 区分充值、消费、冲回、退款、调整、到期等；(ref, kind) 唯一，重复写入被数据库拒绝。账户与批次上的 CHECK >= 0 作为最后防线。",
+          "tech": "对账覆盖余额、冻结、批次三套口径，差异进人工队列，不自动修平。流水是资金变动的唯一事实来源，历史不可改，更正用反向流水。后台高风险操作（调整、冲回、线下充值）要求在 fresh_auth_seconds 内完成完整认证，否则返回 4011。导出与列表共用同一筛选并写审计。",
+          "rules": [
+            "每笔余额变化必须有只追加的流水，更正用反向流水，不改历史",
+            "余额调整必须填写原因、有单次上限、写审计并要求近期二次验证",
+            "每日对账三套口径一致，差异进人工处理，不自动修平",
+            "余额与流水查询对会员只返回本人数据",
+            "导出手机号脱敏，导出行为本身写审计"
+          ],
+          "exceptions": [
+            "对账发现余额与流水不一致：写差异记录并告警，暂不自动修正",
+            "同一业务重复写流水：(ref, kind) 唯一约束拒绝，按幂等成功处理",
+            "调整金额超过上限：返回 4225 adjust_cap，不写入",
+            "调整后余额为负：条件更新拒绝，返回 4224"
+          ],
+          "tests": [
+            "每日对账三套口径，人为制造差异能被发现并写 wallet_mismatches",
+            "后台调整上限、原因必填、二次验证 4011、审计",
+            "赠送金到期任务重跑幂等",
+            "流水游标分页与 kind 筛选，CSV 脱敏与 BOM",
+            "空门店范围的员工看不到任何账户"
+          ],
+          "source": "Luz-Dev/references/module-specs/wallet.json features 流水, apis adjust, writes 后台调整; backend/15-recharge/MODULE.md §3, §4 (14-16), §6, §8, §9, §11; backend/SPEC.md §3.4, §6; MONEY-004, OBS-002"
+        }
+      ]
+    },
+    {
+      "id": "coupon",
+      "name": "优惠券与营销活动",
+      "dev_module": "coupon",
+      "kind": "可选",
+      "summary": "券模板（满减、折扣、兑换）、领取与发放、兑换码、下单锁定与支付核销、关单解锁与退款退券，以及满减折扣活动的计价分摊和抽奖；库存与限领全部由条件更新保证并发不超发。不做营销的项目不用。",
+      "functions": [
+        {
+          "id": "BF-COUPON-01",
+          "name": "券模板与发布管理",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "运营在后台配置券的类型、面额、门槛、适用范围、有效期、总量与限领，发布后按规则受限编辑。",
+          "frontend": "后台模板编辑页按分组填写：类型（满减 amount_off、折扣 percent_off、兑换 exchange）、面额或折扣（折扣填实付比例的万分比，8500 表示八五折，8850 表示八八五折）、封顶金额、使用门槛、适用范围（全部、分类、商品、商品种类）与排除商品、有效期（固定区间，或领取后延迟 0 到 365 天起算的 1 到 3650 天）、总量（留空为不限）、每人限领与每日限领、人群、渠道、叠加分组。已发布的模板提示修改只影响之后领取的券，勾选同步给已领未用的券时，只允许有利于会员的修改。编辑带版本号，冲突时提示刷新。列表行内可发布、暂停、恢复、结束，只有草稿可删除。",
+          "backend": "创建与编辑做模板校验（折扣率 rate_bp 在 100 到 9999 之间，兑换券必须限定范围，固定有效期开始早于结束且领取结束不晚于使用结束，每日限领不超过每人限领，事件触发主题必须含事件渠道），不合法 4001。状态机 draft、active、paused、ended，发布时校验领取期与有效期未结束。发布后编辑约束：类型、门店、有效期类型不可改，库存不得低于已发，每人与每日限领只能放宽，领取期只能延长，使用规则可改并令 version 加一；apply_to_issued 时仅当所有修改对会员有利（面额不减、折扣不升、封顶不降、门槛不升、范围不缩）才同步给未使用的券，否则 4220 并列出字段。",
+          "database": "coupon_templates：name、type、amount_cents、rate_bp、max_discount_cents、exchange_qty、threshold_cents、scope_type、scope_ids_json、exclude_product_ids_json、stack_group、stack_with_campaign、stack_with_member、valid_type、use_start_at、use_end_at、valid_days、start_delay_days、claim_start_at、claim_end_at、total_stock、issued_count、used_count、per_member_limit、per_member_daily_limit、audience_json、channels_json、trigger_topic、status、version、deleted_at。CHECK(issued_count >= 0 AND used_count >= 0 AND (total_stock IS NULL OR issued_count <= total_stock))，索引 (status)、(trigger_topic)。",
+          "tech": "编辑用 version 乐观锁加条件 UPDATE，并发编辑冲突返回 4090。领取时把使用规则快照写进会员券的 rules_json，之后改模板只影响新发的券。发布、暂停、结束都写审计与事件 coupon.template_status_changed。结束发放后已发出的券照常可用。金额一律整数分，折扣率用万分比，折扣取整规则见 BF-COUPON-04。",
+          "rules": [
+            "发布后类型、门店、有效期类型不可改，库存不得低于已发数量",
+            "每人限领与每日限领只能放宽，领取期只能延长",
+            "同步给已领未用的券，必须所有修改都对会员有利，否则整体拒绝",
+            "只有草稿可删除，已发布的模板只能暂停或结束",
+            "模板的创建、发布、暂停、结束、批量发放都写审计"
+          ],
+          "exceptions": [
+            "两人同时编辑同一模板：后保存者 version 不符，返回 4090，提示刷新后重改",
+            "折扣率超出 100 到 9999：返回 4001 并指出字段",
+            "把库存改得低于已发数量：返回参数错误，不允许保存",
+            "暂停模板的同时有人领取：扣库存的条件带 status = active，领取失败"
+          ],
+          "tests": [
+            "13 种非法模板配置各被拒绝",
+            "发布后编辑约束：不可改项被拒，放宽项通过，有利修改同步而不利修改整体拒绝",
+            "模板状态机合法与非法流转，只有草稿可删",
+            "规则快照：改模板后已发券的规则不变",
+            "版本冲突与列表筛选排序、导出审计"
+          ],
+          "source": "Luz-Dev/references/module-specs/coupon.json features 券模板, inputs 券模板编辑页, tables coupon_templates; backend/16-coupon/MODULE.md §3, §4 (1, 5, 7-9), §5, §6, §11, §12; references/patterns/coupon.md §1; MKT-003; 注：模板类型与状态枚举在 coupon.json 与 16-coupon 中命名不同，折扣率范围 MODULE.md 写 100 的倍数而代码允许 100 到 9999，此处按代码与 16-coupon 命名"
+        },
+        {
+          "id": "BF-COUPON-02",
+          "name": "领取、发放与兑换码",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "会员在领券中心领取，系统按事件或后台定向发放，也可凭兑换码领取；总量与每人限领在并发下不超发。",
+          "frontend": "领券中心列表展示规则文案与有效期文案，已领完置灰，已领取显示去使用；点击领取每次生成新的幂等键，网络重试沿用同一个键，4225 按 data.reason 提示已领完、已达上限、今日已领。领取成功后原地变为领取成功与去使用。我的券页签为可用、已使用、已过期，附数量，未到生效时间的显示几日生效，被订单锁定的显示使用中。兑换码输入框遇到 4040 统一提示兑换码无效或已使用，4290 按 Retry-After 倒计时。后台批量发券提交后轮询批次详情查看已发与失败原因。",
+          "backend": "领取与发放的统一顺序：ref_key 去重、模板 active、渠道允许、自助渠道检查领取期、固定有效期未结束、人群、每人限领与自助渠道每日限领、条件扣库存、插入会员券、写发放日志、发出 coupon.claimed。库存 UPDATE … SET issued_count = issued_count + 1 WHERE status = 'active' AND (total_stock IS NULL OR issued_count < total_stock)，0 行时模板仍有效返回 4225 sold_out。每人限领用槽位：slot = 已有张数 + 1，超过上限 4225，并发抢同一槽位由唯一约束拒绝。兑换码 12 位，生成后只存 HMAC 与密文，一码一次（条件 UPDATE），不存在、已用、作废统一 4040，同一会员窗口内失败达上限后 4290。后台批量发放创建批次，任务逐会员一个事务，ref_key 为批次号加会员号，明细唯一约束保证幂等。",
+          "database": "user_coupons：user_id、template_id、template_version、rules_json、slot、claim_day（门店时区日期）、day_slot、status、channel、source_ref、valid_from、valid_to，UNIQUE(template_id, user_id, slot) 与 UNIQUE(template_id, user_id, claim_day, day_slot)。coupon_issue_logs：ref_key 唯一。coupon_issue_batches 与明细：(batch_id, user_id) 唯一。coupon_code_batches 与 coupon_codes：code_hash（唯一）、code_enc、status（unused、used、void）。coupon_code_attempts：UNIQUE(user_id, window)。",
+          "tech": "超发由库存条件 UPDATE 加 CHECK 约束双重保证（50 线程、库存 10、25 人各点两次，恰好 10 张且每人不超过 1 张）。兑换码字母表去掉 I、O、0、1 共 32 个字符，12 位约 60 位熵，输错计数在业务事务回滚后单独提交；发券失败（限领、售罄）时码保持未使用。事件发放（注册礼、抽奖奖品、补偿）通过订阅事件完成，业务原因失败写 coupon.issue_failed 不重试，并发冲突抛出由 worker 重试。领取接口按会员和 IP 限流。",
+          "rules": [
+            "总量与每人限领由条件更新和唯一约束保证，不靠先查后改",
+            "同一发放来源用 ref_key 幂等，补偿、抽奖发放不受每人限领约束",
+            "兑换码只存哈希与密文，导出明文需单独权限并审计",
+            "兑换码不存在、已用、已作废统一提示，防止探测",
+            "批量发放必须填写原因，后台与补偿渠道才可使用，单批不超过上限"
+          ],
+          "exceptions": [
+            "同一会员并发领取超过限领：槽位唯一约束拒绝多余的请求，调用方回滚后库存一并回滚",
+            "兑换码连续输错：达到窗口内上限后返回 4290 与 Retry-After，不消耗码",
+            "批量发放中途失败：逐会员独立事务，失败写原因，重跑只补未成功的",
+            "领取时模板刚被暂停：条件更新带状态，返回模板未生效，不发券"
+          ],
+          "tests": [
+            "50 线程库存 10，25 人各点两次，恰好 10 张且每人不超过 1 张",
+            "20 线程限领 2 恰好领到 2 张；每日限领跨日重置",
+            "领取后调用方事务回滚，库存与券都不留下",
+            "兑换码一次性、不存明文、作废、限流、失败不消耗码",
+            "批量发放幂等与失败原因，注册礼事件去重"
+          ],
+          "source": "Luz-Dev/references/module-specs/coupon.json features 领取与发放, flows 领取, apis claim; backend/16-coupon/MODULE.md §3, §4 (2-4, 18-20), §7, §8, §9, §12; references/patterns/coupon.md §2; MKT-001, MKT-006"
+        },
+        {
+          "id": "BF-COUPON-03",
+          "name": "下单用券：锁定、核销、解锁与退回",
+          "surfaces": [
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "确认订单页列出可用券并默认选最优，提交订单时锁定，支付成功核销，关单解锁，退款按策略退回；到期自动置为已过期并提醒。",
+          "frontend": "确认订单页调 available-for-cart 取可用与不可用券：可用按抵扣额从高到低排序并默认选中推荐券，写明已选中几张共抵扣多少元；不可用券置灰并显示原因（还差 20 元可用、未到生效时间、与活动不同享）。券入口在菜单顶部券条、购物车栏和结算页三处。券不可用提示后自动改用次优券或不用券并重新试算。券面临期 24 小时内写剩余时间；退款后券是否退回在订单详情的退款记录里说明。",
+          "backend": "锁定在下单事务内：unused 到 locked 的条件 UPDATE，WHERE 含 user_id 与有效期，写 order_id、discount_cents、alloc_json（行分摊），同一订单重复锁定幂等，其他订单已锁定则 4220 或 4090 并整单回滚。核销：支付成功 locked 到 used，模板 used_count 加一，重复回调幂等。解锁：关单或超时 locked 回 unused，此时已过有效期则置 expired，不回到可用。退回 return_on_refund 按策略：never、full_refund（默认，仅整单全额退款才退）、any_refund，可设核销后多少小时内退款才退；仍在有效期回 unused，已过期置 expired，used_count 减一，只退券本身，退款资金原路退回。来源收回 revoke_by_source 把该来源发出的未使用券置 revoked，已锁定或已用的保留并返回。过期任务每 5 分钟把 valid_to 已过的未使用券置 expired，提醒任务每小时发送到期前 48 小时的 coupon.expiring_soon。",
+          "database": "user_coupons：status（unused、locked、used、expired、revoked）、order_id、discount_cents、alloc_json、locked_at、used_at、returned_at、expired_at、revoked_at、revoke_reason、reminded_at；索引 (user_id, status)、order_id、(status, valid_to)。coupon_templates.used_count 随核销与退回增减。券状态机：unused 到 locked 到 used，locked 回 unused 或 expired，used 退回 unused 或 expired，unused 到 expired 或 revoked；expired 与 revoked 为终态。",
+          "tech": "同一张券被两个订单并发使用，靠条件 UPDATE 只让一个成功（20 单只成功 1 单）；支付与关单同时到达时，两者都以 status = 'locked' AND order_id = ? 为条件，只有一方生效，used_count 一致。用例函数不 commit，在订单自己的事务里执行，失败抛错由调用方回滚。过期券不放回可用，这是对旧实现把过期券放回可用问题的修正。提醒提前量取运行配置 remind_before_hours，默认 48 小时，范围 1 到 720；一单最多叠加张数取 max_coupons_per_order，默认 3。",
+          "rules": [
+            "券在服务端校验并在下单事务内锁定，支付成功后才核销",
+            "同一张券同一时间只能被一个订单锁定",
+            "关单解锁时已过期的券置为已过期，不回到可用",
+            "退款后是否退券由策略决定，默认只在整单全额退款时退，退款资金一律原路退回",
+            "过期任务只处理未使用的券，锁定中的券由解锁流程处理"
+          ],
+          "exceptions": [
+            "同一张券被两个订单同时使用：条件更新只让一个成功，另一个返回券不可用，该订单整体回滚",
+            "支付回调与关单同时到达：条件更新只让一方生效，核销数与实际一致",
+            "优惠金额大于商品金额：优惠封顶到适用范围内的余额（默认允许 0 元成交；要保底付 1 分时需项目调整封顶）",
+            "领取后改了模板：已发券按领取时的规则快照使用，不受影响"
+          ],
+          "tests": [
+            "20 单并发抢同一张券只成功 1 单；取消后券恢复可用",
+            "支付与关单竞争 10 轮，只有一方生效且 used_count 一致",
+            "解锁时已过期的券置 expired；退券的全额、部分、never、时间窗、退时已过期各一例",
+            "过期任务幂等与分批，提醒去重",
+            "来源收回：未使用的置 revoked，已锁定或已用的保留"
+          ],
+          "source": "Luz-Dev/references/module-specs/coupon.json features 下单用券, 核销与退回, flows 下单锁定与核销, 退款退回, states; backend/16-coupon/MODULE.md §4 (12-17, 21), §5, §6.1, §8, §9; backend/08-order/MODULE.md §4.13, §4.19; references/patterns/coupon.md; MKT-002, MKT-005; 注：coupon.json 的退券与 0 元订单保底与 16-coupon、08-order 不一致，此处按后者"
+        },
+        {
+          "id": "BF-COUPON-04",
+          "name": "满减折扣计价与优惠分摊",
+          "surfaces": [
+            "backend",
+            "admin"
+          ],
+          "kind": "可选",
+          "summary": "按固定管线计算活动与券的优惠：先活动后券、门槛按活动后金额、互斥取最优，整单优惠按行实付分摊，供试算、下单与部分退款共用。",
+          "frontend": "商品卡、购物车和结算页展示服务端返回的价格构成：原价、活动优惠、券优惠、预估到手价，旁边的说明图标展开明细；一个价格位只突出一个价，划线价必须有类型说明且真实。互斥或不叠加的优惠写明原因（互斥组内优惠较小、未达门槛、无适用商品）。后台活动配置页按时间、范围、互斥组、优先级、预算排期，活动开始后规则只读。结算页的金额算法与菜单、详情、订单详情必须一致，由同一服务端接口返回。",
+          "backend": "计价管线：商品小计（价格快照 × 数量）、会员价替换单价、活动优惠（满减、折扣，按优先级，同一互斥组取最优）、优惠券（门槛按活动后、范围内行金额判断，默认一单一券，可叠加的券显式分组）、运费，得到不小于 0 的应付。满减抵扣取 min(面额, 范围余额)；折扣优惠 = 范围余额 × (10000 − rate_bp) ÷ 10000，优惠向下取整到分（应付因此向上，商户不多让利），再受封顶限制；兑换券抵扣范围内最便宜的 N 件单价之和。每项优惠只在适用行之间按金额比例分摊，用最大余数法使合计严格等于优惠额，任何一行不为负。部分退款金额用累计公式 实付 × (已退数量 + 本次数量) ÷ 总数量 − 实付 × 已退数量 ÷ 总数量，退完时合计等于行实付。",
+          "database": "订单明细保存每行的 campaign_alloc_cents、coupon_alloc_cents 与实付；会员券保存 alloc_json；活动表（时间、范围、预算、互斥组、优先级）由项目补充。券模板的 stack_group 控制券间叠加：为空不与任何券同用，同组互斥，不同非空组可叠加，一单最多 max_coupons_per_order 张。金额字段一律 INTEGER 分，折扣用 _bp 万分比。",
+          "tech": "计价引擎是纯函数，输入行与优惠列表，输出应付、行分摊、被拒绝原因，随机性质测试覆盖分摊与部分退款。折扣向下取整到分（商户少让利），规则写进方案并与前端展示一致。叠加顺序是商户口径，必须写明并经商户确认。当前标准实现的是计价引擎，活动表与后台配置需要项目补充，补充时遵守活动开始后规则只读。",
+          "rules": [
+            "活动先算，券在活动后的金额上算，门槛按活动后、适用范围内的金额判断",
+            "同一互斥组只取优惠最大的一个，其余记为未使用并给出原因",
+            "整单优惠必须分摊到每一行，部分退款按行实付计算，不按原价、不重算优惠",
+            "每行优惠不超过该行金额，整单应付不小于 0",
+            "折扣取整方向固定为优惠向下取整到分、应付相应向上，并在方案中写明"
+          ],
+          "exceptions": [
+            "未达门槛：券不可用并返回还差多少元，试算仍按无券计价",
+            "优惠大于商品金额：封顶到范围内余额，应付为 0 的订单按 0 元成交",
+            "活动与券互斥：不同享的券跳过已享活动的行，并给出原因",
+            "多次部分退款有舍入差：累计公式保证退完时合计等于行实付"
+          ],
+          "tests": [
+            "分摊合计严格等于优惠额，每行分摊不超过行金额（随机 500 组）",
+            "满减门槛、适用范围、互斥组取最优、券门槛按活动后金额判断",
+            "应付不为负，任何一行实付不为负",
+            "分多次部分退款合计等于行实付（随机 300 组）",
+            "折扣封顶与取整、兑换券取最便宜 N 件、叠加分组冲突"
+          ],
+          "source": "Luz-Dev/backend/17-campaign/MODULE.md §1-§2; backend/16-coupon/MODULE.md §4 (10-11); references/patterns/pricing.md §1-§6; Luz-Dev/references/module-specs/coupon.json exceptions 优惠金额大于商品金额; MONEY-001, MONEY-002, MONEY-003, MKT-002, MKT-004; Luz-System/references/commerce-design.html 交易模型与价格体系"
+        },
+        {
+          "id": "BF-COUPON-05",
+          "name": "抽奖活动",
+          "surfaces": [
+            "miniapp",
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "后台配置奖品、概率和库存，服务端安全随机抽奖；库存条件扣减，发布后规则冻结且概率向会员公示。",
+          "frontend": "活动页按转盘、九宫格或刮刮卡渲染，展示规则公示（活动时间、奖品、数量、概率、开奖方式、库存不足处理）和今日剩余次数；点击抽奖每次生成新的 Idempotency-Key，网络重试复用同键，动画停在服务端返回的奖项上，中奖弹出奖品卡与去使用按钮，未中显示谢谢参与，次数用完按钮置灰显示明日再来。4225 提示次数或上限，4290 提示稍后再试。我的奖品页显示虚拟奖到账状态，实物奖在领奖期限内填写收货信息。后台发布前展示概率模拟结果，发布后只开放有利变更的字段。",
+          "backend": "POST draw 流程：校验活动开放、门店、人群钩子、限流（每会员每分钟 10 次、每 IP 每分钟 60 次）、风控钩子，再消耗次数（先用当日免费，再用获得的，同时受日、月、总上限，条件 UPDATE 失败返回 4225），然后用 secrets.randbelow 取随机数、累积权重二分定位奖项，占用个人中奖上限与有限库存（条件 UPDATE stock_left > 0，预算已在发布时预留），失败则退化为谢谢参与，最后写记录和发件箱事件，全程一个事务。发布前校验：奖品 2 到 12 个，权重为 1 到 10000 的整数且含谢谢参与合计恰好 10000，单个奖品价值不超过 5 万元，库存价值合计不超过预算。发布后奖项、概率、条件不可改，只允许有利变更并写变更记录。虚拟奖经发件箱发放并回执，未回执按退避重发，超过次数转人工；实物奖在期限内填写收货信息，后台发货。",
+          "database": "lottery_activities：状态、start_at、end_at、rules_text、免费次数、日月总上限、budget_cents、reserved_cents、odds_json（发布快照）、rules_hash、version。lottery_prizes：seq、kind、weight_bp、stock_total、stock_left、per_member_limit、value_cents，UNIQUE(activity_id, seq)。lottery_chance_accounts、lottery_chance_periods、lottery_chance_grants（UNIQUE(activity_id, source, source_ref) 保证获得次数幂等）。lottery_draws：request_key、结果快照、random_value、random_range、rng、当次奖池、delivery_status，UNIQUE(activity_id, member_id, request_key)。收货信息加密存储。",
+          "tech": "随机只在服务端用密码学安全随机数，每条记录保存随机值与当次奖池，可复算验证。活动状态：draft、published、running、ended，发布后规则冻结，规则文本哈希随变更重算。库存不足默认抽中后按谢谢参与处理，不重抽，其余概率不变；可选的移出奖池重新归一必须发布前选定并公示。价值超过 500 元的中奖记录向公众公示（昵称脱敏），抽奖资料保存不少于 2 年（730 天）。发奖重试退避取运行配置 delivery_backoff_seconds，最多 5 次。",
+          "rules": [
+            "最高奖品价值不超过 5 万元，概率合计 10000（含谢谢参与）且不得设置不可能中出的奖项",
+            "发布后奖项、概率、价值、条件、开始时间不可改，只允许有利于会员的变更并公示",
+            "后台没有指定中奖人的能力，参与条件在服务端校验",
+            "获得抽奖次数的来源必须合规，不得靠分享或订阅消息换次数",
+            "价值超过 500 元的中奖记录公示并脱敏，收货信息加密，查看明文需权限并审计"
+          ],
+          "exceptions": [
+            "脚本刷抽奖：按会员与 IP 限流，同一 Idempotency-Key 只算一次，风控钩子只能拒绝不能影响奖品",
+            "奖品库存耗尽：条件更新失败即退化为谢谢参与，不超发",
+            "虚拟奖发放无回执：到期按退避重发，超过最大次数转人工并告警",
+            "实物奖超过领奖期限未填写：置为已逾期，不回补库存，因为结果已公示"
+          ],
+          "tests": [
+            "50 线程抢 5 件实物恰好 5 件中出；同一会员 50 线程只用掉 3 次",
+            "每日上限 2 在并发下恰好 2 次；同键 20 线程只有一条记录",
+            "概率合计不为 10000、超 5 万元、超预算的活动无法发布",
+            "发布后修改不利字段返回 4090，有利变更写变更记录",
+            "发奖回执、到期重发、转人工与晚到回执；记录可复算 replay_ok"
+          ],
+          "source": "Luz-Dev/references/module-specs/lottery.json features, flows 抽奖, tables; backend/18-lottery/MODULE.md §3, §4 (3-5, 8, 11, 16-27), §5, §8, §9, §12; MKT-003, MKT-004; Luz-Dev/references/standard-modules.json lottery"
+        }
+      ]
+    },
+    {
+      "id": "report",
+      "name": "统计与看板",
+      "dev_module": "report",
+      "kind": "基础",
+      "summary": "按门店或租户与日期汇总订单、营收、退款、核销等指标：先统一指标口径与时间范围，再提供实时看板与每日固化的日报，以及按日、餐期、套餐、部门、时段等维度的分析和环比；统计只读从库或固化表，不锁业务表。",
+      "functions": [
+        {
+          "id": "BF-REPORT-01",
+          "name": "指标口径与时间范围",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "每个指标有唯一口径定义，所有统计页共用同一个时间范围控件和同一套日界线、范围校验规则。",
+          "frontend": "报表页顶部只有一个时间范围控件，快捷项（今日、近 7 天、近 30 天）和自定义日期在同一个弹层里，页面级时间范围控制全部指标卡与图表，卡片上不再各写一份范围。日期区间超限时在控件旁就地提示（例如一次最多分析 92 天，请缩小日期范围），不弹错误页。每个指标名旁有说明图标，展开写出口径：有效订单、金额取快照价、营收按支付成功时间、退款按退款成功时间且分列显示、不互相抵扣历史日期。门店或租户筛选默认当前账号可管理的全部范围。",
+          "backend": "GET /api/v1/admin/reports/daily 接收 store_ids、from、to：校验 from 不晚于 to、跨度不超过上限，超限返回 RANGE_TOO_LARGE（4001 一类的参数错误）；范围外的门店按账号权限过滤，不返回也不报错。口径固定：有效订单 = 状态为未取消的订单（预约型为已预约加已核销，交易型为已支付及之后且未全退）；金额取订单快照价格；核销率 = 已核销 ÷ 有效订单；取消率 = 已取消 ÷ (有效 + 已取消)；未取餐或爽约 = 有效、未核销且服务时间已结束；营收按支付成功时间、退款按退款成功时间分列。日界线按门店时区。",
+          "database": "统计所需字段都来自订单快照价格、状态与时间戳，不引用商品当前价；按日期范围统计的场景建覆盖索引，例如 (service_date, meal_type, status, tenant_id, price)，避免只按日期查询时全表扫描。时间统一 UTC 存储，业务日按门店时区转换后分组，门店时区存在门店表上。",
+          "tech": "全部统计用分组 SQL 汇总（GROUP BY 日期、餐期、租户、状态后求和），不把订单逐条读入内存；金额一律整数分，展示时才换算成元。范围上限做成常量并写进方案：直接汇总订单表的分析接口建议 92 天，读固化日报表的接口可放宽到 366 天，导出另按列表导出的上限。只读查询走从库或物化视图，避免统计拖慢业务写入。",
+          "rules": [
+            "每个指标的口径写在后台说明里，页面与导出共用同一口径",
+            "营收按支付成功时间计，退款按退款成功时间计，二者分列，不互相抵扣历史日期",
+            "金额用订单快照价格，商品改价不影响历史统计",
+            "日期范围有上限，超限必须提示缩小范围，不静默截断",
+            "统计按账号权限范围过滤，范围外的数据不出现在合计里"
+          ],
+          "exceptions": [
+            "开始日期晚于结束日期：返回参数错误并提示修改日期",
+            "范围超过上限：返回 RANGE_TOO_LARGE，控件旁提示最大天数",
+            "迟到的退款或补传的数据：对应日期的固化结果重算，不改其他日期",
+            "门店时区调整：之后的新日期按新时区分组，已固化的历史日期不重算"
+          ],
+          "tests": [
+            "同一批订单在不同日期范围的合计等于各日之和",
+            "取消的订单不进入有效订单和金额，商品改价后历史金额不变",
+            "营收与退款分列，退款不冲减历史日期的营收",
+            "范围超限返回稳定的错误，起止日期倒置被拒绝",
+            "按账号权限过滤：范围外的租户数据不出现在合计里"
+          ],
+          "source": "Luz-Dev/references/module-specs/report.json features 经营日报, inputs 报表页, exceptions 报表口径; backend/SPEC.md §3.4 时间区间, §6 规则 9; Luz-System/references/admin-design.html 数据驾驶舱与时间范围; DATA-004; 实战校验：分析口径（有效订单、核销率、取消率、未取餐）；注：24-report 目录目前没有 MODULE.md 与代码"
+        },
+        {
+          "id": "BF-REPORT-02",
+          "name": "日报固化与实时看板",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "当日数据实时计算，历史数据每日固化成日报表；后台第一个菜单是数据驾驶舱，先给要处理的事，再给计算后的结论。",
+          "frontend": "驾驶舱是后台第一个菜单。第一屏按类型：运营型放待办、异常、超时和预警，每项可点击直达已筛选好的列表；分析型放计算后的结论（较上期变化百分比、转化率、达成率、人均与单均）。指标卡用自适应栅格（每张最小约 180 像素），数字旁写变化而不只给累计总数，长期为 0 的指标合并成一行暂无异常，有值时再醒目出现。负向指标（退款、失败、取消）不占首行首位，但超过阈值（例如退款率较上期高 50%）时在指标卡上方出现可关闭的预警，点击直达明细。切换时间范围时保留旧内容并显示局部加载标记，骨架只用于首次加载，失败可重试，无数据显示空状态。",
+          "backend": "GET /api/v1/admin/reports/realtime 返回今日实时指标（订单数、营收、待处理事项数、异常数），直接对当日数据分组计算；GET /api/v1/admin/reports/daily 读固化日报。固化任务 report.daily 每天 02:00（门店时区）计算前一日各门店指标，写入 store_daily_stats，同一门店同一天覆盖写（upsert），任务体里判断日期窗口，重复执行结果不变。跨日补传的事件或迟到的退款会触发对应日期重算。任务逐门店独立提交，一个门店失败不影响其他门店，失败写运行记录并告警。",
+          "database": "store_daily_stats：store_id、stat_date（门店时区日期）、订单数、实收 revenue_cents、退款 refund_cents、储值或其他业务指标列，UNIQUE(store_id, stat_date)。当日数据不落固化表，由实时查询得出。固化表只存可加总的计数与金额，比率在查询时计算。",
+          "tech": "固化任务按固定间隔运行并在任务体内判断窗口，不依赖 Cron 表达式；用日期加门店作幂等键。实时与固化走从库或物化视图，查询加超时与行数上限，避免拖垮主库。图表在少于 3 个点时不画折线只显示数字与变化，只有 1 类时不画环形图；排行与占比按数值降序。指标卡数值使用等宽数字，图表悬浮提示显示数值与单位。",
+          "rules": [
+            "当日实时计算，历史日期读固化结果，二者口径一致",
+            "固化任务可重复执行，同一门店同一天覆盖写不累加",
+            "驾驶舱先放要处理的事，再放结论；负向指标不占首行首位但超阈值必须预警",
+            "指标卡必须带变化或比率，不只给累计总数",
+            "页面级时间范围控制全部卡片，卡片不再单独写范围"
+          ],
+          "exceptions": [
+            "固化任务当天未跑完：驾驶舱对昨日数据回退到实时计算并提示数据更新中",
+            "某门店固化失败：该门店单独标记失败并告警，其他门店结果不受影响",
+            "迟到的退款或补传事件：只重算受影响的日期",
+            "统计查询超时：返回可重试的错误，页面保留上次内容并提示"
+          ],
+          "tests": [
+            "任务重复执行结果不变，同一门店同一天只有一行",
+            "补传数据后对应日期被重算，其他日期不变",
+            "实时数据与固化数据在同一口径下合计一致",
+            "单个门店固化失败不影响其他门店",
+            "驾驶舱缺数据、数据少于 3 个点、只有 1 类时的展示状态"
+          ],
+          "source": "Luz-Dev/references/module-specs/report.json features 实时看板, flows 日报固化, tables store_daily_stats, apis TASK report.daily; Luz-System/references/admin-design.html 数据驾驶舱; backend/25-jobs/MODULE.md §4; 注：report.json 的任务按每日 02:00 触发，而 25-jobs 只支持固定间隔，需在任务体里判断窗口"
+        },
+        {
+          "id": "BF-REPORT-03",
+          "name": "分维度分析、环比与排行",
+          "surfaces": [
+            "admin",
+            "miniapp",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "按日、餐期或类别、租户、套餐、部门、时段、星期等维度汇总，并与上一个等长周期环比，给出排行；会员可看自己的月度统计。",
+          "frontend": "分析页自上而下为指标卡（有效数、核销率、取消率、金额、日均）、趋势折线、餐期或类别占比环图、租户或部门排行、套餐排行、时段与星期分布；每张图有悬浮提示（数值与单位），排行与占比按数值降序，金额列右对齐并用等宽数字。切换范围时数字滚动、图表重绘。页面顶部有导出按钮，按当前筛选导出明细，走导出标准。小程序我的页有月度统计：本月订单数、已取、已取消、金额和最常点的套餐，月份选择限定在合理区间。",
+          "backend": "分析接口一次返回当期与上一个等长周期的汇总（环比周期为 [from − 天数, from − 1]），再返回按日、餐期、租户或部门、套餐、小时、星期的分组结果；企业或部门级的 Top 员工排行取前 10。所有汇总都是分组 SQL，租户条件来自登录上下文，改参数访问不到别的租户。员工月度统计 GET /api/v1/app/stats/monthly?month=YYYY-MM 只统计本人，月份格式与年份区间（2000 到 2100）在服务端校验。比率保留两位小数，除数为 0 时显示为 0 而不是报错。",
+          "database": "依赖订单表上的覆盖索引：租户维度 (tenant_id, service_date, meal_type, status) 与全局日期维度 (service_date, meal_type, status, tenant_id, price)，保证两种查询都不全表扫描。部门、套餐等维度字段在下单时随订单快照保存，历史统计不受人员调岗、套餐改名影响。",
+          "tech": "分析使用分组 SQL，不在内存里逐条累加；环比、比率在服务端算好再返回，前端只渲染。报表数据量大时可对热点维度建物化视图或固化表，并保留实时回退。时间范围按页面统一控件传入，一次最多分析 92 天（实战值，可按方案调整）。导出不在本接口内实现，复用列表导出标准和异步导出任务。",
+          "rules": [
+            "环比对比的是紧邻的上一个等长周期，起止日期随所选范围变化",
+            "排行与占比按数值降序，租户与部门名称取下单时的快照",
+            "员工只能看本人的月度统计，租户管理员只能看本租户",
+            "比率除数为 0 时按 0 处理，不显示异常值",
+            "统计查询不得锁业务表，大查询走从库或物化视图"
+          ],
+          "exceptions": [
+            "所选范围超过 92 天：提示缩小范围，不静默截断",
+            "上一周期没有数据：环比显示为无对比，而不是无穷大",
+            "租户被停用后：历史统计仍可查看，新订单不再产生",
+            "员工传入非法月份：返回参数错误并提示选择正确月份"
+          ],
+          "tests": [
+            "环比周期的起止日期随范围长度正确推导，边界日不重复也不遗漏",
+            "各维度分组合计等于总数，核销率与取消率口径一致",
+            "租户管理员访问其他租户数据被拒绝",
+            "员工月度统计只含本人数据，月份非法被拒绝",
+            "Top 员工排行并列时的稳定排序"
+          ],
+          "source": "Luz-Dev/references/module-specs/report.json features 经营日报; Luz-System/references/admin-design.html 数据驾驶舱、图表规则; backend/SPEC.md §6 规则 9; 实战校验：平台与企业分析、员工月度统计；注：Luz-Dev 没有分维度分析的模块规格，此处以实战实现与后台设计规范为依据"
+        }
+      ]
+    },
+    {
+      "id": "exchange",
+      "name": "导入与导出",
+      "dev_module": "foundation",
+      "kind": "基础",
+      "summary": "后台数据的批量进出：Excel 模板导入（文件校验、逐行校验、失败行回传、可重复上传）与列表导出（与列表同一筛选、清洗成中文业务表头、脱敏、防公式注入、审计），数据量大时转异步导出任务。",
+      "functions": [
+        {
+          "id": "BF-EXCHANGE-01",
+          "name": "导入模板与文件校验",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "后台提供可下载的 Excel 导入模板，上传时先校验文件类型、表头和行数，再进入逐行处理。",
+          "frontend": "导入弹窗提示按模板填写、已有记录会更新，按钮依次是下载导入模板、选择文件（只接受 .xlsx）、开始导入；上传中显示进度并禁用重复点击。文件为空、不是 .xlsx、表头不对、超过行数上限时在弹窗内就地提示原因和处理办法，不关闭弹窗。导入完成后显示摘要（新增、更新、失败各多少）并在关闭时刷新列表。模板里除数据工作表外有一张填写说明工作表，写清必填项、长度限制、唯一键和行数上限。",
+          "backend": "模板接口返回 xlsx：第一张工作表是中文业务表头（如姓名、工号、部门），第二张是填写说明。上传接口 multipart，依次校验：文件非空、扩展名为 .xlsx（并核对文件头魔数）、第一行表头与模板一致（不一致提示请使用导入模板）、数据行数不超过上限（实战值：人员名单 1000 行，周菜单 500 行，超过提示一次最多导入 N 行），空行跳过，单元格去首尾空格，记录 Excel 行号（表头为第 1 行）。读取用流式解析，不把整个文件读进内存；文件不落盘，处理完即丢弃。",
+          "database": "导入本身不需要专用表：数据按业务唯一键（如租户加工号）写入业务表；每次导入写一条操作日志，记录操作人、新增数、更新数、失败数。需要异步导入、可追溯批次或仅重试失败项时，增加 import_batches（kind、operator_id、total、success、failed、skipped、status、created_at）与 import_batch_rows（batch_id、row_no、status、reason）。",
+          "tech": "Excel 读写用成熟库（Java 可用 Apache POI 系列，Python 可用 openpyxl），表头文字和列顺序在代码里用常量定义，模板与校验共用同一份。文件类型按魔数校验，不信任扩展名与客户端声明的类型；上传大小受文档类上限约束。同步导入行数上限按项目定（实战 500 到 1000 行），更大的文件按 BF-EXCHANGE-04 的异步任务方式处理。导入接口需要对应权限，并按租户隔离。",
+          "rules": [
+            "导入必须使用系统提供的模板，表头不符直接拒绝并提示下载模板",
+            "单次导入行数有上限，超过时整体拒绝并写明上限",
+            "文件类型按内容校验，只接受 .xlsx，不执行宏、不解析外部链接",
+            "导入权限与租户由登录信息决定，改参数导入不到别的租户",
+            "每次导入写操作日志：谁、何时、新增多少、更新多少、失败多少"
+          ],
+          "exceptions": [
+            "上传空文件或损坏的文件：提示无法读取文件，请使用导入模板填写后上传",
+            "上传 .xls、.csv 或改了扩展名的文件：提示请上传 Excel 文件（.xlsx）",
+            "表头顺序被改动或缺列：提示文件格式不正确，并列出模板表头",
+            "同一文件被重复上传：按业务唯一键更新，不产生重复记录"
+          ],
+          "tests": [
+            "空文件、非 .xlsx、表头错误、超过行数上限各被拒绝且提示明确",
+            "模板可下载，用模板填写的文件可成功导入",
+            "空行被跳过，单元格首尾空格被去掉，行号与 Excel 一致",
+            "改了扩展名的非 Excel 文件被拒绝",
+            "导入写入操作日志且只能导入到本租户"
+          ],
+          "source": "Luz-Dev 无导入模块规格（references/module-specs 与 backend 均未覆盖 Excel 导入）；依据实战校验：人员名单导入与周菜单导入；Luz-Dev/references/result-patterns.md §6；Luz-Dev/references/admin.md Lists, filters and export；FILE-001"
+        },
+        {
+          "id": "BF-EXCHANGE-02",
+          "name": "逐行校验与失败行回传",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "导入时逐行校验并写入合格的行，不合格的行带行号和原因回传，用户可下载失败行修正后只重传失败项。",
+          "frontend": "导入结果区显示摘要和失败行表格：行号、失败原因、原始内容，原因用业务语言写（姓名为空、工号与第 3 行重复、日期格式不正确，请填写如 2026-10-12），不显示技术异常。提供下载失败行按钮，得到的文件保留原列并多一列失败原因，用户修正后可直接再次上传，成功项不会重复。全部失败时不显示成功提示，全部成功时只显示摘要。汇总始终满足 总数 = 成功 + 失败 + 跳过。预览型导入（如排班、排餐）只解析不写库，把结果填入页面表格供检查，确认后再保存。",
+          "backend": "逐行处理：必填项、长度（超过字段上限提示超过 N 个字）、格式（日期兼容 2026-10-12、2026/10/12、10月12日 和 Excel 序列号）、枚举名称映射到编号（不存在或重名时提示）、文件内重复（与第 N 行重复）、与库内数据的关系校验。合格行按业务唯一键 upsert（存在则更新、不存在则新增），失败行跳过并记录行号与原因，返回 {created, updated, failed:[{row, reason}]}。整个导入在一个事务内，合格行一起提交，遇到非预期异常整体回滚。大文件改为异步批次，失败行落 import_batch_rows，可仅重试失败项。",
+          "database": "业务表以业务唯一键（如租户加工号）建 UNIQUE 约束，upsert 靠它保证重复上传幂等。失败原因不进业务表；需要追溯时写 import_batch_rows（row_no、status、reason、原始内容摘要）。日期等字段在落库前统一转换为标准格式，按门店或租户时区解释。",
+          "tech": "失败行文件在服务端按需生成：原列加失败原因列，文件名写中文标题与批次，不长期保存，下载链接短时有效。upsert 在 MySQL 用 INSERT … ON DUPLICATE KEY UPDATE，PostgreSQL 用 ON CONFLICT；更新时只改模板里出现的列，不清空其他字段。重试沿用原批次和项目标识，避免成功项被重复执行。每行校验的提示语集中管理，便于文案维护。",
+          "rules": [
+            "合格的行写入，不合格的行跳过并回传，不因个别行失败而整份拒绝",
+            "失败原因必须具体到行号和字段，用业务语言，不展示技术异常",
+            "同一文件内业务唯一键重复的，第二次及以后出现的行判为失败，并指出与第几行重复",
+            "已存在的记录按唯一键更新，而不是报重复，上传结果区分新增与更新",
+            "汇总必须满足 总数 = 成功 + 失败 + 跳过，批量操作不得吞掉单条错误"
+          ],
+          "exceptions": [
+            "日期、金额等格式无法识别：该行失败并提示可接受的写法，其他行继续",
+            "名称对应多条记录（重名）：该行失败，提示改用编号或补充信息消除歧义",
+            "导入中途数据库异常：整体回滚，提示稍后重试，不留下半份数据",
+            "用户修正失败行后再次上传完整文件：已成功的行按唯一键更新，不重复新增"
+          ],
+          "tests": [
+            "必填为空、超长、文件内重复、名称不存在各产生对应的失败原因和正确行号",
+            "合格行写入、失败行回传，总数等于成功加失败加跳过",
+            "同一文件重复上传结果幂等，不产生重复记录",
+            "失败行文件包含原列与失败原因列，修正后可再次导入",
+            "预览型导入只解析不写库"
+          ],
+          "source": "Luz-Dev/references/result-patterns.md §6 异步任务与部分成功; 实战校验：导入时逐行校验、与第 N 行重复、新增与更新计数，只解析不写库、多种日期格式；Luz-System/references/admin-design.html 批量操作部分成功；注：失败行下载文件在实战里只回传 JSON 列表，下载文件为本底座补充"
+        },
+        {
+          "id": "BF-EXCHANGE-03",
+          "name": "列表导出与表头清洗",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "列表页按当前筛选导出全部数据，字段清洗成业务人员看得懂的中文表头和取值，敏感信息脱敏，导出行为写审计。",
+          "frontend": "只在确有离线使用需求的列表放导出按钮，按钮写成导出筛选结果（共 N 条），范围等于当前筛选且不再让用户重选条件；数据不超过同步上限（5000 行）时直接下载，按钮转加载，更多时转异步导出（见 BF-EXCHANGE-04）。文件名写中文标题与范围，例如 订单_已支付_2026-10-01至2026-10-28。超过硬上限时提示缩小日期或筛选范围。导出的预览或示例放在带 data-export-preview 标记的容器里，便于检查表头。",
+          "backend": "GET …/export 与列表使用同一个 ListSpec，筛选条件一致，先 count，超过硬上限（默认 20 万行，模块可调低，如审计导出 5 万行）返回 4225，否则按行流式输出，每批 1000 行。serialize 负责清洗：中文业务表头，不出现英文字段名、下划线字段名或内部编码；枚举翻译成中文，布尔写是或否；日期统一 yyyy-mm-dd HH:mm（按门店时区）；金额保留两位小数且单位写在表头（如单价（元））；去掉内部编号、技术字段和空列；按业务分组排序，一格一个事实。手机号、证件号脱敏，明文需单独权限并记录用途。导出写审计，记录操作人、筛选条件、行数。",
+          "database": "导出只读，不改业务表。审计记录写 audit_logs：action 为 export、resource 为导出对象、reason 为用途、after_json 记录筛选条件与行数，与请求同事务提交。大表导出走从库或物化视图，查询带超时，避免锁业务表。",
+          "tech": "以 UTF-8 BOM 开头的 CSV 适合系统间交换与大数据量，业务人员使用的明细用 xlsx（带合计行与合适列宽）；两种都要防公式注入：以 =、+、-、@、制表符、回车及其全角形式开头的文本前加单引号。同步上限 5000 行，硬上限 20 万行，超出返回 4225。时间按门店时区输出。导出权限单独设置（module:export），重要导出可要求二次验证。",
+          "rules": [
+            "导出的就是列表里按当前筛选看到的全部数据，不是只导当前页",
+            "导出文件不出现英文字段名、数字状态码、内部编号或空列，文件名写中文标题与范围",
+            "手机号等个人信息默认脱敏，需要明文须单独权限并记录用途",
+            "任何导出都写审计：谁、何时、什么条件、多少行",
+            "文本以公式字符开头时必须转义，防止在表格软件里被当作公式执行"
+          ],
+          "exceptions": [
+            "筛选结果超过硬上限：返回 4225 并提示缩小范围，不生成部分文件",
+            "导出过程中数据变化：以开始导出时的快照为准，不要求实时一致",
+            "导出过程中请求中断：不留下半份文件，再次导出重新生成",
+            "无导出权限：按权限不足处理，按钮不显示"
+          ],
+          "tests": [
+            "导出与列表在同一筛选下行数一致，导出的是全部结果而不是当前页",
+            "表头全部为中文，枚举与布尔已翻译，金额两位小数，没有内部编号和空列",
+            "以 =、+、-、@ 开头的内容被转义，文件带 BOM 在 Excel 里不乱码",
+            "手机号脱敏，导出行为写审计且包含筛选条件和行数",
+            "超过硬上限返回 4225，不生成文件"
+          ],
+          "source": "Luz-Dev/backend/SPEC.md §3.4 导出; backend/00-framework/code/luzback/export.py; backend/22-admin-rbac/MODULE.md §4 R6; references/admin.md Lists, filters and export; Luz-System/references/admin-design.html 导出前清洗; ADMIN-002; 实战校验：订单导出（合计行、订单明细表头）；注：export.py 的时间含秒且只出 CSV，与后台设计规范的 HH:mm 和 xlsx 要求不完全一致"
+        },
+        {
+          "id": "BF-EXCHANGE-04",
+          "name": "异步大表导出",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "可选",
+          "summary": "数据量大时后台提交导出任务，立即返回任务编号，由任务进程分批生成文件，完成后通知申请人下载。",
+          "frontend": "点击导出后弹出已开始生成的提示，不阻塞页面，进度显示在顶栏消息里；离开页面任务继续。导出记录页列出每次导出：内容、条件摘要、状态（等待、生成中、已完成、失败）、行数、下载按钮和过期时间，过期后需重新导出，失败的可一键重新提交。完成时在顶栏消息通知申请人。超过硬上限时在提交前就提示缩小范围，不创建任务。",
+          "backend": "POST /api/v1/admin/exports（需 Idempotency-Key 与导出权限）接收 kind 与 filters，校验筛选合法、行数不超过硬上限（20 万），创建任务并返回 export_id；GET /api/v1/admin/exports/{id} 返回状态、行数、完成后的短时下载地址。任务进程用 SELECT … FOR UPDATE SKIP LOCKED 领取待执行任务，状态 pending 到 running 到 done 或 failed，分批（每批 1000 行）读取并写入文件存储，完成后生成 24 小时有效的下载地址并通知申请人；出错置 failed 并记录原因，可重新提交。申请人只能看自己的导出。",
+          "database": "export_jobs：admin_user_id、kind、filters（JSONB）、status（pending、running、done、failed）、row_count、file_id、error、expires_at（下载截止，24 小时）；索引 (admin_user_id, created_at DESC) 与 (status, created_at)。创建导出和下载都写审计，审计中记录条件与行数，不记录文件内容。",
+          "tech": "导出任务读从库，使用服务端游标或 yield_per 分批，避免一次载入全部数据；文件写入对象存储并设置过期删除，由清理任务回收。下载地址是带签名的短时链接，不暴露文件路径。每个用户同时运行的导出任务数设上限，防止占满资源。数据脱敏与表头清洗规则与同步导出完全相同，复用同一个 serialize。",
+          "rules": [
+            "超过同步上限的导出必须走异步任务，不能阻塞请求",
+            "下载地址 24 小时内有效，过期后需重新导出",
+            "导出包含个人信息的，字段脱敏；需要明文须单独权限并记录用途",
+            "只有申请人能看到和下载自己的导出文件",
+            "创建导出与下载都写审计"
+          ],
+          "exceptions": [
+            "任务执行中途失败：置 failed 并记录原因，用户可重新提交，不留下半份文件",
+            "数据量超过硬上限：创建时返回 4225 并提示缩小范围",
+            "任务进程重启：运行中的任务按超时回收为待执行，由下一轮重新领取",
+            "下载链接已过期：返回已过期并引导重新导出"
+          ],
+          "tests": [
+            "超过同步上限的导出创建任务并返回任务编号，不阻塞请求",
+            "任务状态按 pending、running、done 流转，失败可重新提交",
+            "他人的导出任务返回 4040，过期链接不可下载",
+            "多实例同时领取只有一个执行同一个任务",
+            "导出文件与同步导出的表头、脱敏规则一致"
+          ],
+          "source": "Luz-Dev/references/module-specs/report.json features 导出, flows 导出, tables export_jobs, exceptions 导出数据量过大; backend/SPEC.md §3.4 导出; backend/00-framework/code/luzback/export.py; Luz-System/references/admin-design.html 异步导出; 注：SPEC 称异步导出由 24-report 提供，但 24-report 目录目前为空"
+        }
+      ]
+    },
+    {
+      "id": "job",
+      "name": "定时任务与后台作业",
+      "dev_module": "foundation",
+      "kind": "基础",
+      "summary": "业务之外的后台作业底座：任务注册与调度（固定间隔、防重复执行）、事务发件箱与事件消费、关单查单对账等补偿任务、清理任务与运行记录告警；所有任务可重复执行、分批、单条隔离，外部失败不推断结果。",
+      "functions": [
+        {
+          "id": "BF-JOB-01",
+          "name": "任务注册、调度与防重复执行",
+          "surfaces": [
+            "backend",
+            "admin"
+          ],
+          "kind": "基础",
+          "summary": "各业务模块登记自己的定时任务，由独立的调度进程按固定间隔运行；多实例部署时同名任务同一时刻只有一个实例在跑。",
+          "frontend": "没有面向会员的界面。业务页面里能看到任务的结果（订单自动关闭、券过期、会员卡到期），因此倒计时与过期判断一律由服务端字段驱动（如 pay_deadline_at、expires_at），前端不用本地定时器假设任务已经执行。运维侧用命令行 jobs list 在上线前核对任务清单，后台系统状态页或日志平台只读展示任务最近运行时间、状态、耗时，失败时出告警入口。",
+          "backend": "每个模块在 jobs 文件导出 JOBS，元素是 Job（名称、间隔秒数、函数、锁时长），任务名全局唯一，重名则启动失败。调度进程每秒检查到点的任务，先抢同名任务的分布式锁（SET NX PX，锁时长略小于间隔），抢不到就跳过本轮；每次运行新建 trace，日志带 job 与 run_id，开始时取一次运行配置快照，结束写 job.finished（结果与耗时）。任务体必须幂等：按时间窗口加业务键判断，按日的任务在任务体里判断日期窗口，不依赖 Cron 表达式。只加载启用模块的任务。SIGTERM 后完成当前一轮再退出，每轮写心跳文件供容器健康检查。",
+          "database": "scheduler_runs：job（任务名）、run_id、started_at、finished_at、status（成功、失败）、error、host，索引 (job, started_at)。分布式锁放 Redis（key 为任务名，值为令牌，带过期）。对正确性要求高的任务不依赖锁，依赖业务表的唯一约束和条件更新；需要租约时再加围栏令牌（claim_version 单调递增，写入带 WHERE claim_version = 旧值）。",
+          "tech": "API、worker、scheduler 分成三个进程各自横向扩展，一个容器一个进程。生产环境的调度进程必须配置 Redis 作分布式锁，否则拒绝启动；锁只用来避免重复劳动，租约过期后旧持有者仍可能写入，正确性由幂等、唯一约束和条件更新承担。小项目单实例时可用框架自带的定时注解，但要换成多实例就必须补上锁。tick 默认 1 秒；任务按状态加时间建索引扫描。",
+          "rules": [
+            "所有任务必须可重复执行，重复执行不产生重复副作用",
+            "同名任务全局同一时刻只有一个实例执行，锁只是优化，正确性靠幂等",
+            "任务名全局唯一，新增任务必须登记并出现在上线前的任务清单里",
+            "每次运行带 trace、job、run_id，结束必须写运行结果",
+            "优雅退出：收到终止信号后完成当前一轮再退出"
+          ],
+          "exceptions": [
+            "多个实例同时到点：只有抢到锁的运行，其余本轮跳过",
+            "锁持有者长时间停顿、租约已过期：新实例接手，旧实例若继续写入由幂等和围栏令牌挡住",
+            "任务函数抛异常：记录失败与堆栈，下一轮照常运行，不影响其他任务",
+            "调度进程停机期间错过的轮次：扫描类任务下一轮自然补上，按日任务由窗口判断补跑前一日"
+          ],
+          "tests": [
+            "任务发现：实例与三元组两种登记方式，重名启动失败",
+            "按间隔执行；两个实例并发只执行一个",
+            "任务重复执行结果不变；任务抛异常不影响下一轮",
+            "收到终止信号后完成当前一轮再退出，心跳文件持续更新",
+            "生产环境缺少 Redis 配置时调度进程拒绝启动"
+          ],
+          "source": "Luz-Dev/backend/25-jobs/MODULE.md §2, §4, §6, §13; backend/SPEC.md §10; backend/00-framework/code/luzback/scheduler.py; references/patterns/jobs.md §2; references/patterns/scheduler.md §4.2-§4.3; JOB-001; 注：foundation 模块规格写数据库咨询锁，25-jobs 写 Redis 锁；25-jobs 不支持 Cron 表达式而模块规格里写了每日固定时刻"
+        },
+        {
+          "id": "BF-JOB-02",
+          "name": "事务发件箱与事件消费",
+          "surfaces": [
+            "backend",
+            "admin"
+          ],
+          "kind": "基础",
+          "summary": "业务数据与待发布事件在同一事务写入，由 worker 至少一次地投递给订阅者，订阅者按事件编号去重，失败退避重试并进入失败队列告警。",
+          "frontend": "面向会员的页面不依赖事件何时投递完成：支付结果页、订单详情都轮询服务端状态，不假设事件已处理。运维页只读展示发件箱积压数、失败事件（主题、次数、最后错误），有权限的运维人员可以对失败事件重放；重放前确认框写明主题与数量。",
+          "backend": "业务代码调用 enqueue_event(db, topic, payload) 与业务写入同事务。worker 用 SELECT … FOR UPDATE SKIP LOCKED 取到点的待投递事件（next_attempt_at 不晚于现在），按主题调用全部订阅者，订阅者在各自 events 文件的 SUBSCRIPTIONS 中登记，处理函数签名为 handler(db, payload, event_id)，必须幂等且不自己提交。每个订阅者独立会话，成功即提交；任一订阅者失败则整个事件按 1 分钟、5 分钟、30 分钟、2 小时、12 小时退避重试，5 次后置 failed 并告警，已成功的订阅者靠自身幂等不重复生效。没有订阅者的主题直接确认。消费者先 mark_processed(consumer, event_id) 再处理。",
+          "database": "outbox_events：event_id（唯一）、topic、aggregate_type、aggregate_id、version、payload_json、status（pending、done、failed）、attempts、next_attempt_at、occurred_at、traceparent，索引 (status, next_attempt_at)。processed_events：UNIQUE(consumer, event_id)。事件载荷只放编号与必要字段，不放手机号、openid、支付签名。",
+          "tech": "默认是单体加发件箱：至少一次投递，消费端幂等，不引入事务消息或两阶段提交；需要更高吞吐时可经 Redis Streams 或 MQ 转发，但发件箱仍是事实来源。同一业务对象的事件带版本号，消费者丢弃旧版本。事件带 traceparent，消费端接上生产者的链路；订阅者失败只记一次带堆栈的日志。worker 与 API 分进程部署，tick 约 1 秒。",
+          "rules": [
+            "事件与业务数据同事务写入，业务回滚则事件不存在",
+            "订阅者处理函数必须幂等且不自己提交，用 event_id 去重",
+            "失败按退避重试，有上限，超过上限进入失败队列并告警，不无限重试",
+            "事件载荷不含个人敏感信息，只含编号与必要字段",
+            "失败事件修复后可人工重放，重放同样靠幂等保证不重复生效"
+          ],
+          "exceptions": [
+            "事件消费者长期失败：事件置 failed 并告警给开发值班，修复后手动重放",
+            "同一事件被重复投递：processed_events 唯一约束使订阅者只处理一次",
+            "业务事务中途失败：业务数据与发件箱事件一起回滚，不留下孤立事件",
+            "一个订阅者成功、另一个失败：整个事件重试，已成功的订阅者靠幂等跳过"
+          ],
+          "tests": [
+            "同一请求并发 10 次只产生 1 条业务记录和 1 个事件",
+            "事务中途失败时业务数据与事件都不存在",
+            "消费者重复收到同一事件只处理一次；订阅者失败重试而成功者不重复生效",
+            "退避间隔与 5 次后 failed 并告警，失败事件可重放",
+            "无订阅者的主题被直接确认"
+          ],
+          "source": "Luz-Dev/references/module-specs/foundation.json features 事务发件箱, 消费去重, flows 事件投递; backend/25-jobs/MODULE.md §4; backend/SPEC.md §6 规则 6; references/patterns/consistency.md §3-§4; ORDER-006; 注：foundation.json 写失败 10 次进入死信、状态 pending/done/dead，SPEC 与 25-jobs 写 5 次后 failed，此处按后者"
+        },
+        {
+          "id": "BF-JOB-03",
+          "name": "补偿与对账类任务",
+          "surfaces": [
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "关单、支付查单、退款重提与查询、券与卡到期、自动完成、每日对账等扫描类任务的统一做法：分批、单条隔离、外部失败保持原状态。",
+          "frontend": "任务产出的结果在业务页面里体现：待支付订单到点变为已关闭并显示原因，券和会员卡到期后显示已过期，退款状态随任务更新；对账差异进入后台待办并提醒处理。前端不需要也不应该触发这些任务，页面只展示服务端状态，并对支付、退款这类确认中的状态做有界轮询。",
+          "backend": "每个任务的统一写法：按状态加时间的索引取一批到点记录（每批 100 到 500 条，取运行配置），逐条独立事务处理，一条失败不影响其他条；全部基于状态机条件更新和唯一约束，重复执行不重复生效；外部接口（查单、关单、退款）失败时保持原状态，下一轮重试，不推断结果。常见任务与间隔：超时关单 60 秒；支付查单补偿 30 秒；退款重提与退款查询各 60 秒；发货信息补录 300 秒；券过期 300 秒、到期提醒 3600 秒；自动完成与自动同意 3600 秒；钱包与积分对账、购买名额计数清理每日一次；支付账单对账每 1800 秒检查一次并在账单日 10:00 之后下载。",
+          "database": "各任务依赖的扫描索引：订单 (status, pay_deadline_at)，支付单 (status, next_query_at)，退款单 (status, next_query_at)，券 (status, valid_to)，会员卡 (status, ends_at)，售后单 (status, due_at)。记录自身带 next_attempt_at、attempts、needs_manual 等重试字段，补偿不另建队列。对账结果写差异表（batch、类型、本地与渠道金额、已处理标记），重跑保留已处理项。",
+          "tech": "默认用定时扫描：简单可靠、天然可重试，缺点是分钟级延迟；订单量大时可叠加 Redis 有序集合或 MQ 延迟消息，但消息可能丢，必须保留扫描兜底。任务逐条处理时用注入的 now 便于测试；时间以 UTC 存储，业务日按门店时区。每轮记录处理数、失败数、耗时，积压超过阈值告警。对账差异进人工队列，不自动修平。",
+          "rules": [
+            "每个任务可重复执行、分批限量、单条隔离",
+            "外部接口失败时保持记录原状态，下一轮重试，不推断成功或失败",
+            "补偿只依赖状态机条件更新与唯一约束，不依赖任务只运行一次",
+            "每个已提交但后续失败的场景都要有对应的补偿任务",
+            "对账差异进入人工队列，不自动修平"
+          ],
+          "exceptions": [
+            "渠道查单超时：本轮跳过，库存与券原样保留，下一轮再查",
+            "一批里某条记录处理失败：只回滚该条，其余继续，失败记录下轮重试",
+            "任务积压（处理速度跟不上到点速度）：告警并调大批次或缩短间隔，不丢记录",
+            "补偿与回调同时处理同一记录：条件更新让其中一个生效"
+          ],
+          "tests": [
+            "重复执行结果不变；并发两个实例执行不重复处理",
+            "外部接口失败时记录保持原状态",
+            "批量上限生效；单条失败不阻塞后续",
+            "超时关单：已付不取消、查询失败不取消、重复执行不重复回补",
+            "对账重跑幂等并保留已处理差异"
+          ],
+          "source": "Luz-Dev/references/module-specs/foundation.json 定时任务清单; references/patterns/jobs.md §1-§4; references/patterns/order.md §3; backend/08-order/MODULE.md §8; backend/09-wechat-pay/MODULE.md §8; backend/10-after-sales/MODULE.md §8; backend/16-coupon/MODULE.md §9.3; JOB-001, ORDER-004, PAY-010, RFD-005; 注：foundation.json 的任务频率（查单每分钟、退款查询每 5 分钟）与 09 模块实现（30 秒、60 秒）不一致，此处按模块实现"
+        },
+        {
+          "id": "BF-JOB-04",
+          "name": "清理任务、运行记录与积压告警",
+          "surfaces": [
+            "backend",
+            "admin"
+          ],
+          "kind": "基础",
+          "summary": "过期数据按期限自动清理，任务运行有记录，积压、失败和心跳丢失触发告警。",
+          "frontend": "运维视图只读展示：各任务最近一次运行时间、结果、耗时，发件箱积压数与失败数，死信事件列表，以及告警入口。告警文案写清对象和数值（例如发件箱积压 1200 条，超过阈值 500 条），点击直达对应明细。不提供在业务后台里随意改任务间隔的入口，运行参数改配置文件。",
+          "backend": "清理类任务：幂等记录保留 24 小时后清理；购买名额计数行在周期结束 7 天后删除；过期导出文件、过期会话与令牌记录按期限清理，过期报价建议同样按保留期清理；登录日志默认 186 天；操作审计按保留期处理（见 BF-AUDIT-04）。每次清理分批执行并写一条运行日志。指标与告警：任务运行时长与失败次数、发件箱积压与失败数、心跳丢失、支付成功率、退款失败数、库存扣减失败率，超过阈值按运维手册告警；任务失败带堆栈只记一次。",
+          "database": "scheduler_runs 保存每次运行；idempotency_records 以 expires_at 索引扫描清理；outbox_events 已完成的事件建议按保留期删除，失败的保留供重放；processed_events 与事件同保留期清理（保留期由项目在方案中写明）。清理 SQL 必须分批（LIMIT 加主键游标）并走索引，避免长事务和大范围锁。",
+          "tech": "清理任务本身也是 JOBS 里的任务，同样幂等、分批、可重跑。保留期放运行配置，不写死；任何删除个人信息的任务要写运行日志但不写个人信息本身。指标按 Prometheus 导出，告警规则（燃烧率、5xx、依赖、发件箱、支付回调）按运维手册配置，只在日志里能看到的告警另行配置日志规则。健康检查 /healthz 看进程，/readyz 看数据库、Redis、迁移与配置版本。",
+          "rules": [
+            "清理任务必须分批执行，不能一次删除大范围数据而长时间持锁",
+            "保留期来自配置并与合规要求一致，到期删除或匿名化",
+            "任务失败、发件箱积压、心跳丢失都必须有告警和负责人",
+            "清理任务运行要写日志，但日志里不记个人信息本身",
+            "失败事件与失败任务不得被清理任务静默删除"
+          ],
+          "exceptions": [
+            "清理任务一次删除量过大：分批加游标，超时则下轮继续，不开长事务",
+            "清理期间有业务写入：只删除已过期且无引用的记录，条件带过期时间",
+            "心跳文件长时间不更新：容器健康检查失败并重启进程，同时告警",
+            "指标上报失败：不影响任务运行，记 WARNING 日志"
+          ],
+          "tests": [
+            "幂等记录 24 小时后被清理，未过期的保留",
+            "购买名额计数行周期结束 7 天后才被删除",
+            "清理任务分批执行，重复执行结果不变",
+            "积压与失败超过阈值时产生告警",
+            "失败事件在保留期内不被清理"
+          ],
+          "source": "Luz-Dev/backend/SPEC.md §6 规则 5, §10, §13 指标与告警; backend/08-order/MODULE.md §8; backend/22-admin-rbac/MODULE.md 登录日志保留; backend/25-jobs/MODULE.md §4; references/config-logging.md §3.9; references/operations.md §4; JOB-001, OBS-003; 实战校验：操作日志每日 03:30 清理"
+        }
+      ]
+    },
+    {
+      "id": "audit",
+      "name": "审计日志与可观测",
+      "dev_module": "foundation",
+      "kind": "基础",
+      "summary": "后台写操作与敏感读取留痕的审计日志（字段、同事务写入、只追加），请求编号与结构化日志的串联和脱敏，以及各类日志的保留期与审计查询；任何带后台的系统都需要。",
+      "functions": [
+        {
+          "id": "BF-AUDIT-01",
+          "name": "操作审计日志",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "后台写操作、权限变更、导出、退款与改价等关键动作写一条只追加的审计记录，与业务写入同一事务，记录谁在何时对什么做了什么。",
+          "frontend": "后台审计页列表默认近 30 天、每页 20 条，筛选项为操作者、动作、对象类型与编号、链路编号和时间区间，关键词匹配动作、对象编号和原因。每条审计写成可读的句子：谁、何时、对什么、做了什么、结果如何；点开详情抽屉看变更前后对比（只列有变化的字段，敏感字段已脱敏）、原因、来源 IP 和链路编号。页面只读，没有编辑和删除；导出按钮按当前筛选导出，需要审计读取权限。",
+          "backend": "写入函数 write_audit(db, actor_type, actor_id, action, resource, resource_id, before, after, reason, ip, user_agent, trace_id) 只 add 不 commit，与业务写入同事务，审计写入失败则业务一起回滚；diff() 只记录变化的字段。必须覆盖：全部后台写操作、权限与角色变更、登录与安全操作、导出、退款与改价、价格与库存修改、敏感明文查看、经营设置和前台文案修改。高风险动作（退款审批、权限变更、导出）要求原因必填。运行参数的变更不进审计表，而是看配置文件的提交记录和配置加载日志。",
+          "database": "audit_logs：id、actor_type（user、staff、system、agent）、actor_id、action（如 refund.approve）、resource、resource_id、before_json、after_json、reason（不超过 200 字）、ip、user_agent、trace_id、created_at，索引 actor_id、action、resource_id、created_at。表只追加：写入用的应用账号只有 INSERT 权限，审计员账号只读，没有 UPDATE 与 DELETE。需要按门店限定可见范围时增加 store_id 列。before 与 after 里的手机号、证件号、令牌写入前脱敏。",
+          "tech": "审计与业务同事务保证不会出现业务已变而没有审计，或审计存在而业务已回滚。JSON 序列化固定键顺序便于比对。小型单租户项目可用最小形态：operation_log 一张表，含操作者类型与编号、动作、对象类型与编号、详情（不超过 1000 字）、来源 IP、时间，同样与业务同事务写入，并有清理任务，但缺少前后对比、原因和链路编号时，在底座对照中标为调整。审计页自身的查看与导出也要记录。",
+          "rules": [
+            "后台写操作与本人安全操作必须同事务写审计，含前后对比、原因、IP、链路编号",
+            "审计表只追加，应用账号没有修改和删除权限，更正用新的记录",
+            "审计里不写明文手机号、证件号、令牌、支付签名和回调明文",
+            "退款审批、权限变更、导出、改价等高风险动作必须填写原因",
+            "审计页需要审计读取权限，并按账号的门店范围过滤"
+          ],
+          "exceptions": [
+            "审计写入失败：业务事务一并回滚，返回内部错误，不允许无审计的写入",
+            "系统任务触发的变更：actor_type 记为 system，仍写审计，带 job 与 run_id",
+            "字段含敏感信息：写入前脱敏，只保留可识别的片段（如手机号后四位）",
+            "审计数据量增长：按月分区并归档，查询默认带时间区间"
+          ],
+          "tests": [
+            "每个后台写接口都产生一条审计，业务失败回滚时审计也不存在",
+            "前后对比只含变化字段，敏感字段已脱敏",
+            "应用账号对审计表无 UPDATE 与 DELETE 权限，尝试修改失败",
+            "审计列表的筛选、详情与导出，导出行为本身写审计",
+            "高风险动作缺少原因时被拒绝"
+          ],
+          "source": "Luz-Dev/references/module-specs/foundation.json features 操作审计, tables audit_logs; backend/00-framework/code/luzback/audit.py; backend/22-admin-rbac/MODULE.md §3, §4 R6, §6; backend/SECURITY.md §8; references/config-logging.md §3.1; Luz-System/references/admin-design.html 审计记录写成可读的句子; OBS-002; 实战校验：操作日志记录；注：foundation.json 的字段名 object_type、before_data 与 audit.py 的 resource、before_json 不一致，此处按 audit.py"
+        },
+        {
+          "id": "BF-AUDIT-02",
+          "name": "敏感读取与导出留痕",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "手机号、证件号等敏感信息默认脱敏展示，查看明文需要专门权限并填写原因，每次查看和每次导出都留痕。",
+          "frontend": "列表与详情默认显示脱敏值（如 138****1234）。需要看明文时点击查看按钮，弹出确认框，必须填写原因，部分场景还要二次验证；明文只在弹框内展示，不写进 URL，不进本地缓存和日志。无权限的账号看不到查看按钮。导出按钮写清范围，导出文件里的手机号同样脱敏，需要明文导出须单独权限并填写用途。审计页能按动作筛出敏感读取记录。",
+          "backend": "敏感列用 AES-256-GCM 加密存储，另存 HMAC 哈希列用于等值查询（完整手机号按哈希精确匹配，脱敏片段按模糊匹配），响应默认返回脱敏值。明文查看接口（如 POST /staff/{id}/phone/reveal）需要 *:sensitive 权限，原因必填，调用 log_sensitive_read(db, staff, resource, resource_id, fields, reason) 与读取同事务写审计，动作名形如 staff.sensitive_read。导出同样写审计：筛选条件、行数、是否含明文。不允许先查出整行再在应用层过滤敏感字段，查询时就只取需要的列。",
+          "database": "加密列 phone_enc、哈希列 phone_hash、脱敏列 phone_masked 三列并存；字段加密密钥来自密钥服务（环境变量注入），生产必填，定期轮换。审计记录 resource、resource_id、fields（被查看的字段名）、reason、actor、ip、trace_id，不记录明文值本身。",
+          "tech": "密钥管理：字段密钥、令牌密钥、商户私钥、小程序密钥都不入仓库，生产启动检查拒绝开发默认值。响应脱敏统一由序列化层处理，避免各接口各写各的。敏感读取的权限码与普通读取分开（如 staff:read 与 staff:sensitive），遵循个人信息保护法对操作权限的要求。查看明文的次数与频率过高时触发安全事件告警。",
+          "rules": [
+            "手机号、地址默认脱敏，完整值需要专门的查看权限并写审计",
+            "查看明文必须填写原因，原因与读取同事务落审计",
+            "导出含个人信息的字段必须脱敏，明文导出需单独权限并记录用途",
+            "日志和审计里不记录完整手机号、地址、令牌、口令和支付签名",
+            "敏感列加密存储，查询用哈希列，不明文比较"
+          ],
+          "exceptions": [
+            "无查看权限的账号调用明文接口：返回 4030，并写一条越权安全事件",
+            "原因为空：返回参数错误，不返回明文，也不写成功审计",
+            "密钥缺失或轮换中：启动检查或读取报错，不降级为明文存储",
+            "跨门店查看他人数据：按 4040 处理，不泄露存在"
+          ],
+          "tests": [
+            "默认响应全部脱敏，无查看权限的账号拿不到明文",
+            "明文查看必须带原因，审计记录包含字段名而不含明文值",
+            "完整手机号按哈希精确查询命中，脱敏片段按模糊命中",
+            "导出文件手机号脱敏，导出行为写审计",
+            "生产配置检查拒绝开发默认密钥"
+          ],
+          "source": "Luz-Dev/references/module-specs/foundation.json features 操作审计（敏感读取）; backend/22-admin-rbac/MODULE.md R6 审计 2, §6 phone/reveal; backend/SPEC.md §3.5 字段约定; backend/SECURITY.md §3-§4, §8; OBS-002, ADMIN-002; Luz-Dev/references/config-logging.md §3.10"
+        },
+        {
+          "id": "BF-AUDIT-03",
+          "name": "请求编号、日志字段与脱敏",
+          "surfaces": [
+            "backend",
+            "admin",
+            "miniapp"
+          ],
+          "kind": "基础",
+          "summary": "每个请求都有可串起入口、下游、消息和定时任务的链路编号；日志用统一的结构化字段，敏感信息自动脱敏，安全事件单独成流。",
+          "frontend": "前端请求层读取响应头 X-Request-Id 与 X-Trace-Id 并随错误一起保存；通用错误（5000）提示里带可复制的编号，用户报障时直接提供；失败结果页展示 support_ref，便于客服定位。前端不在控制台、上报或本地存储里记录令牌、手机号、地址和支付参数；小程序与后台的异常上报只带编号、页面和版本。",
+          "backend": "请求入口解析 W3C traceparent：合法则沿用 trace 并新建 span，不合法则新建，兼容旧的 X-Request-Id 与 X-Trace-Id；响应头返回 X-Request-Id、X-Trace-Id、traceparent。每个请求结束写一条 http.request 汇总行（方法、路由模板、状态码、耗时 duration_ms、结果）。日志一行一条 JSON，字段含时间（UTC 毫秒）、级别、服务、环境、版本、实例、事件名、trace_id、span_id、request_id、用户引用、门店、结果与原因、错误类型与堆栈。字段名黑名单加正则脱敏，控制字符转义，字符串截断 512 字、堆栈 2000 字。登录失败、越权、令牌重放、验签失败、限流命中、输入校验异常写 security.* 事件并带 category=security。发件箱事件与定时任务带链路，同一异常只记一次。",
+          "database": "日志不写业务库：写 stdout，经采集器进入日志平台，本地文件只是缓冲。业务表与日志的关联靠编号：audit_logs.trace_id、outbox_events.traceparent、scheduler_runs.run_id。日志里不存完整交易明细，只放订单号等编号与状态，交易数据以数据库记录为准。",
+          "tech": "日志经有上限的异步队列写出，队列满时丢弃 DEBUG 与 INFO 并计数（luz_log_dropped_total），WARNING 以上与安全事件不丢，日志异常不影响业务；事件名集中登记，禁止随意字符串。接入 OpenTelemetry 时沿用同一个 trace_id。指标用 Prometheus：请求 QPS 与 p50、p95、p99 延迟、错误率、外部依赖延迟与失败率、熔断状态、发件箱积压、任务时长、日志丢弃数。网关访问日志与应用汇总行都保留。小项目至少要做到每个请求生成链路编号放进响应头并写进日志。",
+          "rules": [
+            "每个请求有链路编号，响应头返回，日志、审计、事件、任务都带上它",
+            "日志不记录完整手机号、地址、令牌、口令、支付签名和回调明文",
+            "安全事件单独成流并告警，不与普通运行日志混在一起",
+            "同一异常只在请求上下文里记录一次，避免重复堆栈",
+            "日志写出不阻塞业务，队列满时按级别降级而不是拖慢请求"
+          ],
+          "exceptions": [
+            "客户端传入伪造或格式错误的 traceparent：丢弃并新建链路，不信任外部输入",
+            "日志队列满：丢弃低级别日志并计数，业务请求不受影响",
+            "日志字段含敏感内容：按字段名黑名单与正则脱敏后再写出",
+            "未处理异常：转为 5000 通用错误，响应带编号，内部信息不回显"
+          ],
+          "tests": [
+            "每个请求都返回 X-Request-Id 与 traceparent，日志里能按 trace_id 串起入口、下游、事件、任务",
+            "日志字段齐全，敏感字段被脱敏，控制字符被转义，超长被截断",
+            "伪造的 traceparent 被丢弃并新建链路",
+            "队列满时丢 DEBUG 与 INFO 而不丢 WARNING 与安全事件",
+            "安全事件带 category=security"
+          ],
+          "source": "Luz-Dev/backend/SPEC.md §13 可观测性; backend/00-framework/MODULE.md 链路与日志; references/config-logging.md §3.1-§3.8; backend/SECURITY.md §8; Luz-Dev/references/result-patterns.md §7 support_ref; OBS-001, OBS-005, OBS-006, OBS-007, OBS-008; 实战校验：请求链路编号（X-Trace-Id）；注：foundation.json 称安全事件写审计表，config-logging.md 称安全事件单独成日志流，此处按后者"
+        },
+        {
+          "id": "BF-AUDIT-04",
+          "name": "保留期、归档与审计查询",
+          "surfaces": [
+            "admin",
+            "backend"
+          ],
+          "kind": "基础",
+          "summary": "运行日志、安全事件、审计、交易与支付记录各有明确的最低保留期；到期按期清理或匿名化，审计和登录日志可按条件查询和导出。",
+          "frontend": "审计页和登录日志页顶部写明本类记录的保留期限（例如审计记录保留 1 年，涉及个人信息的批量导出和越权操作保留 3 年），日期区间选择范围不超过保留期。筛选包括操作者、动作、日期区间、成功与否，导出按当前筛选并写审计，文件名写中文标题与范围。到期被清理的数据不在页面上出现，也不提示恢复。",
+          "backend": "按类别制定留存表并写进方案：网络与访问日志、运行日志不少于 6 个月（热存 30 天后归档）；安全事件不少于 6 个月，处置记录建议 3 年；审计记录建议 1 年，涉及个人信息的批量导出与越权操作建议 3 年；交易与订单含支付、物流、售后信息 3 年；支付流水与对账建议 5 年，作为会计凭证导出的部分按会计档案期限；后台登录日志默认 186 天且不少于 6 个月；抽奖资料不少于 2 年；智能体日志 6 个月且默认不记原文。到期由清理任务分批删除或匿名化，会员注销冷静期满后匿名化。GET /audit-logs 与 /login-logs 用 ListSpec 声明筛选，导出与列表同一声明。",
+          "database": "审计表按月分区，历史分区归档到冷存储并开启对象锁；法定期限未满时只存储与保护，不做其他处理。清理任务按 created_at 索引分批删除，带上限，写运行日志。保留期配置放运行配置（如 admin_rbac 的登录日志天数），审计保留期写进方案的上线章节，由商户确认。",
+          "tech": "留存期限从记录产生起算（交易类从交易完成起算）；单店小程序是否属于平台经营者是法律判断，默认按 3 年执行并请商户确认。集中留存需要日志平台（如 Loki 或云日志服务）配置保留期和对象锁，只存在一台机器上、没有备份的日志不算留存。保留期低于建议值时，在项目底座对照中标调整并写明理由（例如客户书面要求缩短，且不低于法定下限）。",
+          "rules": [
+            "每类日志有最低留存期限并写进方案，上线前由商户确认",
+            "法定期限未满不得删除，到期按期删除或匿名化",
+            "涉及个人信息的批量导出与越权操作的审计保留更长",
+            "审计和登录日志可查询、可导出，导出本身写审计",
+            "清理任务分批执行并留下运行日志，日志里不记个人信息本身"
+          ],
+          "exceptions": [
+            "审计表增长过快：按月分区并归档到冷存储，查询必须带时间区间",
+            "保留期未满却被要求删除（如会员注销）：个人信息匿名化，审计的编号与动作保留",
+            "导出的审计超过行数上限：返回 4225，要求缩小时间范围",
+            "日志平台不可用：本地缓冲保留，恢复后补传，并告警"
+          ],
+          "tests": [
+            "清理任务只删除超过保留期的记录，法定期限内的记录保留",
+            "审计与登录日志的筛选、详情、导出，导出写 audit.export",
+            "注销满冷静期后会员信息匿名化而审计编号保留",
+            "清理任务分批执行，重复执行结果不变",
+            "保留期配置变更后清理行为随之变化"
+          ],
+          "source": "Luz-Dev/references/config-logging.md §3.1 日志清单, §3.9 留存期限; backend/SECURITY.md §4 保留; backend/22-admin-rbac/MODULE.md §6 audit-logs, login-logs; references/module-specs/foundation.json exceptions 审计表增长; OBS-004; 注：foundation.json 写保留 3 年，config-logging.md 与 SECURITY.md 写建议 1 年、个人信息批量导出与越权操作 3 年，此处按后者"
+        }
+      ]
+    }
+  ]
+}

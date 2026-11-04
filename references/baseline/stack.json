@@ -1,0 +1,901 @@
+{
+  "schema_version": 1,
+  "name": "技术栈底座",
+  "layers": [
+    {
+      "id": "frontend-miniapp",
+      "name": "小程序前端",
+      "summary": "微信小程序端的框架、目录、请求层、配置与文案下发、代码更新和包体约束；外观来自设计令牌，不由组件库决定。",
+      "items": [
+        {
+          "id": "STK-MP-01",
+          "name": "框架与组件库",
+          "baseline": "原生微信小程序（TypeScript）；TDesign Mini Program 或 Vant Weapp 二选一，只取交互行为与无障碍，外观由产品令牌覆盖。",
+          "detail": "工程放在 apps/miniprogram/，入口为 app.ts 与 app.json，样式令牌集中在 styles/tokens.wxss。组件库在一个项目里只选一个、不混用，不得让平台或组件库的设计语言替代项目已批准的视觉系统。页面、动作、状态沿用已批准设计的编号（design-bindings.json），不从界面文字推导业务规则。",
+          "why": "原生框架没有额外编译层，基础库升级和平台审核的问题最少；组件库只借行为，视觉统一由设计令牌保证。",
+          "replace_when": "客户已有跨端代码库、需要同一份代码同时发 H5 或 App，或团队只维护另一种前端框架时，可以换成 uni-app 等跨端框架。换的时候必须写明：框架与编译到微信的版本、所选组件库、设计令牌如何落到该框架、主包与分包体积是否仍满足 2 MB 与 30 MB、真机与基础库矩阵怎么验证。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/miniprogram.md Defaults；Luz-Dev/SKILL.md Platform defaults"
+        },
+        {
+          "id": "STK-MP-02",
+          "name": "目录与页面栈",
+          "baseline": "按 apps/miniprogram/ 的固定目录组织：app.ts、app.json、styles/tokens.wxss、components/、pages/、services/（api、auth、cache）、utils/、tests/。",
+          "detail": "页面与路由沿用已批准设计的页面编号和路由关系，不把二级页改成标签页，也不新增重复入口。底部标签 2 至 5 个（官方建议不超过 4 个），只在一级页显示；二级页隐藏标签栏，左上角提供返回；页面栈最多 10 层，满时以替换方式打开。自定义导航时避开右上角胶囊和键盘，常驻控件不放在它们下面；需要分包时按产品生命周期划分，首页与核心流程留在主包。",
+          "why": "固定目录让设计绑定、测试和接手都能按同一结构找文件；页面栈与返回规则来自平台限制和用户在小程序里的预期。",
+          "replace_when": "项目换了前端框架（见 STK-MP-01）或只有单页流程、页面极少时，目录可按框架约定调整。换的时候必须写明新的目录树、页面编号与设计中页面编号的对应方式，以及页面栈深度和返回规则如何保证。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/miniprogram.md App structure、Screens and navigation；Luz-System/references/miniprogram-design.html 导航、页面栈与返回、版式参数"
+        },
+        {
+          "id": "STK-MP-03",
+          "name": "请求层",
+          "baseline": "全部接口经 services/api 一个请求封装发出，统一处理令牌、信封、错误码、超时与重试。",
+          "detail": "请求只发往小程序后台配置的 HTTPS 合法域名，每个请求带 Authorization: Bearer、X-Client: miniprogram、X-Client-Version（必填）和当前配置版本 X-Config-Version；写接口（POST、PUT、PATCH、DELETE）带 Idempotency-Key，由客户端生成 UUID，同一次操作的重试沿用同一个键。响应按 {code, message, data} 解析，code 为 0 才算成功；4010 刷新令牌一次，4090 刷新并提示，4092 一秒后用同一个键重试，4093 换新键重提，4290 按 Retry-After 禁用按钮，5000 提示并显示 request_id。只对读请求和带幂等键的写请求重试，请求可取消。顾客端列表用游标分页：limit 默认 10、上限 20，设计规定每批 20 条，所以端上显式传 limit=20，cursor 原样回传。",
+          "why": "鉴权过期、幂等、限流和错误归一放在一处，页面只管渲染与恢复；与后端信封和错误码一一对应，重试才不会重复下单。",
+          "replace_when": "项目对接的不是 Luz 后端（沿用客户已有后端，信封与错误码不同）时，请求层的信封解析和错误码映射可以调整。换的时候必须写明新的信封格式、错误码到页面状态的映射表、幂等键如何生成与传递、令牌过期和刷新的时序。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/miniprogram.md Defaults、Data and state；Luz-Dev/backend/API.md §1.2–§1.4；Luz-Dev/backend/SPEC.md §3.4、§4；Luz-System/references/miniprogram-design.html 列表加载"
+        },
+        {
+          "id": "STK-MP-04",
+          "name": "配置与文案下发",
+          "baseline": "页面文字与展示开关从 GET /api/v1/app/content 取，运行参数从 GET /api/v1/app/config 取，安装包只带同一份默认值兜底。",
+          "detail": "启动时先用本地缓存的有效值，立即可用，同时异步拉取新值；config 响应带 config_version（同时作 ETag，未变化返回 304），回到前台超过 5 分钟再拉一次（[client] config_refresh_s = 300）；content 在每次页面 onShow 带内容版本检查，有新版本就刷新本页文字。拉取失败、缺键或值非法时依次用上次有效值、安装包默认值，不显示空白或键名，也不挡住使用。结算、支付与表单填写进行中不切换配置；超长文字截断加省略号。客户端只用参数做显示与预检查，金额、权限、库存的判断仍由服务端执行。",
+          "why": "提示、须知和展示开关由运营在后台改、保存即生效，不用发版；兜底值保证弱网或接口异常时仍然能用。",
+          "replace_when": "文案极少且长期不变、项目没有文案与展示后台时，可以不用 content 接口，把文案写进安装包；config 接口始终保留。换的时候必须写明哪些文字写在包里、谁来改、改了怎么发版，以及为什么不需要运营在后台维护。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/miniprogram.md Defaults；Luz-System/references/config-design.html 客户端怎么拉、怎么用；Luz-Dev/references/config-logging.md §2.7；Luz-Dev/backend/config/runtime/base.toml [client]"
+        },
+        {
+          "id": "STK-MP-05",
+          "name": "代码更新与版本兼容",
+          "baseline": "用 wx.getUpdateManager 提示重启更新，必须修复的问题用最低可用版本强制，后端对旧版本保持过渡期兼容。",
+          "detail": "新版本下载完成（onUpdateReady）时提示「新版本已准备好，重启后使用」，用户确认后 applyUpdate，不在填写或支付过程中打断。最低可用版本是运行参数 [client] min_version_miniprogram，经 /api/v1/app/config 下发，低于它提示更新，同时在微信后台设最低版本。每个请求带 X-Client-Version，后端据此灰度和强制升级；接口向后兼容，破坏性变更升 /api/v2/ 且旧版至少并行 6 个月。发布顺序：开发者工具上传、体验版验收、提交审核、发布；发布后可在后台回退到上一版本（以官方说明为准）。",
+          "why": "小程序新版本要下一次冷启动才生效，旧版本会长期在线，所以版本头、最低版本和接口兼容期缺一不可。",
+          "replace_when": "项目不是小程序而是 H5 或原生 App 时，更新机制改按该端的方式。换的时候必须写明更新检查时机、强制升级条件、热更新能改什么（只限资源与配置，不下载执行会新增或改变功能的代码）、旧版本的兼容期。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-System/references/config-design.html 代码本身怎么更新；Luz-Dev/backend/ROUTING.md §5；Luz-Dev/backend/API.md §1.1；Luz-Dev/references/operations.md §2 小程序"
+        },
+        {
+          "id": "STK-MP-06",
+          "name": "包体与性能",
+          "baseline": "主包与每个分包各不超过 2 MB，全部分包合计不超过 30 MB（服务商代开发的小程序合计不超过 20 MB）。",
+          "detail": "首页和核心流程放主包，低频页面放分包，图片放服务器不打进包；非关键页面延后加载。展示图片按屏幕所需尺寸请求，由后端或 CDN 出缩略图；用户拍照或相册上传的照片传原图，端上不压缩、不按大小拦截。可重复请求的目录与内容类数据带 TTL 和失效规则缓存；为图片预留布局空间避免跳动；滚动处理函数里不做可延后或可合并的工作。发布前度量冷启动、首屏有意义内容、交互延迟和滚动流畅度，并与发布目标的预算比较。",
+          "why": "2 MB 与 30 MB 是平台限制，超了无法上传；原图上传加后台统一处理能保证画质，端上压缩会不可逆地损失。",
+          "replace_when": "平台更新了包体限制（以官方文档当前版本为准）时按新限制调整；业务简单、全部页面都在主包 2 MB 以内时可以不分包。换的时候必须写明实际主包与各分包大小、分包划分依据、超限时的处理办法。",
+          "mandatory": true,
+          "owner": "luz-system",
+          "source": "Luz-System/references/miniprogram-design.html 平台限制与能力；Luz-Dev/references/miniprogram.md Performance；Luz-Dev/references/standards.json FILE-001"
+        },
+        {
+          "id": "STK-MP-07",
+          "name": "本地存储、授权与平台适配",
+          "baseline": "本地存储只放非敏感偏好、草稿和带过期时间的缓存；令牌与支付细节放平台支持的安全存储；授权在用到功能时才申请；平台能力一律包在适配器后面。",
+          "detail": "登录、支付、地图、订阅消息、扫码与相机、定位、分享、客服、文件操作都包在适配器后面并配测试替身，启用的每一项都要在真机上验证。令牌与支付细节不进日志。授权不在启动时一次性申请，用户拒绝后其余功能照常可用，不以退出方式停止全部服务，也不要求先输入手机号。手机号只用官方手机号快速验证组件取得（用户点按钮同意，仅向已认证的非个人主体开放，每次成功调用收费 0.03 元），头像昵称由用户自己填，昵称检测不过会被清空，页面要处理；订阅消息由用户点击触发，订阅与分享都不能作为继续下一步的条件。页面要有用户协议、隐私政策、隐私设置（撤回授权、注销）和联系客服入口。",
+          "why": "平台审核和隐私保护指引要求授权就近、可拒绝；适配器让业务逻辑在没有微信环境时也能测试。",
+          "replace_when": "项目不使用某项平台能力（例如没有支付、没有定位）时，对应适配器不用。换的时候必须写明不用的能力、拒绝授权后的替代路径，以及平台隐私保护指引里声明的信息项与实际收集一致。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/miniprogram.md Data and state、Platform integrations；Luz-System/references/miniprogram-design.html 合规；Luz-Dev/references/compliance.md §1"
+        }
+      ]
+    },
+    {
+      "id": "frontend-admin",
+      "name": "管理后台前端",
+      "summary": "管理后台的技术栈、权限路由、请求层、列表与导出、写操作与审计、版本提示和发布形态；外观取设计令牌。",
+      "items": [
+        {
+          "id": "STK-AD-01",
+          "name": "框架与组件库",
+          "baseline": "Vue 3 + Vite + TypeScript + Pinia + Vue Router + Element Plus + ECharts；外观来自设计令牌，不用组件库默认样式。",
+          "detail": "各库取当前稳定主版本，由包管理器的锁文件锁定，CI 按锁文件安装；Node.js 取当前活跃 LTS。组件库只提供行为和结构，主色、字阶（正文与表格 14 px、行高 22）、圆角和阴影都从设计令牌覆盖。状态用 Pinia，路由用 Vue Router，图表用 ECharts。页面形态（菜单、列表、居中浮层、驾驶舱）按网页管理后台设计规范，不在实现时改写。",
+          "why": "这套栈在中后台生态里最成熟，表格、表单、图表现成可用；设计令牌保证后台与其他前端、功能清单的视觉一致。",
+          "replace_when": "项目已有批准的其他前端栈、客户团队只维护 React 等其他框架，或后台要嵌入客户现有门户时，可以换。换的时候必须写明框架、组件库、状态、路由、图表库及版本，设计令牌如何覆盖组件默认样式，权限路由、列表默认值（每页 20 条）、居中浮层等规范如何继续满足。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/admin.md Defaults；Luz-Dev/SKILL.md Platform defaults；Luz-System/references/ui-standards.html 参考组件库",
+          "by_surface": {
+            "miniprogram": {
+              "why": "小程序与后台取同一套设计令牌，两端的颜色、字号和圆角保持一致。"
+            }
+          }
+        },
+        {
+          "id": "STK-AD-02",
+          "name": "路由与权限",
+          "baseline": "路由声明认证、权限码、标题与回退页；权限码取后端契约 <module>:<action>，客户端检查只影响界面，授权由服务端执行。",
+          "detail": "不自造客户端专用权限码。门店范围来自 GET /api/v1/admin/auth/me，所有列表和详情请求由服务端按门店范围过滤；越界 4031 显示 404 页，无权限 4030 显示 403 页，页面加载后权限被改变时显示服务端的拒绝结果。只读角色看到同样的页面，写操作按钮禁用并在悬停、聚焦、点按时说明原因，页面顶部一条浅色提示当前角色。菜单最多三级：一级 5 至 9 项，二级不超过 12，三级不超过 8，第一个菜单固定为数据驾驶舱；窄于 760 px 时侧栏收进抽屉。",
+          "why": "前端隐藏按钮不是安全措施；前后端共用同一套权限码和门店范围，才不会各存一份规则。",
+          "replace_when": "项目的权限模型不是「权限码加门店范围」（例如只有单一管理员，或权限由客户现有身份系统提供）时可以调整。换的时候必须写明权限来源与粒度、数据范围如何由服务端注入、权限变更后多久生效、越权时页面如何表现。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/admin.md Routes and permissions；Luz-Dev/backend/SPEC.md §4、§5；Luz-System/references/admin-design.html 权限与角色、多级菜单"
+        },
+        {
+          "id": "STK-AD-03",
+          "name": "请求层与会话",
+          "baseline": "一个请求封装统一带后台会话令牌、X-Client: admin 和写接口的 Idempotency-Key，并把错误码分流到固定的页面行为。",
+          "detail": "4010 刷新一次，仍失败回登录页；4011 跳 MFA 或重新认证（POST /api/v1/admin/auth/reauth，完整认证后 5 分钟内有效）；4030 提示或 403 页，4031 显示 404 页；4090 重新加载该记录并保留用户已填的输入；4092 一秒后用同一个键重试，4093 换新键重提；4290 按 Retry-After 禁用按钮；5000 显示 request_id 供复制。后台会话空闲 15 分钟、绝对 8 小时到期，到期回登录页。后台域名必须列入后端 LUZ_CORS_ORIGINS；若改用 Cookie 会话，则启用 SameSite、CSRF 令牌与 Content-Security-Policy 的 frame-ancestors。",
+          "why": "错误码到页面行为的映射写在一处，幂等重试、重新认证、版本冲突才会在每个页面表现一致。",
+          "replace_when": "后端不是 Luz 后端，或后台与后端同域并使用 Cookie 会话时，令牌携带方式与 CSRF 处理要调整。换的时候必须写明令牌载体、过期与续期方式、错误码映射表、CSRF 与跨域策略、重新认证入口。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/admin.md Writes and audit；Luz-Dev/backend/SPEC.md §4、§6；Luz-Dev/backend/SECURITY.md §1、§5；Luz-Dev/backend/API.md §1.2；Luz-Dev/references/standards.json ADMIN-003"
+        },
+        {
+          "id": "STK-AD-04",
+          "name": "列表、筛选与导出",
+          "baseline": "服务端分页（page 与 page_size，默认 20，可选 10、20、50、100，最大 100），筛选、排序、页码写进 URL，导出与列表共用同一份筛选声明。",
+          "detail": "筛选字段由后端 ListSpec 声明，未知参数返回 4001；page × page_size 不超过 10000，更深的翻页要求缩小筛选；排序字段白名单最多 3 个，默认 -created_at；用户选的每页条数在本机记住。顶部外露筛选最多 4 个，其余收进「更多筛选」；列表打开即是最需要处理的默认视图（例如订单默认「已支付」），「全部」放在可选项里。跨页选择与当前页选择分开，批量操作报告部分成功并提供失败行下载。导出：同步导出不超过 5000 行，更多转异步导出任务；单次硬上限默认 20 万行，超出 4225；UTF-8 BOM，防公式注入，敏感字段脱敏，每次写审计；只有测量表明列表无法保持响应时才做虚拟滚动。",
+          "why": "链接可分享、刷新不丢视图；筛选、排序和导出共用一份声明，才不会出现列表和导出口径不一致，也避免手写 SQL 拼接。",
+          "replace_when": "数据量极小且永远不超过一页的列表（例如固定的 5 个会员等级）可以不分页；客户要求不同的默认条数时可调整。换的时候必须写明该列表的数据量上限、默认条数及可选项、导出上限与同步和异步的分界。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/admin.md Lists, filters and export；Luz-Dev/backend/SPEC.md §3.4；Luz-System/references/admin-design.html 分页、筛选、导出、列表的默认视图"
+        },
+        {
+          "id": "STK-AD-05",
+          "name": "写操作、确认与审计",
+          "baseline": "危险操作的确认框写明对象、数量、金额与后果，资金与敏感操作要求重新认证，每次影响数据的写操作和敏感查看由服务端写审计。",
+          "detail": "确认按后果分级：可撤回的开启、恢复一键生效；下架、停用、冻结、改价、退款、删除弹出居中确认框，标题写对象、正文写后果、确认按钮写动作，危险操作用红色。需要重新认证的操作返回 4011 reauth_required，窗口是最近 5 分钟内完成过完整认证。审计记录含操作人、门店范围、对象、变更摘要、结果、trace_id 与时间，审计页只读。行内开关做悲观更新：点击后进入加载态并忽略重复点击，成功才切换，失败保持原状态并写明原因。浮层在内容区居中（宽 560 至 640 px），表单与确认浮层点遮罩不关闭，以免丢失已填内容。",
+          "why": "误操作的成本由确认框承担，追责靠审计；乐观更新在资金和权限类开关上会让界面与服务端状态不一致。",
+          "replace_when": "客户内部的小工具没有资金或权限类操作时，确认分级可以简化；审计和重新认证不可去掉。换的时候必须写明哪些操作算危险操作、各自的确认方式、审计保存多久（建议 1 年）、谁能查看审计。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/admin.md Writes and audit；Luz-System/references/admin-design.html 表单与输入、按钮与浮层、行内切换；Luz-Dev/backend/SECURITY.md §1"
+        },
+        {
+          "id": "STK-AD-06",
+          "name": "版本显示与内容维护",
+          "baseline": "构建时写入语义化版本、提交编号和构建时间；后台侧栏底部显示前后端版本，发现服务端版本变化时提示刷新。",
+          "detail": "后端提供版本接口 GET /api/v1/admin/system/version（版本、提交、构建时间、环境、接口版本）并在每个响应头带版本；前端发现变化时顶部提示「有新版本，刷新后使用」，不强制刷新、不丢失正在填写的内容，接口版本不兼容时返回明确错误码并提示先保存草稿再刷新。测试与预发环境在顶栏加环境标识，生产不加。文案与展示、经营设置由运营在后台实时维护（保存即生效、可恢复默认、可看历史），运行参数不做后台页面；有门店的系统提供一键开业与停业。",
+          "why": "用户长时间不刷新页面时前后端版本会错位，版本提示避免旧前端调用新接口；运营内容与运行参数分开，避免把高风险参数暴露给运营。",
+          "replace_when": "项目没有运营文案需求或没有门店概念时，对应页面可以不做。换的时候必须写明哪些内容由运营维护、哪些由开发维护，以及版本检查的时机。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/admin.md Writes and audit；Luz-System/references/admin-design.html 版本信息、内容维护闭环；Luz-Dev/references/standards.json REL-002、ADMIN-004、ADMIN-005"
+        },
+        {
+          "id": "STK-AD-07",
+          "name": "构建产物与发布形态",
+          "baseline": "前端打成静态资源由 Nginx 提供，使用独立的管理后台子域名；/api/v1/admin/ 只在该域名转发。",
+          "detail": "api 域名访问 /api/v1/admin/ 返回 404，admin 域名可进一步限制来源 IP。依赖用锁文件锁版本，CI 按锁文件安装，构建时写入版本信息（见 STK-AD-06）。发布前在 1280、1366、1440、1920 px 宽度逐页检查内容不超出右边界，在 390 px 手机宽度检查侧栏抽屉与表格转卡片；正文与表格文字不小于 14 px。",
+          "why": "独立域名便于单独限制来源和网关规则，管理后台不与对外 API 域名混用；锁文件保证构建可重复。",
+          "replace_when": "客户要求后台嵌入其现有门户，或与 API 同域部署时可以调整。换的时候必须写明后台入口域名、与 API 的跨域或反向代理方式、来源限制、静态资源缓存与版本失效方式。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/operations.md §2 管理后台；Luz-Dev/backend/SECURITY.md §10；Luz-System/references/admin-design.html 宽度与溢出、平台矩阵"
+        }
+      ]
+    },
+    {
+      "id": "backend",
+      "name": "后端",
+      "summary": "Python 与 FastAPI 的模块化单体：分层、接口路径与信封、错误码、事务并发幂等硬规则、外部依赖弹性和迁移工具。",
+      "items": [
+        {
+          "id": "STK-BE-01",
+          "name": "语言与框架",
+          "baseline": "Python 3.12+、FastAPI、Pydantic v2、SQLAlchemy 2.x（expire_on_commit=False）、uvicorn；接口契约用 OpenAPI 3.1.x。",
+          "detail": "运行时依赖写在 requirements.txt 并给上下界（如 fastapi>=0.115,<1、sqlalchemy>=2.0,<3、pydantic>=2.7,<3、psycopg>=3.1,<4、redis>=5.0,<7、httpx>=0.27,<1），开发与测试依赖在 requirements-dev.txt；生产镜像用哈希锁文件 requirements.lock（pip-compile --generate-hashes）安装，基础镜像 python:3.12-slim-bookworm 按 digest 固定，api、worker、scheduler、migrate 共用一个镜像。每个容器 1 个 uvicorn 进程，按副本扩容，开启 --proxy-headers，优雅关闭 20 秒。OpenAPI 契约由实现导出到 packages/contracts/openapi.yaml 并提交，CI 对比导出与提交的文件，前端客户端与契约测试读同一份。",
+          "why": "Python 生态便于对接微信、支付与智能体；FastAPI 加 Pydantic 把请求校验和 OpenAPI 契约放在同一处。",
+          "replace_when": "客户的运维团队只维护其他语言（如 Java 与 Spring Boot）、必须沿用客户已有后端，或有强制的技术栈要求时可以换。换的时候必须写明语言、框架、ORM、迁移工具的名称与版本，并逐项说明底座的信封、错误码、幂等、发件箱、弹性和观测约定在新栈里怎么实现，契约测试如何继续运行。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §1；Luz-Dev/backend/requirements.txt；Luz-Dev/references/operations.md §2；Luz-Dev/references/standards.json API-001"
+        },
+        {
+          "id": "STK-BE-02",
+          "name": "分层与模块化单体",
+          "baseline": "一个 FastAPI 应用按编号模块挂载路由；每个模块 api、service、models 三层，跨模块只调用对方 __init__ 导出的函数或发事件。",
+          "detail": "api.py 只解析参数、取身份与权限、调用 service，不写业务、不查库；service.py 持有用例与事务边界（一个用例一个事务，显式 commit），不依赖 FastAPI 对象；models.py 只放表结构、索引、约束。按需加 rules.py（纯函数）、ports.py（外部适配）、events.py、jobs.py、config.py；跨模块不读对方的表。LUZ_FEATURES 未启用的模块不导入、不暴露接口。形态随规模拆分：日订单不足 5000 用模块化单体（api、worker、scheduler 同一份代码三种进程）；5000 至 5 万拆出 1 至 3 个独立进程（支付回调与退款、通知与打印、地图代理、智能体）；超过 5 万按领域拆服务，每张表只有一个服务能写。",
+          "why": "单体阶段部署成本最低、本地事务足够；模块只通过明确契约通信，将来拆服务时不用改业务代码。",
+          "replace_when": "只有一两个模块的小项目可以不单独跑 worker 与 scheduler 进程；需要独立伸缩或多团队并行时按阶段表提前拆分。换的时候必须写明模块清单与边界、各模块拥有的数据、模块间调用契约、拆分触发条件。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §2、§3.1；Luz-Dev/backend/MICROSERVICES.md §1、§2、§5；Luz-Dev/backend/MODULE-TEMPLATE.md §1、§2；Luz-Dev/references/implementation-architecture.md Layering"
+        },
+        {
+          "id": "STK-BE-03",
+          "name": "接口路径、版本与头",
+          "baseline": "路径为 /api/v1/<端>/<复数资源>，版本在路径里，响应统一 {code, message, data}，code 为 0 表示成功。",
+          "detail": "端前缀：顾客端 /api/v1/app、后台 /api/v1/admin、员工端与骑手端 /api/v1/staff 与 /api/v1/rider、回调 /api/v1/webhooks/<渠道>/<事件>（渠道验签，不用用户令牌）、运维 /internal/*（只对内网，网关不转发）；动作用 POST /<资源>/{id}/<动词>。向后兼容的新增字段不升版本，删字段或改语义升 /api/v2/ 并并行至少 6 个月，弃用接口返回 Deprecation 与 Sunset 头。请求头：Authorization、Idempotency-Key（写接口必带）、X-Request-Id（不超过 64 位）、W3C traceparent、X-Client、X-Client-Version；响应头回显 X-Request-Id、X-Trace-Id、traceparent，并带 nosniff、X-Frame-Options: DENY、Cache-Control: no-store 等安全头。请求带 Accept: application/problem+json 时返回 RFC 9457 问题详情，状态码与信封一致。生产关闭 /docs 与 /openapi.json，未列出的路径返回 404。",
+          "why": "路径和头规则固定后，前端、网关、限流、灰度都能按前缀与头统一处理；版本并行期保证旧版客户端还能完成核心流程。",
+          "replace_when": "对接客户已有网关或必须使用其路径规范时可以调整前缀。换的时候必须写明新的路径与版本规则、信封格式、与底座的映射表，以及旧版客户端的兼容期。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §3.2、§3.3；Luz-Dev/backend/API.md §1.1–§1.3；Luz-Dev/backend/ROUTING.md §2、§3；Luz-Dev/references/standards.json API-001",
+          "by_surface": {
+            "miniprogram": {
+              "why": "小程序发布后旧版本会在线很久，版本并行期尤其不能省。"
+            }
+          }
+        },
+        {
+          "id": "STK-BE-04",
+          "name": "列表、分页与导出",
+          "baseline": "所有列表接口用 ListSpec 声明可筛选、可排序、可搜索的字段；顾客端游标分页，后台页码分页；导出复用同一份声明。",
+          "detail": "顾客端 ?cursor=<opaque>&limit=10（上限 20），游标签名防篡改、绑定排序与筛选，3 天后失效，响应 {items, next_cursor, has_more}；后台 ?page=1&page_size=20（上限 100，page × page_size 不超过 10000），响应 {items, page, page_size, total}。多值最多 50 个，关键词 1 至 50 字并转义 % 与 _；排序字段白名单最多 3 个并自动追加 id，NULL 排最后，默认 -created_at；未知参数返回 4001，拼错的筛选不会被静默忽略。导出与列表同一筛选：同步导出不超过 5000 行（sync_limit），超出转异步导出任务（24-report，规划）；单次硬上限默认 20 万行，超出 4225；UTF-8 BOM、防公式注入、敏感字段脱敏、写审计；报表与导出的时间区间最长 31 天。",
+          "why": "不手写分页和 WHERE 拼接，既防注入，也保证翻页不重复、不漏行；游标比页码在大表上更稳定。",
+          "replace_when": "数据量小且不会增长的列表可以不分页（须标明数据上限）；客户已有统一分页约定时可调整参数名。换的时候必须写明分页方式与上限、排序稳定性如何保证、导出行数的同步与异步分界。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §3.4；Luz-Dev/backend/API.md §1.4；Luz-Dev/backend/ROUTING.md §4；Luz-Dev/references/standards.json API-002"
+        },
+        {
+          "id": "STK-BE-05",
+          "name": "错误码",
+          "baseline": "错误码唯一来源是框架 luzback.errors.ErrorCode，每个码固定映射一个 HTTP 状态；未知异常统一转 5000。",
+          "detail": "码表：0 成功（200）；4001 参数错误含缺幂等键（400）；4010 未登录或令牌无效（401）；4011 需要 MFA 或重新认证（401）；4030 无权限、4031 不在门店范围（403）；4040 不存在含他人资源（404）；4090 状态或版本冲突、4091 库存不足、4092 同幂等键处理中（409）；4093 同幂等键不同请求体、4220 至 4225 业务规则类（422）；4290 限流（429）；5000 内部错误（500）；5020 上游失败（502）；5030 熔断或维护（503）。4001 的 data.errors 为 [{field, message}]；他人资源一律 4040，不泄露存在性。未知异常由全局处理器记一次带堆栈的日志，响应只带 request_id 与 trace_id，不回显堆栈、SQL、内部地址；支付回调等渠道要求的特殊响应体是例外，在对应 MODULE.md 标注。",
+          "why": "稳定的错误码是前端分流和重试的依据；统一返回 4040 避免被用来探测他人资源是否存在。",
+          "replace_when": "沿用客户已有后端、错误码体系不同时可以调整。换的时候必须写明完整码表与 HTTP 映射、哪些码允许前端重试、如何保证他人资源与不存在的资源不可区分。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §4；Luz-Dev/backend/API.md §2；Luz-Dev/references/standards.json INPUT-003"
+        },
+        {
+          "id": "STK-BE-06",
+          "name": "事务、并发与幂等硬规则",
+          "baseline": "金额只用整数分；扣减和状态流转必须是带条件的原子 UPDATE；一个用例一个事务；所有写接口必带 Idempotency-Key。",
+          "detail": "库存、余额、名额、券库存的扣减用 WHERE stock >= :qty 之类的条件，rowcount 为 0 即失败（4091、4220、4224、4225），状态流转用 WHERE status = :from，非法流转 4090，不先查后改。幂等作用域是（操作者、用例名、键）；键为 8 至 128 位 [A-Za-z0-9-_:.]；同键同请求体返回首次响应，同键不同请求体（sha256 指纹）4093，首个请求仍在处理 4092；processing 记录超过 60 秒视为僵尸可接管，保留 24 小时后由定时任务清理，幂等记录与业务写同事务提交。回调优先：支付回调到达时订单已取消，仍记录支付成功并进入待人工处理（自动退款）。禁止在应用层过滤 SELECT * 的敏感字段、在事务中调用外部 HTTP、用浮点算钱、在循环里逐条查询（N+1）。",
+          "why": "并发由数据库裁决，不靠先查后改；幂等键让网络重试和重复点击只生效一次，不重复扣款。",
+          "replace_when": "只读或纯展示的项目没有扣减与资金时，相应规则不适用。换的时候必须写明项目里哪些操作产生扣减或资金变化、各自用什么机制保证原子与幂等、并发测试怎么证明无超卖与无重复。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §6；Luz-Dev/backend/MODULE-TEMPLATE.md §3；Luz-Dev/references/implementation-architecture.md Backend rules"
+        },
+        {
+          "id": "STK-BE-07",
+          "name": "外部依赖弹性",
+          "baseline": "每个外部依赖都有超时、有上限且带抖动的重试，以及熔断或降级策略，默认值取 SPEC 的统一参数表。",
+          "detail": "数据库语句超时 5 秒（读在连接错误时重试 1 次）；Redis 200 ms、重试 1 次、10 次失败熔断 30 秒；微信登录 code2session 3 秒、重试 2 次（退避 0.5 与 1 秒）；微信支付下单 8 秒、查询 5 秒、退款 10 秒，下单 0 次重试、查询 2 次、退款 0 次（走任务重试），舱壁 30 并发；地图 3 秒、重试 1 次；短信 3 秒，任务重试 1 分钟、5 分钟、30 分钟；第三方配送 5 秒；对象存储签名 10 秒、上传 30 秒。熔断按 60 秒窗口统计，10 次失败且失败率达 50% 打开，半开放 3 个探测请求；只重试可重试错误（超时、连接、429、5xx）且调用幂等，退避带抖动；每次降级写日志 degraded=<依赖> 并上报指标，网关熔断返回 5030 加 Retry-After: 5。降级示例：支付渠道不可用订单保持待支付，库存 Redis 不可用退化为数据库条件 UPDATE，地图不可用按直线距离乘 1.3。",
+          "why": "外部依赖一慢就会拖垮整个请求线程池；统一的超时、熔断和降级矩阵让任何一个第三方故障只影响它自己的功能。",
+          "replace_when": "项目没有用到某个外部依赖时对应行不适用；客户的第三方服务限时或计费不同时可调整数值。换的时候必须写明依赖清单、每个依赖的超时、重试次数、熔断阈值和降级行为，并用故障注入验证。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §9；Luz-Dev/backend/MODULE-TEMPLATE.md §3；Luz-Dev/references/implementation-architecture.md Backend rules"
+        },
+        {
+          "id": "STK-BE-08",
+          "name": "迁移工具与发布顺序",
+          "baseline": "表结构只由 Alembic 迁移建立，生产禁止 create_all；迁移按 expand 与 contract 分步发布。",
+          "detail": "迁移从 alembic/versions/0001_baseline.py 起，必须能从空库建到最新版；每次发布后执行 python -m admin_rbac.bootstrap --seed（权限码与内置角色）和 python -m app_settings sync（文案种子），两者都幂等。启动顺序：迁移（一次性 migrate 容器，先于 api 替换）、api（/readyz 通过）、worker 与 scheduler；每个进程先加载运行配置，校验失败即退出。expand 与 contract：先加列、后写数据、再删列；CI 对未标 `# luz: contract` 的破坏性迁移直接失败。开发与演示数据由项目写幂等的种子脚本，不放生产库。",
+          "why": "迁移脚本是结构变更的唯一入口，才能在预发演练、可重复、可回溯；种子幂等保证重复发布不会产生重复数据。",
+          "replace_when": "沿用客户已有后端时可换成其语言栈的迁移工具（如 Flyway）。换的时候必须写明迁移工具与版本、从空库建库的验证方式、破坏性变更的分步规则，以及权限与字典种子如何做到幂等。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §1、§2、§14.2；Luz-Dev/references/operations.md §2、§9"
+        }
+      ]
+    },
+    {
+      "id": "database",
+      "name": "数据库",
+      "summary": "PostgreSQL 为事实来源：选型与备选、字段约定、约束与索引、线上迁移、多租户隔离、备份恢复和报表读库。",
+      "items": [
+        {
+          "id": "STK-DB-01",
+          "name": "选型与备选",
+          "baseline": "生产用 PostgreSQL 16（云数据库或自建）；MySQL 8 为可选备选；开发与单元测试可用 SQLite。",
+          "detail": "PostgreSQL 是事实来源，能用一个 PostgreSQL 事务满足的需求就不用分布式协调。底座依赖的能力有 FOR UPDATE SKIP LOCKED（发件箱 worker）、部分唯一索引（软删除）、分区、pgvector 和 JSONB，所以 CI 的集成测试与迁移检查必须跑在 PostgreSQL 服务容器上，SQLite 只用于本地与单元测试。默认隔离级别 PostgreSQL 为 Read Committed、MySQL InnoDB 为 Repeatable Read，并发正确性靠条件更新；确需更高隔离级别时整事务重试并设次数上限。连接池大小按部署参数设置，单条语句超时 5 秒（[db] statement_timeout_ms，仅 PostgreSQL，重启生效）。",
+          "why": "PostgreSQL 同时具备行锁跳过、部分索引、分区与向量扩展，底座的发件箱、软删除和备份恢复方案都建立在它上面。",
+          "replace_when": "客户已有 MySQL 8、云厂商只提供 MySQL，或客户运维只维护 MySQL 时可以换。换的时候必须写明版本，部分唯一索引（WHERE deleted_at IS NULL）、行锁跳过、JSON 类型、时间类型各自的替代做法，备份与时间点恢复方案，迁移工具，以及并发与迁移测试改在哪种数据库上跑。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §1、§6；Luz-Dev/references/operations.md §2、§9；Luz-Dev/references/implementation-architecture.md Backend rules；Luz-Dev/references/standards.json DATA-005"
+        },
+        {
+          "id": "STK-DB-02",
+          "name": "字段约定",
+          "baseline": "主键 id 自增 bigint；时间 UTC 存储；金额整数分（_cents）；折扣万分比（_bp）；状态用小写蛇形字符串枚举。",
+          "detail": "对外展示用 order_no 等业务号而不是主键，外键显式建索引。时间字段用带时区的类型，接口返回带时区的 ISO 8601；按日统计、营业日和日期区间按明确的业务时区（如 Asia/Shanghai）整天计算。状态值与流转写在各模块 MODULE.md §5，前端显示文字放在前端或文案库。软删除用 deleted_at（用户地址、商品、券模板、门店、员工），默认查询过滤；订单、支付、流水、审计不可删除；后台对象带 created_at、updated_at、created_by、updated_by。手机号、身份证用 AES-256-GCM 加密列加 HMAC 哈希列做查询，响应脱敏。",
+          "why": "整数分避免浮点误差，UTC 加业务时区避免跨时区与夏令时歧义；统一命名让所有模块的筛选、导出和审计能共用一套工具。",
+          "replace_when": "客户的数据库已有命名与类型规范（例如主键用 UUID、金额用定点小数）时可以调整。换的时候必须写明主键策略、金额类型与精度、时间类型与时区口径、软删除范围，并保证金额不用浮点、时间不丢时区。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §3.5；Luz-Dev/backend/SECURITY.md §4；Luz-Dev/backend/MODULE-TEMPLATE.md §3；Luz-Dev/references/standards.json DATA-004"
+        },
+        {
+          "id": "STK-DB-03",
+          "name": "约束与索引",
+          "baseline": "关键约束落在数据库：唯一业务号、幂等键、渠道交易号、每人限领用唯一约束或检查约束实现，不靠应用层判断。",
+          "detail": "多表资金变更放在一个事务里。软删除对象的唯一约束改为部分唯一索引 WHERE deleted_at IS NULL；复合索引等值列在前、范围列在后；每个外键以及每个列表的筛选与排序字段按查询建索引，排序键带唯一键兜底（created_at、id）。数据表、索引、约束写在各模块 MODULE.md §3，新增表随模块迁移提交。SQL 一律走 ORM 或参数绑定，排序字段、表名等无法参数化的部分用白名单映射；热点计数更新必要时按 id 升序处理以避免死锁，唯一约束冲突（IntegrityError）转为 4090 或 4225。",
+          "why": "应用层判断挡不住并发，只有数据库约束是最后一道防线；稳定的排序键保证分页不重复、不漏行。",
+          "replace_when": "沿用客户已有库表结构时索引与约束命名可以不同。换的时候必须写明哪些业务唯一性由哪个约束保证、软删除后唯一性怎么处理、列表查询用到的索引，并有并发测试证明约束生效。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §3.5、§6；Luz-Dev/backend/MODULE-TEMPLATE.md §3；Luz-Dev/references/standards.json DATA-001、DATA-006、API-002"
+        },
+        {
+          "id": "STK-DB-04",
+          "name": "线上迁移规则",
+          "baseline": "线上迁移不让表长时间不可用；破坏性变更分四步发布（expand、兼容部署、回填、contract）；生产默认前向修复。",
+          "detail": "新增列用常量默认值，易变默认值会重写整表，要分批回填；加约束先 NOT VALID 再 VALIDATE，SET NOT NULL 前先有已验证的 CHECK；建索引用 CREATE INDEX CONCURRENTLY 且单独一步，失败留下的 INVALID 索引要删除重试；会取 ACCESS EXCLUSIVE 锁的语句先在迁移会话里设 lock_timeout，超时退出稍后重试。CI 迁移步骤依次执行 upgrade head、check、downgrade -1、upgrade，要求单 head；迁移要在预发从空库和上一生产版本各演练一次。回滚顺序：代码回滚不回退数据库；迁移本身有误时先前向修复，其次用 CI 已验证的 alembic downgrade，最后才用发布前备份或 PITR。",
+          "why": "长时间持锁的迁移会让线上读写整体卡住；分步发布让新旧版本代码在迁移前后都能运行。",
+          "replace_when": "数据库换成 MySQL 或使用云厂商的在线结构变更工具时，具体语句可以不同。换的时候必须写明各类变更（加列、加约束、建索引、改类型）的在线做法、锁等待超时设置、演练方式与回滚顺序。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/operations.md §3、§9；Luz-Dev/references/implementation-architecture.md Module, API and database changes；Luz-Dev/references/standards.json DATA-002、DATA-006"
+        },
+        {
+          "id": "STK-DB-05",
+          "name": "多租户与门店隔离",
+          "baseline": "业务表带 store_id；SaaS 多租户时再加 tenant_id；数据范围条件在数据访问层统一注入，不接受客户端传来的 user_id 与 store_id。",
+          "detail": "顾客只能访问 user_id 等于自己的资源，他人资源返回 4040；后台按 store_scope(staff) 过滤（None 表示全部门店，空列表表示无门店），越界返回 4031。业务唯一约束包含租户或门店字段；缓存键含门店或租户编号；会员与储值是否跨门店通用由商户决定并写入方案。可以用 PostgreSQL 行级安全作第二道防线：策略只看当前行，表要 FORCE ROW LEVEL SECURITY，应用账号不用超级用户和 BYPASSRLS 角色，租户上下文用事务内 SET LOCAL。是否多租户、隔离到门店还是租户，必须在技术方案中写明。",
+          "why": "把数据范围放在数据访问层统一注入，才不会因为某个接口漏写条件而串数据；行级安全是对应用层漏洞的补救。",
+          "replace_when": "单门店、单租户的项目可以只保留 user_id 归属校验；多租户要求更强隔离（独立库或独立 schema）时可以调整。换的时候必须写明隔离粒度、范围条件在哪一层注入、唯一约束与缓存键如何带上租户、跨租户或跨门店共享的数据有哪些。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §3.5、§5；Luz-Dev/backend/SECURITY.md §2；Luz-Dev/references/standards.json AUTHZ-001、AUTHZ-004"
+        },
+        {
+          "id": "STK-DB-06",
+          "name": "备份与恢复",
+          "baseline": "PostgreSQL 持续归档 WAL 加每周基础备份，另做每日逻辑备份，遵循 3-2-1 并加密，每周自动恢复校验、每季度人工演练。",
+          "detail": "archive_command 持续归档 WAL（archive_timeout=60，本地 RPO 约 1 分钟），WAL 每 5 分钟加密外传，基础备份 backup.sh base 每周一次；每日逻辑备份 backup.sh daily（pg_dump -Fc 加 pg_dumpall -g，用 pg_restore --list 试读并记 sha256）和每次发布前各做一次，本地与异地各保留 30 天。首选 GPG 公钥加密（私钥离线），异地桶开启版本与对象锁。verify-restore.sh 每周在隔离容器自动恢复并做表检查，每季度人工做一次 PITR 演练并记录实测 RTO 与 RPO；RPO 与 RTO 目标由商户确认后写进部署与运维说明，实测超过目标就改方案。备份成功后写指标 luz_backup_last_success_timestamp_seconds，超过 26 小时告警。",
+          "why": "只做每日逻辑备份时 RPO 就是一天；持续归档加定期恢复演练，才能证明备份真的能恢复。",
+          "replace_when": "使用云数据库自带的备份与时间点恢复时，可以以云备份为主，但仍须保留一份跨厂商的逻辑备份副本。换的时候必须写明备份方式、频率、保留期、加密与异地位置、RPO 与 RTO 目标以及最近一次演练的实测值。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/operations.md §5；Luz-Dev/backend/SECURITY.md §4；Luz-Dev/references/standards.json DATA-003"
+        },
+        {
+          "id": "STK-DB-07",
+          "name": "报表读库与物化",
+          "baseline": "报表与导出只读从库或物化视图，不在业务表上加长时间锁。",
+          "detail": "驾驶舱汇总缓存 30 秒（dash:{store_id}:{date}），今日数据允许 5 分钟延迟，历史数据 T+1 定稿，由定时任务物化到汇总表（如 store_daily_stats，规划）。从库延迟超过 30 秒时报表标注「数据延迟」，驾驶舱 KPI 退回主库轻查询。报表与导出的时间区间最长 31 天，同步导出不超过 5000 行，更多转异步导出。",
+          "why": "报表查询又重又长，直接打在主库会拖慢下单与支付；物化后读取代价固定。",
+          "replace_when": "项目没有报表与驾驶舱，或数据量小到主库直接查询也不影响交易时可以不用从库和物化表。不用的时候必须写明报表的查询范围上限、是否限制时间区间，以及数据量增长到多少需要重新评估。",
+          "mandatory": false,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §3.4、§6、§9、§11；Luz-Dev/backend/MICROSERVICES.md §7"
+        }
+      ]
+    },
+    {
+      "id": "cache-queue",
+      "name": "缓存与队列",
+      "summary": "Redis 的用途与降级、缓存什么与不缓存什么、发件箱与 worker、定时任务与分布式锁、热点库存预扣和跨服务一致性。",
+      "items": [
+        {
+          "id": "STK-CQ-01",
+          "name": "Redis 用途与部署",
+          "baseline": "Redis 7 只做限流、缓存、分布式锁、热点库存预扣和事件流，不当事实来源；它不可用时系统按降级矩阵继续运行。",
+          "detail": "限流桶（rl: 前缀）、缓存、分布式锁与热点库存预扣共用 Redis 7，事件流可用 Redis Streams（luzback.mq，单体内也可用内存实现）。持久化用 AOF everysec 加 RDB，只存锁、限流等可重建状态；存业务数据时每日外传 RDB。Redis 不可用时：限流放行并记日志，缓存穿透到数据库，库存预扣退化为数据库条件 UPDATE（吞吐下降但正确）；访问超时 200 ms、重试 1 次、10 次失败熔断 30 秒。口令、maxmemory 写在 /etc/luz/redis.conf（权限 640 root:999，口令不放命令行参数），不映射端口、不暴露公网。用量上来后，缓存与需要持久的状态（队列、限流计数）拆成两个实例：缓存实例设 maxmemory 与 allkeys-lru，持久实例设 noeviction 并开 AOF。",
+          "why": "把易失的加速层和事实来源分开，Redis 故障只影响性能不影响正确性；口令与网络隔离避免被未授权访问。",
+          "replace_when": "项目单实例、规模小、没有限流与分布式锁需求（例如只有一个进程的内部系统）时可以不用 Redis，限流与会话改用进程内或数据库实现。不用的时候必须写明限流、缓存、锁、预扣各自改用什么，多实例部署时它们如何保持一致。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §1、§9、§11；Luz-Dev/references/operations.md §2、§5、§6；Luz-Dev/backend/MICROSERVICES.md §3；Luz-Dev/references/standards.json CACHE-002"
+        },
+        {
+          "id": "STK-CQ-02",
+          "name": "缓存策略",
+          "baseline": "采用旁路缓存，只做加速：先写数据库再删缓存，订单、支付、余额、积分、排号、售后、会话一律不缓存。",
+          "detail": "缓存项与有效期：门店信息 store:{id} 5 分钟（保存或开停业时删除）；分类与商品列表 catalog:{store_id}:{category}:{v} 5 分钟，靠 catalog_version 自增失效；商品详情 product:{id}:{version} 10 分钟；库存展示 stock:{sku_id} 30 秒；逆地理 geo:{sha1} 7 天；限流桶 rl:{scope}:{key} 1 分钟；驾驶舱汇总 dash:{store_id}:{date} 30 秒。缓存穿透用空值缓存 60 秒，雪崩用 TTL 抖动 ±10%，热点用单飞（single-flight）；删除缓存失败要重试，缓存键含门店或租户编号。会话每请求查库，登出即时生效。",
+          "why": "缓存只能加速读取，关键判断（库存精确值、余额、订单状态、权限）以数据库为准，才不会因为缓存过期或失效失败出现错账。",
+          "replace_when": "数据量小、读压力低的项目可以不缓存或缩小缓存项。换的时候必须写明缓存哪些数据、有效期与失效方式，并写明哪些数据明确不缓存、缓存失效失败时用户最多看到多久的旧数据。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §11；Luz-Dev/references/standards.json CACHE-001"
+        },
+        {
+          "id": "STK-CQ-03",
+          "name": "发件箱与 worker",
+          "baseline": "业务事件与业务写在同一事务写入 outbox_events 表，由 worker 进程用 SELECT … FOR UPDATE SKIP LOCKED 拉取投递，消费者按 event_id 去重。",
+          "detail": "outbox_events 字段：event_id、topic、aggregate_type、aggregate_id、version、payload_json、status、attempts、next_attempt_at、occurred_at、traceparent；payload 只放 id 与必要字段，不放个人信息。失败按 1 分钟、5 分钟、30 分钟、2 小时、12 小时退避，5 次后置 failed 并告警，消费者用 mark_processed 去重。事件带 traceparent，消费端接上生产者的链路；主题、生产者、消费者与字段登记在 MODULES.md 事件总表，tests/test_event_contracts.py 自动核对。订阅写在各模块 events.py 的 SUBSCRIPTIONS，由 worker 运行，处理函数幂等且不提交事务。",
+          "why": "同事务写事件保证业务和消息要么都成功要么都不成功；SKIP LOCKED 让多个 worker 并行取数而不互相阻塞。",
+          "replace_when": "项目没有需要异步解耦的事件（例如没有通知、对账、报表汇总）时可以不跑 worker。换用消息中间件（如 Redis Streams、RabbitMQ）时，发件箱仍保留作为事务内的写入点。换的时候必须写明事件清单、投递保证、重试与死信策略、消费端去重方式。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §6、§8、§10；Luz-Dev/backend/MICROSERVICES.md §3；Luz-Dev/backend/MODULE-TEMPLATE.md §3"
+        },
+        {
+          "id": "STK-CQ-04",
+          "name": "定时任务与分布式锁",
+          "baseline": "定时任务写在各模块 jobs.py 的 JOBS，由 scheduler 进程按固定间隔触发，带分布式锁与心跳，任务体必须幂等。",
+          "detail": "每次运行新建 trace 并记 job 与 run_id，运行记录写入 scheduler_runs，python -m jobs list 列出全部任务与订阅。幂等按（时间窗口、业务键）判断是否已处理，按日任务在任务体里判断窗口；每轮处理量有上限，批量键写在运行配置。任务里的外部调用（如支付查单补偿）经 resilient 包装，只对幂等调用重试，不在持有数据库事务时等待外部请求。分布式锁只当效率优化，正确性靠数据库唯一约束与条件更新；必须用锁保护外部写入时配围栏令牌。告警：分钟级任务 15 分钟、日任务 50 小时无成功，或 1 小时内失败不少于 3 次。",
+          "why": "超时关单、对账、过期这类任务必须每个窗口只生效一次，多实例下靠幂等和数据库约束保证，而不是押在锁上。",
+          "replace_when": "只有一个进程且无定时需求时可省略 scheduler；客户要求用系统 cron 或云厂商调度器时可以替换触发方式。换的时候必须写明任务清单与间隔、多实例下如何避免重复执行、错过触发的处理、失败告警与运行记录位置。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §10；Luz-Dev/backend/MODULE-TEMPLATE.md §3；Luz-Dev/references/operations.md §4；Luz-Dev/references/standards.json CACHE-002"
+        },
+        {
+          "id": "STK-CQ-05",
+          "name": "热点库存预扣",
+          "baseline": "库存、券、积分、余额的最终裁决在数据库条件 UPDATE；Redis 预扣只用于热点商品削峰，Redis 故障时退化为数据库条件 UPDATE。",
+          "detail": "库存展示用 stock:{sku_id} 缓存 30 秒，扣减时更新。预占库存按 sku 升序处理，热点计数（库存、券、奖品、排号）必要时按 id 升序更新，避免死锁。Redis 预扣不改变数据库裁决：rowcount 为 0 才算扣减失败。活动与抢购类高并发场景需要单独的容量设计与压测，不套用日常参数。",
+          "why": "高并发下直接打数据库热点行会排队；预扣削峰，但正确性仍由数据库保证，Redis 故障时不会超卖。",
+          "replace_when": "没有热点商品、没有抢购与限量活动的项目不用预扣，直接用数据库条件 UPDATE。不用的时候必须写明预期的最高并发扣减量，以及数据库条件 UPDATE 在该量级下的压测结果。",
+          "mandatory": false,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §6、§9、§11；Luz-Dev/backend/MODULE-TEMPLATE.md §3；Luz-Dev/references/standards.json OPS-004"
+        },
+        {
+          "id": "STK-CQ-06",
+          "name": "一致性边界与跨服务编排",
+          "baseline": "库存、券、积分、余额、名额、排号强一致；订单与通知、报表、评价汇总最终一致；拆服务后下单到支付按 Saga 编排。",
+          "detail": "强一致用条件 UPDATE 加唯一约束，订单与支付状态同事务加条件更新，回调优先。最终一致用发件箱加消费幂等；商品展示（销量、价格）允许 5 分钟延迟，报表今日 5 分钟延迟、历史 T+1 定稿。拆分后下单到支付按步骤编排：报价校验、标记 quote 已用、预占库存（按 sku 升序）、锁券、写订单与明细、发件箱 order.created、支付与回调；每步补偿幂等（恢复 quote、回补库存、退券；支付超时先查支付再关单并释放库存与券）。同步调用拆分后走内网 HTTP/JSON 并带 X-Service 签名，超时与重试按弹性表执行。",
+          "why": "明确哪些必须强一致、哪些允许延迟，才能决定哪里用本地事务、哪里用事件；Saga 把拆分后的跨服务失败变成可补偿的步骤。",
+          "replace_when": "仍是模块化单体（订单到支付在一个数据库事务内）的项目不用 Saga。拆分成多个服务时才启用。启用的时候必须写明每一步的补偿动作与幂等键、一致性边界表、超时后对账的方式。",
+          "mandatory": false,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/MICROSERVICES.md §3、§4、§7；Luz-Dev/backend/SPEC.md §6"
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "name": "文件存储",
+      "summary": "S3 兼容对象存储与预签名直传、上传流程与状态、图片规格与后台统一处理、上传校验，以及没有对象存储时的回退。",
+      "items": [
+        {
+          "id": "STK-ST-01",
+          "name": "对象存储与访问",
+          "baseline": "文件存放在 S3 兼容对象存储（MinIO、OSS 或 COS），客户端用预签名地址直传，服务器不经手大文件。",
+          "detail": "对象存储访问超时：签名 10 秒、上传 30 秒，重试 1 次，失败返回 5020，评价等功能可无图提交。网关请求体上限 1m、应用 256 KB，文件走预签名直传不经过网关。私有文件只通过短时签名地址访问，公开文件（如门店图片）走 CDN；对象存储开启版本或跨区域复制，异地副本开启对象锁。文件元数据记在 files 表（purpose、storage_key、mime、size_bytes、digest、visibility、status 等），storage_key 唯一。媒体模块 21-media 在骨架里是规划状态，上传接口按 upload 模块详设实现。",
+          "why": "大文件不占用 API 带宽和请求线程；签名地址限定类型、大小与路径，私有文件不会被直接链接访问。",
+          "replace_when": "客户有自己的对象存储或云厂商存储（只要兼容 S3 接口）时可换提供方；项目完全没有文件上传时可以不用。换的时候必须写明存储提供方与桶划分、签名有效期、公开与私有文件的访问方式、版本与异地副本方案。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §1、§9；Luz-Dev/backend/SECURITY.md §3；Luz-Dev/references/operations.md §2、§5；Luz-Dev/references/module-specs/upload.json"
+        },
+        {
+          "id": "STK-ST-02",
+          "name": "上传流程与状态",
+          "baseline": "先申请上传凭证、再直传对象存储、最后确认完成：POST /api/v1/app/files/upload-ticket，POST /api/v1/app/files/{id}/complete。",
+          "detail": "申请凭证时声明用途（avatar、feedback、contract、store_photo）、类型与大小，服务端校验后创建 files 记录（pending）并返回直传地址与表单字段。直传完成后服务端核对对象元数据的大小与类型，提交内容安全检测，状态流转 pending、reviewing、active（不通过为 rejected，删除为 deleted）。超过 24 小时未确认的上传与已删除文件由任务清理；检测服务不可用时保持 reviewing 并重试，超过 1 小时转人工审核；后台上传走 /api/v1/admin/files/upload-ticket。用户发布的文本、图片、音视频在展示前必须通过微信内容安全检测，异步结果回来前按待审核处理。",
+          "why": "确认步骤让服务端以对象存储里的真实元数据为准，而不是信任客户端声明；检测通过才展示，避免违规内容上线。",
+          "replace_when": "文件只由后台人员上传、不含用户发布内容的项目，内容安全检测可简化。换的时候必须写明上传用途清单、各用途允许的类型与大小、状态机与清理时限、内容检测的服务与不可用时的处理。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/module-specs/upload.json；Luz-Dev/backend/SECURITY.md §3；Luz-Dev/references/standards.json FILE-002"
+        },
+        {
+          "id": "STK-ST-03",
+          "name": "图片规格与后台处理",
+          "baseline": "拍照与相册图片不限制大小，前端上传原图不压缩；后台统一生成高质量原档和清晰度优先的副本；防滥用上限 100 MB。",
+          "detail": "类型白名单：图片只允许 JPEG、PNG、WEBP，合同类允许 PDF，并按文件魔数校验。后台任务在完成确认后异步处理：原档保持尺寸与清晰度、重新编码并去除元数据；副本在长边超过 2048 像素或大于 2 MB 时先缩到长边 2048 再降质量，编码为 JPEG 或 WebP，给设备等受限端使用；处理成功后删除原始上传，失败重试 3 次后告警，文件先保持待处理，不让用户重传。展示图按屏幕所需尺寸请求，由后端或 CDN 出缩略图。文档类（PDF）上限由运行参数 [upload] doc_max_mb 配置，客户端下发同一个值用于显示与预检查，服务端按同一个值拒收；超过 100 MB 的文件返回 FILE_TOO_LARGE。",
+          "why": "用户无法自己改小系统相机拍的照片，拦截只会造成上传失败；统一在后台压缩保证画质一致，端上不会不可逆地损失细节。",
+          "replace_when": "对设备或第三方有固定图片规格要求（例如打印机、门禁设备只收小图）时，可以调整副本的尺寸与格式。换的时候必须写明各端使用的规格、长边与质量参数、保留原档与否、处理失败的重试和告警。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/module-specs/upload.json；Luz-Dev/backend/SECURITY.md §3；Luz-Dev/references/miniprogram.md Performance；Luz-Dev/backend/config/runtime/base.toml [upload]"
+        },
+        {
+          "id": "STK-ST-04",
+          "name": "上传校验与安全",
+          "baseline": "文件名由服务端生成（UUID），按白名单加魔数校验类型，剥离 EXIF，存放在对象存储或非执行目录，私有文件只给短时签名地址。",
+          "detail": "实际文件与声明不符时状态置 rejected、删除对象并返回 FILE_MISMATCH。服务端按用户、商户或模型给的地址发请求（抓取图片、导入链接）时只允许名单内的域名，校验域名解析后的 IP，拒绝内网、回环、链路本地和云元数据地址（169.254.169.254），关闭自动重定向，并设超时与响应大小上限。富文本存储前做白名单清洗，后端不返回 HTML；日志与错误里不出现文件内容。",
+          "why": "客户端给的文件名和类型都不可信；随机文件名、魔数校验和非执行目录挡住上传后被当脚本执行的风险。",
+          "replace_when": "项目没有任何用户上传时，本项不适用。换的时候必须写明允许的文件类型与校验方式、文件名策略、存放位置与访问控制，以及服务端抓取外部地址的名单策略。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SECURITY.md §3、§12；Luz-Dev/references/module-specs/upload.json；Luz-Dev/references/standards.json FILE-001、INPUT-005"
+        },
+        {
+          "id": "STK-ST-05",
+          "name": "无对象存储时的回退",
+          "baseline": "没有对象存储的项目，文件上传到服务端的专用上传入口，只对这一入口把请求体放宽到防滥用上限（100 MB），其余接口保持原限制。",
+          "detail": "网关与应用只对该入口放宽请求体，其余接口仍是网关 1m、应用 256 KB。文件落盘到非执行目录，目录纳入备份；落盘后同样由后台任务异步生成原档与副本、做内容安全检测。落盘目录要有容量告警（磁盘可用低于 15% 或 24 小时内写满即告警，见观测层）。",
+          "why": "小项目可能暂时没有对象存储；单独放宽一个入口，比放宽全站请求体安全得多。",
+          "replace_when": "有对象存储时不用本项，走 STK-ST-01 的预签名直传。使用本项时必须写明上传入口路径、放宽后的上限、落盘目录与容量、备份方式，以及以后迁移到对象存储的路径。",
+          "mandatory": false,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/module-specs/upload.json exceptions；Luz-Dev/references/operations.md §4、§5"
+        }
+      ]
+    },
+    {
+      "id": "deployment",
+      "name": "部署",
+      "summary": "三套环境、容器化编排、网关与 TLS、域名备案与证书、配置与秘密、运行配置热加载、发布与回滚、服务器加固。",
+      "items": [
+        {
+          "id": "STK-DP-01",
+          "name": "环境划分",
+          "baseline": "本地、测试与预发、生产三类环境；预发与生产同构，生产只能通过发布流程变更。",
+          "detail": "本地环境的依赖用容器启动（backend/deploy/docker-compose.yml），测试数据可清理。预发用同一个 compose 模板、同版本数据库、同配置结构，用于联调、验收、演练与压测；微信支付使用独立商户配置或小额真实验证，数据脱敏。生产只能通过 release.sh 变更，镜像按 digest 部署，秘密只在密钥服务或受限文件。运行配置只设 dev、staging、prod 三个环境文件，每个环境另有一份配置清单 config/<env>.md，写配置项、用途、获取方式与验证方法，秘密只写存放位置。",
+          "why": "预发与生产同构，演练才有意义；按 digest 部署保证上线的就是验收过的那个镜像。",
+          "replace_when": "小项目只有一台服务器时，预发可以与生产同机但使用独立的 compose 项目、数据库与域名；客户要求更多环境时可增加。换的时候必须写明各环境的数量与位置、与生产的差异、数据来源与脱敏方式、变更进入生产的唯一路径。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/operations.md §1；Luz-Dev/references/config-logging.md §2.1"
+        },
+        {
+          "id": "STK-DP-02",
+          "name": "容器化与编排",
+          "baseline": "默认方案是单机或少量主机的 Docker Compose：nginx、api（2 副本）、worker、scheduler、postgres、redis；规模变大后再上容器编排。",
+          "detail": "同一镜像不同入口跑 api、worker、scheduler 与 migrate；每容器 1 个 uvicorn 进程，开启 --proxy-headers，优雅关闭 20 秒、keep-alive 75 秒，stop_grace_period 30 秒（worker 60 秒）必须大于优雅关闭时间。/healthz 只表示进程存活，不查依赖（镜像 HEALTHCHECK）；/readyz 查数据库与检查项，供 compose 与滚动发布使用，依赖故障只摘流量、不连锁重启。加固：非 root（uid 10001）、只读根文件系统加 tmpfs、no-new-privileges、cap_drop ALL、资源与 pids 限额、json-file 日志轮转，数据层网络 internal: true、不能出公网。二、三期用容器编排（如 Kubernetes），按 CPU 与队列积压做 HPA，库存与支付所在服务最小副本 2；运行配置目录必须整目录挂载才会热加载。",
+          "why": "Compose 对小团队运维成本最低，同一份镜像在各环境一致；容器加固把一个服务被攻破后的影响限制在容器内。",
+          "replace_when": "客户已有 Kubernetes 或云厂商容器服务，或日订单进入 5000 以上需要独立伸缩时，可以换编排方式。换的时候必须写明编排平台、副本数、健康检查与优雅关闭参数、资源限额、网络分区，以及运行配置目录如何挂载才能热加载。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/operations.md §2；Luz-Dev/backend/MICROSERVICES.md §6；Luz-Dev/backend/SPEC.md §14.2"
+        },
+        {
+          "id": "STK-DP-03",
+          "name": "网关与 TLS",
+          "baseline": "Nginx 作入口：TLS 1.2 与 1.3（TLSRef Intermediate 6.0）、HSTS、安全头、未知 Host 返回 444、JSON 访问日志、限流、超时，对外只暴露业务路径。",
+          "detail": "限流：通用接口 10 r/s 每 IP、burst 20 nodelay，超限 429；登录 10 r/m、burst 5；短信 1 r/m、burst 2；支付与渠道回调不限流、只靠验签，read 超时 5 秒、体积 64k 与 256k。并发连接每 IP 20、每虚拟主机 1000；上游 connect 3 秒、send 10 秒、read 30 秒（报表导出 60 秒），客户端 header 10 秒、body 15 秒；请求体 1m。/metrics、/readyz、/healthz、/docs、/openapi.json 对外返回 404，未列出的路径 404。真实 IP：nginx 为最外层时向上游发送 X-Forwarded-For: $remote_addr（覆盖，不追加），api 只信任 nginx 的固定地址（uvicorn FORWARDED_ALLOW_IPS 与应用 LUZ_TRUSTED_PROXIES），禁止信任 0.0.0.0/0；前面有云 SLB 或 CDN 时在 nginx 配 set_real_ip_from。",
+          "why": "网关先挡掉未知 Host、扫描和突发流量，应用层限流与账号锁定再做第二道；固定可信代理地址防止伪造 X-Forwarded-For 绕过限流。",
+          "replace_when": "客户用云厂商负载均衡、API 网关或 WAF 作入口时可以替换 Nginx。换的时候必须写明入口产品、TLS 套件与最低版本、各类路径的限流与超时、对外隐藏的路径、真实客户端 IP 的获取方式与可信代理范围。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/operations.md §2；Luz-Dev/backend/ROUTING.md §1；Luz-Dev/references/standards.json OPS-002"
+        },
+        {
+          "id": "STK-DP-04",
+          "name": "域名、备案与证书",
+          "baseline": "面向境内用户的服务域名必须是已完成 ICP 备案的 HTTPS 域名；证书由 ACME 客户端自动续期，管理后台使用独立子域名。",
+          "detail": "ICP 备案由省通信管理局实施，审核需要 1 至 20 个工作日，应在开发初期启动。证书按 ACME Renewal Information 或证书有效期约 2/3 处续期，不写死天数、不靠人工，续期失败进告警。到期预警阈值必须低于续期点：90 天证书 21 天预警、7 天严重；64 天证书（2027-02-10 起默认）14 天与 5 天；45 天证书（2028-02-16 起）10 天与 4 天。上线前 TLS 评级为 A，HTTP 跳转 HTTPS（301）。",
+          "why": "证书有效期在缩短，人工续期迟早漏掉；未备案的域名在境内也无法正常对外服务。",
+          "replace_when": "项目面向境外部署时，备案不适用；使用云厂商托管证书时可以不自己跑 ACME 客户端。换的时候必须写明域名与备案状态、证书来源与续期方式、到期预警阈值，以及备案进度对排期的影响。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/compliance.md §1；Luz-Dev/references/operations.md §2、§4、§7；Luz-Dev/references/standards.json OPS-002",
+          "by_surface": {
+            "miniprogram": {
+              "baseline": "小程序请求的服务器域名还必须配置成小程序后台的合法域名。",
+              "detail": "小程序备案在小程序后台办理，平台初审 1 至 2 个工作日，通过后再由省管局审核，两段时间都要排进计划。",
+              "why": "未备案的域名无法配置成小程序合法域名。",
+              "replace_when": "项目有小程序时，即使服务器部署在境外，小程序备案仍要办理。"
+            }
+          }
+        },
+        {
+          "id": "STK-DP-05",
+          "name": "配置分类与秘密",
+          "baseline": "五类设置分开放：秘密、部署参数、运行参数、经营内容、前台文案；秘密不进仓库、镜像、前端包和日志。",
+          "detail": "秘密（JWT 与字段密钥、商户私钥、APIv3 密钥、AppSecret、数据库口令、服务密钥）放密钥服务或服务器受限文件（/etc/luz/secrets/，compose secrets 挂载），由运维按轮换流程改，新旧并存一段时间。部署参数（数据库与 Redis 地址、连接池、可信网段、模块开关 LUZ_FEATURES）放环境变量 /etc/luz/api.env（权限 600 root），重启生效。运行参数放代码仓库 config/runtime/，经营内容与前台文案放数据库由运营在后台改。环境变量不覆盖运行参数。仓库只留带占位的示例文件，提交前与 CI 都做秘密扫描；泄露处置顺序是吊销、轮换、清除出现过的地方；服务启动时 Settings.assert_production_safe() 拒绝开发默认值。",
+          "why": "同一个值只有一个来源，才能知道谁能改、何时生效、如何回滚；秘密分离是泄露后可止损的前提。",
+          "replace_when": "客户已有统一的密钥管理（云厂商 KMS、Vault）时可以替换存放位置。换的时候必须写明每个秘密的用途、负责人、存放位置、轮换方式，以及部署参数和运行参数各放在哪里。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/config-logging.md §1、§2.8；Luz-Dev/backend/SPEC.md §14.1；Luz-Dev/references/operations.md §2；Luz-Dev/references/standards.json SECRET-001、SECRET-002"
+        },
+        {
+          "id": "STK-DP-06",
+          "name": "运行配置与热加载",
+          "baseline": "运行参数写在代码仓库 config/runtime/ 的 base.toml 与 dev、staging、prod 三个环境文件里，服务端热加载，不在后台展示。",
+          "detail": "格式用 TOML，键名小写蛇形、单位写进键名（timeout_ms、max_mb），每个键在 Pydantic 字段说明里登记类型、范围、能否热加载、是否下发客户端和风险级别，未登记的键报错。加载顺序：代码默认值、base.toml、环境文件、文件内覆盖规则（按门店、渠道、客户端版本、用户分桶）。watchfiles 监听整个配置目录，防抖 1.5 秒，也可调用内网 POST /internal/config/reload；新配置整份校验成不可变快照后一次性替换，校验失败拒绝加载、保留旧配置并告警；每个请求、任务取一次快照。配置版本取内容 SHA-256 的前 12 位，各实例版本不一致超过 5 分钟告警；高风险键（支付、上传上限、维护模式、限流）要第二人评审并先灰度。CI 运行 python -m luzback.config_check --env all。",
+          "why": "超时、上限、开关这类参数需要不发版就能调；整份校验与快照替换避免写错的文件在线上生效或出现半新半旧。",
+          "replace_when": "客户已有配置中心（Apollo、Nacos 等）并要求使用时可以替换，但仍须有字段说明、校验、版本与回滚。换的时候必须写明配置来源、校验方式、热加载触发方式、灰度与回滚做法、哪些键不能热加载。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/config-logging.md §2；Luz-Dev/backend/SPEC.md §14；Luz-System/references/config-design.html；Luz-Dev/references/standards.json CONF-001、CONF-002、CONF-003"
+        },
+        {
+          "id": "STK-DP-07",
+          "name": "发布与回滚",
+          "baseline": "合并到主分支后经 CI、预发、人工审批再发布；release.sh 带预检、发布前备份、迁移、健康门控滚动替换和 15 分钟观察，触发阈值自动回滚。",
+          "detail": "流程：CI 通过、构建镜像（SBOM、provenance、镜像扫描）、预发 release.sh 加 k6 smoke 与关键流程、打 v* tag、生产 environment 人工审批、发布。回滚触发任一即回滚：5xx 比例超过 2%（5 分钟窗口）；p95 超过发布前基线 2 倍且大于 300 ms；支付回调验签失败 10 分钟内超过 5 次；冒烟、任一副本 /readyz 或关键流程失败。release.sh rollback 回到上一 digest，不回退数据库；每次发布写发布记录（版本、digest、迁移 revision、执行人、结果，.release/history.tsv）。回滚路径不明确的发布不算完成。",
+          "why": "量化的回滚触发条件让回滚不靠人临场判断；迁移遵循 expand 与 contract，所以只回滚代码就能恢复服务。",
+          "replace_when": "客户已有发布平台（如 GitLab CI、Jenkins、云厂商流水线）时可以替换脚本与审批方式。换的时候必须写明发布步骤、审批人、回滚触发阈值与负责人、数据库回滚边界，以及发布记录保存位置。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/operations.md §3；Luz-Dev/backend/SPEC.md §14.2；Luz-Dev/backend/MICROSERVICES.md §6",
+          "by_surface": {
+            "miniprogram": {
+              "detail": "有小程序时，后端发布之后还要走小程序体验版验收、提交审核、发布三步。"
+            }
+          }
+        },
+        {
+          "id": "STK-DP-08",
+          "name": "服务器与网络加固",
+          "baseline": "SSH 仅密钥登录、禁止 root 密码登录，安全组只开放 80 与 443 及受限的管理端口，数据库与 Redis 不暴露公网。",
+          "detail": "系统自动安全更新；数据层网络 internal: true、不映射端口，Redis 口令只在配置文件。Prometheus、Alertmanager、Grafana 只绑定 127.0.0.1，远程访问走 SSH 隧道。管理后台登录限速与锁定，可选来源 IP 白名单；微信支付回调地址公网可达，防火墙策略允许回调到达，nginx 不对回调限流。服务器文件按清单存放并限权：/etc/luz/api.env 600 root，redis.conf 640 root:999，secrets 400，keys 400，certs 目录 700，WAL 归档目录 700 999:999。",
+          "why": "加固的目标是任何单点被攻破都不能直接拿到数据库、密钥或监控面板。",
+          "replace_when": "使用云厂商托管的数据库、负载均衡与容器服务时，部分加固由云厂商承担，可按其方式调整。换的时候必须写明谁负责哪一层加固、网络如何分区、管理端口的访问方式、文件与密钥的权限。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/operations.md §2、§6；Luz-Dev/references/standards.json OPS-002"
+        }
+      ]
+    },
+    {
+      "id": "observability",
+      "name": "运维观测",
+      "summary": "结构化日志与脱敏、链路追踪、指标与告警、健康检查、日志留存与集中存储、审计记录。",
+      "items": [
+        {
+          "id": "STK-OB-01",
+          "name": "日志格式与事件",
+          "baseline": "日志一行一条 JSON 写 stdout，字段名全项目统一，每个请求结束写一条 http.request 汇总行。",
+          "detail": "必带字段：ts（UTC 毫秒、结尾 Z）、level、logger、service、env、version、instance、config_version、event、message、trace_id、span_id、request_id；按事件带 user_ref（内部编号，不用手机号或 openid 原值）、store_id、outcome、reason、error.type、error.message、error.stack。http.request 汇总行带 http.method、http.route（路由模板，不用实际路径）、http.status、duration_ms。事件名用小写「领域.动作」（order.created、payment.notify_verified、config.reloaded），集中登记在 log_events.py，结果放 outcome；安全事件用 security. 前缀加 OWASP 词汇并带 category=security。生产默认 INFO，级别是可热加载的运行参数；库存不足、验证码错误这类预期内失败不记 ERROR；同一个异常只在请求边界记一次并带堆栈。",
+          "why": "统一字段和事件名，才能按 trace_id 一次串起整个请求，也才能写出不会误报的告警规则。",
+          "replace_when": "沿用客户已有日志平台时字段名可以对齐其规范（如 ECS）。换的时候必须写明字段映射表、事件名登记方式、请求汇总行的内容，以及如何保证日志仍然一行一条、可按链路编号检索。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/config-logging.md §3.2–§3.4；Luz-Dev/backend/SPEC.md §13；Luz-Dev/references/standards.json OBS-001"
+        },
+        {
+          "id": "STK-OB-02",
+          "name": "日志脱敏与可靠性",
+          "baseline": "口令、令牌、密钥、签名、验证码、会话标识、支付私钥与回调明文一律不记；格式化前统一脱敏；日志失败不得让请求失败。",
+          "detail": "手机号记为 138****1234，证件号只留前 6 后 4 或只留后 4，银行卡号最多后 4 位，openid 与 unionid 哈希后记录，会话标识需要关联时只记哈希前 8 位；人脸、精确位置等敏感个人信息与请求体、响应体默认不记。用字段名黑名单加正则兜底脱敏，控制字符转义，用户输入字段截断到 512 字、堆栈 2000 字，traceparent 与 baggage 里不放个人信息。写 stdout 经 QueueHandler 与 QueueListener，队列有上限（[logging] queue_capacity 默认 10000），满了丢 DEBUG 与 INFO 并计 luz_log_dropped_total，WARNING 以上与安全事件不丢；生产 logging.raiseExceptions = False，日志调用自身的异常吞掉并计数。返回给前端的错误不带堆栈与内部信息，只给稳定错误码与 request_id。",
+          "why": "日志本身也是个人信息，泄露一次密钥或手机号就需要全量处置；日志通道故障不能拖垮业务。",
+          "replace_when": "项目不处理手机号、证件号、支付等敏感字段时，对应的脱敏规则可以精简，但口令、令牌、密钥的禁记不可去掉。换的时候必须写明禁止记录清单、脱敏方式、队列与丢弃策略，以及如何验证日志里没有敏感字段。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/config-logging.md §3.5、§3.7、§3.12；Luz-Dev/backend/SPEC.md §13；Luz-Dev/backend/config/runtime/base.toml [logging]；Luz-Dev/references/standards.json OBS-001"
+        },
+        {
+          "id": "STK-OB-03",
+          "name": "链路追踪",
+          "baseline": "用 W3C traceparent 贯穿请求、事件与定时任务；响应头回显 X-Request-Id、X-Trace-Id、traceparent。",
+          "detail": "请求入口收到合法 traceparent 就沿用其 trace 并新建 span，否则新建；兼容旧的 X-Trace-Id，外部公网请求的采样标志不盲从。上下文用 contextvars 保存，日志过滤器注入每条日志。向下游 HTTP、消息、发件箱事件写入 traceparent，消费端取出后继续同一条 trace；定时任务每次运行新建 trace 并记 job 与 run_id。接入 OpenTelemetry 时沿用同一个 trace_id。前端错误页显示 request_id，用户报障时复制给客服。",
+          "why": "出问题时按一个编号就能从入口、下游调用、消息消费一路查到定时任务，缩短排障时间。",
+          "replace_when": "客户已有 APM 或链路平台（SkyWalking、Jaeger、云厂商 APM）时可以接入其 SDK。换的时候必须写明追踪标准与采样率、编号如何透传到日志与响应头、异步事件与定时任务如何接上链路。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §13；Luz-Dev/references/config-logging.md §3.6；Luz-Dev/backend/API.md §1.2、§1.3"
+        },
+        {
+          "id": "STK-OB-04",
+          "name": "指标与告警",
+          "baseline": "Prometheus 抓取 /metrics，规则按 99.9% SLO 燃烧率、5xx、延迟、饱和度、异步积压、支付、备份、安全分类告警；critical 打电话或短信，warning 发群消息。",
+          "detail": "可用性：1 小时与 5 分钟窗口燃烧率超过 14.4 倍、6 小时与 30 分钟超过 6 倍为 critical，3 天与 6 小时超过 1 倍为 warning；5xx 比例超过 2% 持续 5 分钟。延迟：按路由 p95 读超过 300 ms、写超过 800 ms 持续 10 分钟为 warning，整体读超过 1 秒、写超过 2 秒为 critical，支付回调 p95 超过 3 秒。饱和：CPU 超过 85%、可用内存低于 10%、磁盘低于 15% 或 24 小时内写满、数据库连接超过 80%。异步与支付：发件箱最老积压超过 5 分钟、死信大于 0、分钟级任务 15 分钟与日任务 50 小时无成功；支付待确认超 30 分钟、需人工处理、验签失败 10 分钟超过 5 次。备份：每日备份超过 26 小时、基础备份超过 8 天、WAL 外传超过 15 分钟；每条告警写明负责人和处理手册，告不出行动的规则删掉；Watchdog 接外部死人开关。",
+          "why": "按燃烧率告警，既不漏掉持续失血，也不被瞬时抖动淹没；每条规则对应一个能执行的动作。",
+          "replace_when": "客户已有监控平台（Zabbix、云监控）时可以换采集与告警工具。换的时候必须写明指标清单、各类告警的阈值与升级路径、接收人和值班安排，并证明测试告警已送达。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/operations.md §4；Luz-Dev/references/config-logging.md §3.11；Luz-Dev/backend/SPEC.md §13；Luz-Dev/references/standards.json OBS-003"
+        },
+        {
+          "id": "STK-OB-05",
+          "name": "健康检查与探测",
+          "baseline": "/healthz 表示进程存活，/readyz 表示就绪（数据库、Redis、迁移版本、配置版本），/metrics 只对内网或凭令牌开放；三者对外网关返回 404。",
+          "detail": "/healthz 不查依赖，用于镜像 HEALTHCHECK；/readyz 用于 compose 与滚动发布的流量切换，依赖故障只摘流量、不连锁重启。/metrics 只对 data 网段开放，Prometheus 另带 LUZ_METRICS_TOKEN。blackbox 对外部可用性与证书做探测，探测失败持续 3 分钟告警。/internal/config 返回各实例的配置版本与待重启的键，只对内网并校验运维令牌。",
+          "why": "存活与就绪分开，依赖抖动时只摘流量而不会重启风暴；运维端点不对外，减少暴露面。",
+          "replace_when": "编排平台有自己的探针约定（如 Kubernetes 的 liveness 与 readiness）时可以映射到这两个端点。换的时候必须写明探针路径与间隔、就绪检查包含哪些依赖、哪些端点只对内网开放。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §13；Luz-Dev/backend/API.md §1.1；Luz-Dev/references/operations.md §2、§4；Luz-Dev/references/config-logging.md §2.5"
+        },
+        {
+          "id": "STK-OB-06",
+          "name": "日志留存与集中存储",
+          "baseline": "应用只写 stdout，由采集器送到集中存储；网络与访问日志、安全事件日志不少于 6 个月，热存 30 天，之后归档。",
+          "detail": "容器内不写日志文件；Docker json-file 必须设轮转（api 50m × 5、nginx 100m × 10），本地文件只是缓冲。采集器用 Grafana Alloy 或 Fluent Bit，集中存储用 Loki 或阿里云日志服务一类；索引标签只用低基数字段（服务、环境、级别、类别），trace_id、订单号、用户编号不做标签。归档附内容哈希，存储开启只读或对象锁防删改，到期自动删除且删除任务写运行日志。留存期限：网络与访问日志不少于 6 个月；安全事件日志不少于 6 个月，处置记录建议 3 年；审计记录建议 1 年，涉及个人信息的批量导出与越权操作建议 3 年；交易与订单 3 年；支付流水与对账建议 5 年；智能体与生成内容日志 6 个月。期限写进技术方案的上线章节，合规必需的日志不能被配置整体关闭。",
+          "why": "6 个月是《网络安全法》对网络日志的下限，只存在一台机器上、没有备份的日志不算留存。",
+          "replace_when": "客户有统一日志平台或有更长的合规留存要求时，可以调整存储位置与期限。换的时候必须写明各类日志的存放位置、可访问角色、留存期限与依据、防篡改方式、到期删除机制。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/config-logging.md §3.1、§3.8、§3.9；Luz-Dev/references/operations.md §4；Luz-Dev/backend/SECURITY.md §4"
+        },
+        {
+          "id": "STK-OB-07",
+          "name": "审计记录",
+          "baseline": "关键操作写入只追加的 audit_logs 表，与业务同事务提交；应用账号只有插入权限；后台提供只读审计页。",
+          "detail": "审计范围：后台写操作、权限变更、导出、退款与改价、价格与库存变更、查看敏感明文、登录，以及经营设置和前台文案的修改。记录含操作人、对象、变更前后、原因、时间、来源与 trace_id；用 write_audit(db, 'staff', staff_id, action, resource, id, before, after, reason) 在同一事务里写。审计记录与运行日志分开存放，不走日志通道；查看审计记录本身也写审计；审计写入失败按 CRITICAL 处理。运行参数的变更不进审计表，看配置文件的提交与 config_loads。",
+          "why": "追责需要一份不能被应用改删的记录；与业务同事务写入保证操作成功就一定有记录。",
+          "replace_when": "客户有独立的审计平台时可以同步过去，但本地只追加记录仍须保留。换的时候必须写明审计范围、字段、存放位置、谁能看、保留期限，以及如何防止应用账号改删。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SECURITY.md §8；Luz-Dev/references/config-logging.md §3.1、§3.10；Luz-Dev/backend/MODULE-TEMPLATE.md §3；Luz-Dev/references/standards.json OBS-002"
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "name": "安全",
+      "summary": "会员与后台的认证会话、口令与 MFA、授权与越权防线、输入输出与传输、敏感数据与密钥、限流、支付回调、合规与个人信息。",
+      "items": [
+        {
+          "id": "STK-SE-01",
+          "name": "会员认证与令牌",
+          "baseline": "会员登录凭证交给服务端校验并换取身份，服务端签发自己的 JWT（HS256）访问令牌加服务端会话；刷新令牌每次使用轮换。",
+          "detail": "访问令牌 2 小时（[identity] access_ttl_seconds = 7200），含 aud、sid、jti、kind=access，leeway 30 秒，每次请求校验服务端会话仍有效（登出、停用、注销立即失效）。刷新令牌只存哈希，空闲 14 天、绝对 30 天，轮换后 10 秒宽限，宽限外重放返回 4010 并吊销整个会话。敏感操作（如注销）要求令牌 15 分钟内签发（LUZ_FRESH_WINDOW = 900），否则 4010 fresh_required。JWT 服务端固定接受的算法并拒绝 alg:none，HMAC 密钥（LUZ_JWT_SECRET）熵至少 160 位，校验 iss 与 aud；会员、后台、MFA 挑战、服务间令牌互不通用，自带 perms 之类的声明一律无效。code 一次性，session_key 只在服务端、不下发、不写日志；首次登录自动注册并记录协议同意。",
+          "why": "会话在服务端可吊销，令牌即使泄露也有明确的失效时间；令牌类型隔离防止拿会员令牌访问后台。",
+          "replace_when": "客户已有统一身份系统（企业微信、SSO）或需要多端互通登录时可以调整。换的时候必须写明身份来源、令牌类型与有效期、刷新与吊销机制、会话是否每请求校验，以及令牌类型之间如何隔离。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SECURITY.md §1；Luz-Dev/backend/SPEC.md §1；Luz-Dev/references/standards.json AUTH-003、AUTH-007",
+          "by_surface": {
+            "miniprogram": {
+              "baseline": "小程序用 wx.login 的 code 在服务端换身份。"
+            }
+          }
+        },
+        {
+          "id": "STK-SE-02",
+          "name": "后台登录、会话与 MFA",
+          "baseline": "后台账号用 Argon2id 口令加 TOTP 二次验证，服务端会话空闲 15 分钟、绝对 8 小时，资金与敏感操作要求 5 分钟内完整认证。",
+          "detail": "口令哈希 Argon2id（m = 19456 KiB、t = 2、p = 1），无该库时用 PBKDF2-HMAC-SHA256 600k 轮，旧哈希登录后重哈希。口令策略按 NIST SP 800-63B-4：启用 MFA 时至少 8 位、仅口令时至少 15 位，上限 128，不设组成规则、不定期强制改密，拒绝常见口令和含账号或姓名的口令。TOTP 按 RFC 6238（±1 步、防重放）加恢复码；超级管理员、财务角色和持有 staff:write、role:write、payment:refund、report:export 等权限的员工必须绑定 MFA。按账号失败锁定：15 分钟窗口内 5 次，锁定 15 分钟起递增翻倍、封顶 24 小时，3 次失败后可要求验证码；首登临时口令 72 小时内必须改密。会话绑定 UA，每人最多 5 个，改密、停用、角色变更即时生效，每请求从库加载权限；新鲜认证窗口 300 秒（[admin_rbac] fresh_auth_seconds），否则 4011 reauth_required。",
+          "why": "后台权限大，口令加第二因素加锁定加短会话，任何一环被突破都不足以直接拿到资金类权限。",
+          "replace_when": "客户要求接入企业 SSO 或硬件密钥时可以调整认证方式。换的时候必须写明认证方式与强度、MFA 覆盖的角色与权限、锁定与会话超时数值、敏感操作的重新认证窗口。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SECURITY.md §1、§4；Luz-Dev/references/standards.json AUTH-005、AUTH-006"
+        },
+        {
+          "id": "STK-SE-03",
+          "name": "授权与越权防线",
+          "baseline": "对象级、功能级、数据级三道校验：资源归属、权限码（默认拒绝）、门店范围，条件由服务端注入。",
+          "detail": "按 id 访问的资源必须校验 user_id 或门店范围，不属于时 4040（不泄露存在性）；后台路由一律 require_permission(code)，默认拒绝 4030，权限码为 <module>:<action>，角色可授予精确码或模块通配 module:*，通配 * 只属于超级管理员，每请求从库加载、不做缓存。只能授予自己持有的码和自己范围内的门店，超级管理员角色只能由超级管理员授予且至少保留一名；退款等审批人不能是发起人（assert_not_self）。门店范围越界 4031；请求体里的 user_id、store_id、status、price、amount 不接受客户端写入，价格与金额只在服务端计算。内置角色为 super_admin、store_manager、front_desk、finance、operator，发布时 python -m admin_rbac.bootstrap --seed 同步权限码与角色。",
+          "why": "越权是最常见的接口漏洞，三道校验分别挡住横向越权、纵向越权和跨门店访问；客户端给的身份字段不可信。",
+          "replace_when": "项目只有单一管理员或由客户现有权限系统授权时，角色与权限码可简化或映射。换的时候必须写明角色清单与权限粒度、数据范围条件的注入位置、授予与审批的限制，并有越权测试覆盖。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SECURITY.md §2、§3、§12；Luz-Dev/backend/SPEC.md §5；Luz-Dev/references/standards.json AUTHZ-001、AUTHZ-004"
+        },
+        {
+          "id": "STK-SE-04",
+          "name": "输入输出与传输安全",
+          "baseline": "所有输入按 Pydantic 模型校验类型、长度与范围；全站 HTTPS（TLS 1.2+）加 HSTS；框架统一添加安全响应头；CORS 只允许配置的后台域名。",
+          "detail": "JSON 体不超过 256 KB（[http] max_body_kb），数组声明最大元素数（购物车与订单行不超过 50、图片不超过 9），枚举拒绝未知值，只接受 JSON。SQL 用 ORM 或参数化，排序字段白名单；输出只返回约定字段，手机号与地址默认脱敏，完整值需 *:sensitive 权限并审计。响应头：X-Content-Type-Options: nosniff、X-Frame-Options: DENY、Referrer-Policy: no-referrer、Cache-Control: no-store、Strict-Transport-Security、Permissions-Policy（geolocation、camera、microphone 置空）。CORS 只允许 LUZ_CORS_ORIGINS，生产关闭 /docs。内部服务之间的传输用 mTLS，调用另带 X-Service、时间戳、nonce 的 HMAC-SHA256 签名（偏差不超过 5 分钟、nonce 去重）。",
+          "why": "输入在边界一次校验、输出只给约定字段，注入、批量赋值和信息泄露的面就小很多。",
+          "replace_when": "客户要求更严格的响应头策略（如 CSP）或使用云 WAF 时可以补充。换的时候必须写明校验方式、上限数值、响应头清单、跨域白名单，以及内部服务之间的认证方式。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SECURITY.md §2、§3、§4、§5；Luz-Dev/backend/ROUTING.md §4；Luz-Dev/references/standards.json INPUT-001、INPUT-002",
+          "by_surface": {
+            "miniprogram": {
+              "detail": "小程序请求不经过浏览器，不需要 CORS。"
+            }
+          }
+        },
+        {
+          "id": "STK-SE-05",
+          "name": "敏感数据与密钥",
+          "baseline": "手机号、身份证用 AES-256-GCM 加密列加 HMAC 哈希列查询；密钥由密钥服务注入，定期轮换，生产拒绝开发默认值。",
+          "detail": "字段加密由 luzback.crypto.FieldCipher 完成，密钥 LUZ_FIELD_KEY 生产必填；响应脱敏，完整值只在专门的查看权限（如 member:reveal、staff:sensitive）下返回并写审计。JWT 密钥、字段密钥、商户私钥、APIv3Key、服务密钥不入仓库，定期轮换，每个秘密记录用途、负责人、存放位置和轮换方式，泄露时能在不停机的情况下轮换。Settings.assert_production_safe() 在启动时拒绝开发默认值，并执行各模块登记的生产检查（identity 字段密钥、wechat_pay 等）。口令不可逆存储，备份加密，每季度做恢复演练。",
+          "why": "数据库被拖库时，加密列和哈希列能让手机号与证件号不直接外泄；启动时检查避免带着开发密钥上线。",
+          "replace_when": "项目不存储手机号、证件号等敏感字段时可以不做字段加密。换的时候必须写明哪些字段加密、算法与密钥来源、哈希查询的做法、轮换方式，以及脱敏与查看权限。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SECURITY.md §4；Luz-Dev/backend/SPEC.md §3.5；Luz-Dev/references/config-logging.md §2.8；Luz-Dev/references/standards.json SECRET-001、SECRET-002",
+          "by_surface": {
+            "miniprogram": {
+              "detail": "有小程序时，小程序 AppSecret 同样不入仓库、定期轮换，wechat_mp 模块也登记生产检查。"
+            }
+          }
+        },
+        {
+          "id": "STK-SE-06",
+          "name": "限流与防刷",
+          "baseline": "应用层在 Redis 上做多规则令牌桶限流，阈值取运行配置 [rate_limit] 并热加载；超限返回 429 与 4290，带 Retry-After。",
+          "detail": "默认：每 IP 访问 /api/ 20 次/秒（突发 40）；会员写操作 3 次/秒；登录每 IP 5 次/分钟；后台第二因素与重新认证每 IP 10 次/分钟；刷新令牌每 IP 30 次/分钟；抽奖 10 次/分钟、领奖 5 次/分钟。短信验证码：每 IP 5 次/分钟，同一手机号 60 秒重发、每天 10 条，每 IP 每小时 20 条、每天 50 条；验证码只存哈希，5 分钟有效，最多尝试 5 次。Redis 不可用时放行并计数。同设备短时大量下单或领券进入风控队列，要求验证码或人工审核；爬虫与异常 UA 降级为验证码。网关另有一层限流，两层数值不同时以更严的一层生效。",
+          "why": "限流挡住撞库、短信轰炸和刷券；按 IP、账号、会员、手机号多个维度叠加，单一维度被绕过时还有其他维度。",
+          "replace_when": "内部系统且用户可信时可以放宽或只在网关限流。换的时候必须写明各接口的限流维度与阈值、Redis 不可用时的行为、短信与登录的双维度限制，以及风控触发后的处理。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SECURITY.md §1、§6；Luz-Dev/backend/ROUTING.md §2；Luz-Dev/backend/config/runtime/base.toml [rate_limit]、[identity]"
+        },
+        {
+          "id": "STK-SE-07",
+          "name": "支付回调与资金安全",
+          "baseline": "支付金额只取服务端业务对象；回调逐项验签、解密、校验后才改数据，重复回调不重复处理；退款经审批并防重复。",
+          "detail": "微信支付 v3 回调校验顺序：时间戳偏差不超过 5 分钟、平台证书序列号匹配、RSA-SHA256 验签、APIv3Key 用 AES-256-GCM 解密，再逐项核对 mchid、appid、trade_state、currency、amount、out_trade_no，任一失败不改数据并记录 pay_notify_logs。重放靠渠道单号唯一加支付单条件 UPDATE，重复回调返回成功；渠道 IP 白名单作第二道防线。退款经售后审批（after_sale:approve，要求新鲜认证）或 payment:refund，金额不超过实付减已退，同一 business_ref 先查 find_active_refund 防重复。商户私钥只在内存，回调只走 APIv3 验签、没有 HMAC 联调通道；生产缺密钥、仍用假客户端或回调地址不合规时拒绝启动；日志不记支付参数、签名原文、证书内容。",
+          "why": "支付回调是公网可达的写接口，不验签就等于允许任何人改订单状态；金额只信服务端，客户端传的金额一律忽略。",
+          "replace_when": "项目没有线上收款（线下结算、仅展示）时本项不适用；使用支付宝或其他渠道时按该渠道的验签规则。不用的时候必须写明费用如何结算与对账；换渠道的时候必须写明验签流程、重放防护、退款审批与金额校验、回调的幂等处理。",
+          "mandatory": false,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SECURITY.md §7；Luz-Dev/backend/SPEC.md §6；Luz-Dev/references/compliance.md §1"
+        },
+        {
+          "id": "STK-SE-08",
+          "name": "合规与个人信息",
+          "baseline": "个人信息最小化收集、可查看导出注销；协议与隐私政策版本化并留存同意记录；资质、备案与等保判断逐项记录在方案的「上线与合规」章节。",
+          "detail": "用户服务协议与隐私政策在登录页首次主动勾选（复选框默认不勾选），同意记录追加不改：用户、文档类型、版本号、文本哈希、同意时间、渠道、脱敏后的 IP 或设备标识，实质变更后重新同意；人脸、储值卡等专项协议单独同意并可撤回。资质清单：主体资质、ICP 备案、支付商户号绑定、等级保护定级判断；个人信息默认不出境，网络安全事件较大以上最迟 4 小时内报告。法规与标准的现行状态以 compliance.md §4 为准，方案引用时仍以项目调研当次读到的官方原文为准。",
+          "why": "合规材料缺一项就可能无法上架或被处罚；版本化的协议和同意记录是被投诉时的证据。",
+          "replace_when": "纯内部使用、不收集个人信息的系统，隐私政策与同意流程可以简化，但仍须说明判断依据。换的时候必须写明收集的个人信息清单与用途、同意方式与记录字段、适用的资质与备案及负责人和进度、日志与数据的留存期限。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/compliance.md §1、§4；Luz-Dev/references/legal-documents.md §1–§3；Luz-Dev/backend/SECURITY.md §8",
+          "by_surface": {
+            "miniprogram": {
+              "detail": "小程序在后台补充用户隐私保护指引，声明用到的信息，未声明的隐私接口会被平台禁用；资质另有小程序主体认证与类目、小程序备案，交易类小程序还要做订单发货管理。"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "testing-release",
+      "name": "测试与发布",
+      "summary": "测试分层与工具、必测的失败场景、CI 流水线、压测与容量、发布门禁与上线检查、验收证据。",
+      "items": [
+        {
+          "id": "STK-TR-01",
+          "name": "后端测试分层与工具",
+          "baseline": "pytest 加 httpx TestClient；单元、并发、API、回调、任务、契约、配置、端到端、混沌、负载十层，新模块合入前必须带测试。",
+          "detail": "单元覆盖 service 函数、每个状态流转的合法与非法用例、金额计算（含活动、券、积分、余额）；并发用线程池加文件 SQLite 或 PostgreSQL 容器，库存 50 线程、券库存、积分、余额、名额、幂等重放，断言无超卖、无重复。API 层每个接口测成功、4001、4010、4040（他人资源）、4090、幂等重放（4092 与 4093）、分页与筛选。回调测验签失败、金额不符、重复回调、已取消订单的回调；任务测超时关闭、对账、退款重试、过期任务的幂等。契约测路由装配（tests/test_app_wiring.py）、事件字段（tests/test_event_contracts.py）和对 OpenAPI 的接口测试；配置测三个环境文件加载、坏文件被拒且旧值保留（python -m luzback.config_check --env all）。端到端走登录、报价、下单、支付回调、履约、完成、评价，以及售后部分退款与超时关单；预发做混沌（杀 Redis、延迟支付回调、地图超时）验证降级矩阵；运行命令是 cd backend && python -X utf8 -m pytest -q。",
+          "why": "金额、库存、权限和并发的错误只有在对应层的测试里才暴露；每层都有明确的失败用例，评审时才能核对测试是否够。",
+          "replace_when": "沿用客户已有后端时可换成其语言栈的测试框架。换的时候必须写明各测试层使用的工具、并发与幂等如何测试、契约测试读哪份接口定义，以及哪些层在 CI 里阻断合入。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/backend/SPEC.md §15、§17；Luz-Dev/references/quality.md Test pyramid；Luz-Dev/backend/MODULE-TEMPLATE.md §4"
+        },
+        {
+          "id": "STK-TR-02",
+          "name": "前端与端到端测试",
+          "baseline": "后台用 Playwright 在真实浏览器里走验收清单。",
+          "detail": "后台必测：登录、会话过期（空闲 15 分钟、绝对 8 小时）、停用账号、MFA 与门店范围；路由与操作权限（含权限变更后的拒绝）；列表、筛选、分页、深链与批量部分失败；表单校验与服务端冲突映射；危险操作确认与审计；驾驶舱的加载、空、过期、失败态。Playwright 用 getByRole、getByLabel 定位，验收取证运行不开重试（retries: 0），locale 为 zh-CN、时区 Asia/Shanghai，跨浏览器按需加 Firefox、WebKit 与手机设备项，并在 390 px 与 1280 至 1920 px 各宽度截图。",
+          "why": "客户验收的功能必须在真实浏览器里由用户完成；不开重试能让不稳定的用例暴露出来。",
+          "replace_when": "项目没有后台时后台部分不适用；客户已有自动化测试平台时可换工具。换的时候必须写明各端的自动化工具、浏览器与机型矩阵、登录态与测试数据的处理方式，以及测试结果的证据格式。",
+          "mandatory": true,
+          "owner": "luz-ops",
+          "source": "Luz-Dev/references/miniprogram.md Required tests；Luz-Dev/references/admin.md Required tests；Luz-Ops/references/test-playbooks/miniprogram-tests.md；Luz-Ops/references/test-playbooks/browser-automation.md",
+          "by_surface": {
+            "miniprogram": {
+              "baseline": "小程序用 miniprogram-automator 加机型与基础库真机矩阵加审核前自检。",
+              "detail": "小程序必测：请求信封、令牌刷新、超时、离线、限流与服务器错误；核心流程的页面状态矩阵（加载、空、失败、过期）；导航、深链与恢复；购物车、订单、支付的幂等与过期状态；无障碍标签与焦点；发布目标的性能预算。miniprogram-automator 需要 Node.js、基础库 2.7.3 及以上，开发者工具开启服务端口，支付等原生界面用 mockWxMethod 绕过。",
+              "why": "小程序的功能要在真实小程序环境里由用户完成验收。"
+            }
+          }
+        },
+        {
+          "id": "STK-TR-03",
+          "name": "CI 流水线",
+          "baseline": "CI 依次执行 lint、类型检查、单元、集成、迁移、契约、安全扫描、构建，之后预发与生产；任何阶段失败都阻断合入或发布。",
+          "detail": "lint 用 ruff 0.17；类型检查用 mypy 2.4（可选，先覆盖 00-framework，稳定后改为阻断）；单元用 pytest（SQLite），集成用 pytest 加 PostgreSQL 与 Redis 服务容器；迁移依次 alembic upgrade head、check、downgrade -1、upgrade，要求单 head，未标 # luz: contract 的破坏性迁移失败；契约用 Schemathesis 4.32 对 OpenAPI，5xx、响应不符 schema、未声明状态码都失败；安全用 pip-audit、bandit（HIGH 阻断）、trivy fs 与 image，CRITICAL 或 HIGH 且有修复即阻断。构建用 buildx 加缓存，产出 SBOM 与 provenance。生产 environment 需人工审批，仅 v* tag，串行不取消。CI 自身安全：GITHUB_TOKEN 最小权限、action 固定 commit SHA、不可信输入经环境变量传递而不写进 run 脚本、避免 pull_request_target、部署密钥仅在 environment 中可见。",
+          "why": "把能自动判断的失败条件都放进流水线，合入和发布就不依赖人记得哪一步没做；供应链扫描与 SBOM 让漏洞可追溯。",
+          "replace_when": "客户使用 GitLab CI、Jenkins 或云厂商流水线时可以换平台。换的时候必须写明流水线平台、每个阶段的工具与版本及失败条件、迁移与契约检查是否保留、人工审批点，以及秘密与权限的处理。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/operations.md §3、§6、§9；Luz-Dev/backend/SECURITY.md §10"
+        },
+        {
+          "id": "STK-TR-04",
+          "name": "压测与容量",
+          "baseline": "用 k6 在预发压测浏览、登录、下单等关键接口，阈值：错误率低于 0.5%，读 p95 低于 300 ms，写 p95 低于 800 ms。",
+          "detail": "场景分 smoke、load、soak；阈值：http_req_failed 低于 0.5%、读 p95 低于 300 ms 且 p99 低于 1 秒、写 p95 低于 800 ms 且 p99 低于 2 秒、checks 高于 99%、dropped_iterations 低于 100。压测只打预发，压测机 IP 加入 nginx 限流白名单；上线前按预期峰值（活动、开卡日）压测登录、下单、支付、预约等关键接口，记录瓶颈和容量余量。有抢购场景时另做专项压测。",
+          "why": "容量问题要在上线前暴露；统一的阈值让每个项目的性能评审用同一把尺。",
+          "replace_when": "纯内部低并发系统可降低场景范围，但仍须有 smoke；客户有其他压测工具时可替换。换的时候必须写明压测工具、场景与峰值依据、通过阈值、被测环境，以及瓶颈和余量记录。",
+          "mandatory": true,
+          "owner": "luz-ops",
+          "source": "Luz-Dev/references/operations.md §7、§9；Luz-Dev/backend/SPEC.md §15；Luz-Dev/references/standards.json OPS-004"
+        },
+        {
+          "id": "STK-TR-05",
+          "name": "发布门禁与上线检查",
+          "baseline": "上线前逐项完成上线检查表并保留证据；发布后自动观察 15 分钟加人工值守 30 分钟；回滚路径不明确的发布不算完成。",
+          "detail": "检查表类别：资质（主体、ICP 备案、商户号绑定）、协议（用户协议、隐私政策、专项同意已上线且有同意记录）、配置（生产配置与秘密到位、联调密钥已移除、服务器域名已配置）、数据（迁移在预发演练通过、初始化数据就绪、首次登录强制改密）、功能（登录、下单、真实小额支付、回调、查单、退款、对账真实走通）、网关（未知 Host 444、运维端点 404、伪造 XFF 无效、TLS 评级 A）、压测、运维（测试告警已送达、日志留存 6 个月、备份与恢复演练、回滚演练与上一版本 digest）、文档。发布前齐备带版本的源码与迁移、环境与秘密清单、功能开关与安全默认值、带来源证明的构建产物、备份与恢复步骤、回滚触发条件与负责人、告警接收方。发布后核对首日订单与对账，并有用户反馈渠道。门禁（验收、发布、运行交付、交付验收）逐级叠加，缺失、失败、阻塞的检查阻断门禁，门禁只辅助决策、不自动上线。",
+          "why": "上线事故多出在没人核对的前置条件上；用清单加证据把核对变成可复查的记录。",
+          "replace_when": "纯内部低风险系统可以裁剪清单项，但资质、备份恢复、回滚、监控告警不可去掉。换的时候必须写明裁剪了哪些检查项、理由、替代措施，以及由谁在什么时间核对。",
+          "mandatory": true,
+          "owner": "luz-ops",
+          "source": "Luz-Dev/references/operations.md §3、§7；Luz-Ops/references/release-gates.md",
+          "by_surface": {
+            "miniprogram": {
+              "detail": "有小程序时，资质一项还要核对小程序类目与小程序备案。"
+            }
+          }
+        },
+        {
+          "id": "STK-TR-06",
+          "name": "必测失败场景与验收证据",
+          "baseline": "完成的判定看可观察行为：代码与测试存在，最终修改之后相关测试已运行并通过，失败场景已覆盖，证据里没有秘密和个人敏感数据。",
+          "detail": "每个功能至少覆盖：无效与缺失输入；认证过期或缺失；越权与范围外访问；重复与并发请求；过期状态与非法流转；外部超时、失败、限流与恢复；离线与重连；批量操作的部分成功；回滚与迁移重启。报告完成前还须满足：界面已在目标尺寸与状态检查；迁移或结构变更已实际执行；实现与交接文档的偏离已记录并获批；遗留限制和变更的契约写明。最终修改可能使旧证据失效时才重复检查，不为制造输出而重复跑同样的套件。后端验收清单（SPEC §17）逐项打钩：全局异常处理器、写接口幂等、条件 UPDATE、下单事务、回调验签、发件箱、软删除、弹性参数、定时任务、日志字段、配置加载、迁移从零建库、端到端覆盖。",
+          "why": "验收证据让「完成」可以被别人复查；失败场景清单覆盖了事故高发的几类情形。",
+          "replace_when": "原型或一次性脚本不需要完整验收，但必须明确标注为原型。换的时候必须写明验收标准、证据形式（测试输出、截图、日志）、证据中如何去除敏感数据，以及未覆盖的失败场景和接受风险的人。",
+          "mandatory": true,
+          "owner": "luz-ops",
+          "source": "Luz-Dev/references/quality.md Required failure cases、Completion evidence；Luz-Dev/backend/SPEC.md §17"
+        },
+        {
+          "id": "STK-TR-07",
+          "name": "契约与设计绑定检查",
+          "baseline": "接口契约由 OpenAPI 与 design-bindings.json 串起设计、前后端与测试；设计绑定检查通过、关键页面与原型截图对照后才能上线。",
+          "detail": "契约流程：已批准设计定义页面、动作、状态、组件与实体编号（design-bindings.json）；前后端负责人把它映射到接口编号与结构；平台契约记录认证、权限、功能开关、限制和错误码；消费者用生成或共享的类型；测试断言契约和用户可见的失败行为。多个客户端受影响时，先改 OpenAPI 和兼容说明再实现；优先只加字段，破坏性变更用版本或迁移方案。不从界面文字推导业务规则，不把数据库记录直接暴露为接口契约。视觉检查对照已批准的设计状态，发布前对关键页面做原型截图对照。",
+          "why": "契约先于实现，多端同时开发才不会各写一套；设计编号贯穿到测试，用户可见行为才不会被实现静默改写。",
+          "replace_when": "只有一个客户端且接口很少时，可以不单独维护设计绑定文件，但接口定义仍须由实现导出并纳入 CI。换的时候必须写明接口定义的来源、前后端如何共享类型、设计与接口的对应记录方式，以及视觉对照的方法。",
+          "mandatory": true,
+          "owner": "luz-dev",
+          "source": "Luz-Dev/references/implementation-architecture.md Contract flow、Module, API and database changes；Luz-Dev/references/operations.md §7；Luz-Dev/references/quality.md Test pyramid"
+        }
+      ]
+    }
+  ]
+}

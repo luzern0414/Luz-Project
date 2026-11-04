@@ -1,0 +1,48 @@
+{
+  "questions": [
+    {
+      "category": "预约规则 · 取消",
+      "item": "预约取消",
+      "kind": "logic",
+      "example": "开课前 2 小时可取消，之后不能取消",
+      "why": "决定顾客能否取消和何时截止"
+    },
+    {
+      "category": "预约规则 · 爽约",
+      "item": "爽约处理",
+      "kind": "logic",
+      "example": "爽约 3 次限制预约 7 天",
+      "why": "防止占位不到，释放名额给其他顾客"
+    },
+    {
+      "category": "会员规则 · 积分",
+      "item": "积分获取",
+      "kind": "logic",
+      "example": "消费 1 元得 1 分，每日最多 500 分",
+      "why": "系统按规则自动发放积分，需明确比例和上限"
+    },
+    {
+      "category": "微信小程序 · 账号",
+      "item": "小程序 AppID",
+      "kind": "info",
+      "example": "wx1234567890abcdef",
+      "why": "绑定开发和发布，用于配置登录和体验版（在微信公众平台的开发设置里查看）"
+    },
+    {
+      "category": "服务器与域名 · 域名",
+      "item": "系统访问域名",
+      "kind": "info",
+      "example": "gym.example.com",
+      "why": "小程序、后台和接口共用这个域名，必须已备案并启用 HTTPS"
+    },
+    {
+      "category": "首批数据 · 导入",
+      "item": "首批会员名单",
+      "kind": "info",
+      "example": "张三｜13800000000｜金卡｜积分 1200",
+      "why": "上线后会员无需重新注册，积分和等级沿用"
+    }
+  ],
+  "library": "none",
+  "exclude": []
+}

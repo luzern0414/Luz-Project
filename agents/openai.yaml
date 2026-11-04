@@ -1,0 +1,6 @@
+interface:
+  display_name: "Luz Project"
+  short_description: "管理完整项目：客户方案与信息收集、阶段审批、变更台账、使用说明与验收清单"
+  default_prompt: "使用 $luz-project 管理这个项目：先出客户方案 PDF 与功能清单，再收集客户信息，按阶段完成检索、评审和用户确认，期间所有需求变更登记到变更台账，交付时给使用说明和验收清单。"
+policy:
+  allow_implicit_invocation: false

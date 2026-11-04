@@ -1,0 +1,778 @@
+{
+  "schema_version": "1.1",
+  "mode": "explicit-project-only",
+  "html_required": true,
+  "canonical_state": "project.json",
+  "crawl_handshake": [
+    "doctor",
+    "reuse-project-task",
+    "experience --query",
+    "capture-or-search-when-needed"
+  ],
+  "approval_required_at_every_stage": true,
+  "standalone_behavior": "unchanged-without-project-context",
+  "stages": [
+    {
+      "id": "requirements",
+      "name": "需求对接",
+      "owner": "luz-project",
+      "contributors": [
+        "luz-writing",
+        "luz-crawl"
+      ],
+      "docs_dir": "docs/01-需求对接",
+      "required_inputs": [
+        "user_brief"
+      ],
+      "outputs": [
+        "需求说明书 PDF（项目背景、建设目标、范围与使用者、需求清单、业务规则与约束、验收标准、需要客户确认的事项；客户没有需求文档时先写这一份，Word 排版后导出）",
+        "需求评审 HTML（给开发，放 raw/reviews）",
+        "scope and module ledger",
+        "success criteria"
+      ],
+      "crawl_focus": "domain vocabulary, comparable product entry points, official constraints",
+      "approval": "user_scope",
+      "next": "research",
+      "failure_route": "requirements",
+      "deliverables": [
+        {
+          "id": "requirements-pdf",
+          "name": "需求说明书",
+          "audience": "client",
+          "format": "pdf",
+          "kind": "requirements-pdf",
+          "required": true,
+          "path": "docs/01-需求对接/01-需求说明书.pdf",
+          "producers": [
+            "luz-writing",
+            "luz-design"
+          ],
+          "tool": "project.py client requirements"
+        },
+        {
+          "id": "requirements-review",
+          "name": "需求对接",
+          "audience": "dev",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "raw/reviews/01-需求评审.html"
+        }
+      ]
+    },
+    {
+      "id": "research",
+      "name": "调研结论",
+      "owner": "luz-crawl",
+      "contributors": [
+        "luz-system",
+        "luz-design",
+        "luz-dev",
+        "luz-writing"
+      ],
+      "docs_dir": "docs/01-需求对接",
+      "required_inputs": [
+        "requirements"
+      ],
+      "outputs": [
+        "research conclusion HTML",
+        "evidence index",
+        "raw snapshots"
+      ],
+      "crawl_focus": "page structure, interactions, component states, visual systems, technical and operational sources",
+      "approval": "user_research_coverage",
+      "next": "proposal",
+      "failure_route": "requirements",
+      "deliverables": [
+        {
+          "id": "research-review",
+          "name": "调研结论",
+          "audience": "dev",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "raw/reviews/02-调研结论.html"
+        }
+      ]
+    },
+    {
+      "id": "proposal",
+      "name": "方案文档",
+      "owner": "luz-project",
+      "contributors": [
+        "luz-system",
+        "luz-writing",
+        "luz-design",
+        "luz-crawl"
+      ],
+      "docs_dir": "docs/01-需求对接",
+      "client_dir": "docs/01-需求对接",
+      "required_inputs": [
+        "requirements",
+        "research"
+      ],
+      "outputs": [
+        "方案说明书 PDF（项目背景与需求分析、建设目标、解决方案、交付内容；Word 排版后导出）",
+        "系统架构图 PDF（完整架构、模块逻辑、依赖、数据链路）",
+        "功能清单 Excel（功能清单 + 报价清单）",
+        "方案评审 HTML（给开发）",
+        "data/client/features.json 稳定功能 ID"
+      ],
+      "deliverables": [
+        {
+          "id": "proposal-pdf",
+          "name": "方案说明书",
+          "audience": "client",
+          "format": "pdf",
+          "kind": "proposal-pdf",
+          "required": true,
+          "path": "docs/01-需求对接/02-方案说明书.pdf",
+          "producers": [
+            "luz-writing",
+            "luz-design"
+          ],
+          "tool": "project.py client proposal"
+        },
+        {
+          "id": "architecture-pdf",
+          "name": "系统架构图",
+          "audience": "client",
+          "format": "pdf",
+          "kind": "architecture-pdf",
+          "required": true,
+          "path": "docs/01-需求对接/03-系统架构图.pdf",
+          "producers": [
+            "luz-system",
+            "luz-design"
+          ],
+          "tool": "project.py client proposal"
+        },
+        {
+          "id": "feature-list-xlsx",
+          "name": "功能清单",
+          "audience": "client",
+          "format": "xlsx",
+          "kind": "feature-list-xlsx",
+          "required": true,
+          "path": "docs/01-需求对接/04-功能清单.xlsx",
+          "producers": [
+            "luz-system",
+            "luz-design"
+          ],
+          "tool": "project.py client proposal"
+        },
+        {
+          "id": "proposal-review",
+          "name": "方案评审",
+          "audience": "dev",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "raw/reviews/03-方案评审.html"
+        }
+      ],
+      "crawl_focus": "同类方案书的结构与范围、行业业务规则与术语、竞品功能边界、平台入驻与合规前提",
+      "approval": "client_proposal",
+      "next": "client-intake",
+      "failure_route": "requirements"
+    },
+    {
+      "id": "client-intake",
+      "name": "业务逻辑确认",
+      "owner": "luz-project",
+      "contributors": [
+        "luz-system",
+        "luz-writing",
+        "luz-design"
+      ],
+      "docs_dir": "docs/01-需求对接",
+      "client_dir": "docs/01-需求对接",
+      "required_inputs": [
+        "proposal"
+      ],
+      "outputs": [
+        "业务逻辑确认表 XLSX（下发：每个功能拟定的业务逻辑、待决定的规则，客户确认或修改；另有只有客户才有的资料）",
+        "客户回填表 XLSX（回收）",
+        "data/client/intake.json 结构化答案",
+        "信息评审 HTML（给开发）"
+      ],
+      "deliverables": [
+        {
+          "id": "intake-form",
+          "name": "业务逻辑确认表",
+          "audience": "client",
+          "format": "xlsx",
+          "kind": "intake-form",
+          "required": true,
+          "path": "docs/01-需求对接/05-业务逻辑确认表.xlsx",
+          "producers": [
+            "luz-system",
+            "luz-design"
+          ],
+          "tool": "project.py client intake-form"
+        },
+        {
+          "id": "intake-response",
+          "name": "客户回填表",
+          "audience": "client",
+          "format": "xlsx",
+          "kind": "intake-response",
+          "required": true,
+          "path": "docs/01-需求对接/05-业务逻辑确认表-回填.xlsx",
+          "producers": [
+            "client"
+          ],
+          "tool": "project.py client intake-import"
+        },
+        {
+          "id": "intake-review",
+          "name": "业务逻辑确认评审",
+          "audience": "dev",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "raw/reviews/04-业务逻辑确认评审.html"
+        }
+      ],
+      "crawl_focus": "目标平台的入驻与上线前置资料（小程序主体资质、类目、备案、支付商户）、行业必填业务规则",
+      "approval": "client_info_confirmed",
+      "next": "architecture",
+      "failure_route": "proposal"
+    },
+    {
+      "id": "architecture",
+      "name": "系统架构",
+      "owner": "luz-system",
+      "contributors": [
+        "luz-crawl",
+        "luz-writing"
+      ],
+      "docs_dir": "docs/02-产品开发",
+      "required_inputs": [
+        "requirements",
+        "research",
+        "proposal",
+        "client-intake"
+      ],
+      "outputs": [
+        "系统架构 HTML（01-系统架构）",
+        "功能编号到模块、页面、接口的追溯",
+        "入口表 entrances.json（给前端界面设计）"
+      ],
+      "crawl_focus": "product flows, navigation, component behavior, platform constraints",
+      "approval": "user_architecture",
+      "next": "design",
+      "failure_route": "proposal",
+      "deliverables": [
+        {
+          "id": "architecture-review",
+          "name": "系统架构",
+          "audience": "dev",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "docs/02-产品开发/01-系统架构.html"
+        }
+      ],
+      "standard": "references/dev-documents.md",
+      "rule_cards": [
+        {
+          "skill": "luz-system",
+          "card": "system-design",
+          "for": "系统架构清单与架构图的画法"
+        }
+      ]
+    },
+    {
+      "id": "design",
+      "name": "前端界面设计",
+      "owner": "luz-design",
+      "contributors": [
+        "luz-system",
+        "luz-crawl"
+      ],
+      "docs_dir": "docs/02-产品开发",
+      "required_inputs": [
+        "architecture",
+        "client-intake"
+      ],
+      "outputs": [
+        "前端界面设计 HTML（02-前端界面设计：前端规范与页面路径、每个前端一个可交互原型）",
+        "每个前端一个可交互原型 HTML",
+        "design tokens",
+        "design bindings",
+        "assets manifest"
+      ],
+      "crawl_focus": "frontend architecture (layers, routing, state, requests), interactive prototype behaviour, visual systems, official palettes, icon/component behavior, motion and accessibility",
+      "approval": "user_visual",
+      "next": "technical-plan",
+      "failure_route": "architecture",
+      "deliverables": [
+        {
+          "id": "design-review",
+          "name": "前端界面设计",
+          "audience": "dev",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "docs/02-产品开发/02-前端界面设计.html"
+        },
+        {
+          "id": "prototype-mini",
+          "name": "小程序可交互原型",
+          "audience": "dev",
+          "format": "html",
+          "kind": "prototype",
+          "required": true,
+          "path": "docs/02-产品开发/03-小程序原型.html"
+        },
+        {
+          "id": "prototype-admin",
+          "name": "后台可交互原型",
+          "audience": "dev",
+          "format": "html",
+          "kind": "prototype",
+          "required": true,
+          "path": "docs/02-产品开发/04-后台原型.html"
+        }
+      ],
+      "standard": "references/dev-documents.md",
+      "rule_cards": [
+        {
+          "skill": "luz-design",
+          "card": "design-path",
+          "for": "整个界面项目的设计路径与思考链（十个阶段、检查表、偏离说明）"
+        },
+        {
+          "skill": "luz-design",
+          "card": "page-patterns",
+          "for": "首页与常见页面的范式、入口归属与去重（据架构阶段的入口表）"
+        },
+        {
+          "skill": "luz-design",
+          "card": "interface-visual",
+          "for": "配色、字体、密度、表格与图标"
+        },
+        {
+          "skill": "luz-design",
+          "card": "interface-layout",
+          "for": "栅格、间距、表格列宽、导航"
+        },
+        {
+          "skill": "luz-system",
+          "card": "miniprogram",
+          "for": "小程序界面"
+        },
+        {
+          "skill": "luz-system",
+          "card": "admin-list",
+          "for": "后台列表页"
+        },
+        {
+          "skill": "luz-system",
+          "card": "interaction",
+          "for": "交互闭环与操作反馈"
+        },
+        {
+          "skill": "luz-design",
+          "card": "interface-motion",
+          "for": "动效时长、缓动、列表与卡片动画、减少动态效果"
+        },
+        {
+          "skill": "luz-system",
+          "card": "prototype",
+          "for": "原型的组装、配置面板与浏览器验收"
+        },
+        {
+          "skill": "luz-system",
+          "card": "interaction-patterns",
+          "for": "两态控件、列表变更、卡片交互"
+        },
+        {
+          "skill": "luz-system",
+          "card": "nav-levels",
+          "for": "多级导航与层级"
+        }
+      ]
+    },
+    {
+      "id": "technical-plan",
+      "name": "后端设计规范",
+      "owner": "luz-dev",
+      "contributors": [
+        "luz-system",
+        "luz-design",
+        "luz-crawl",
+        "luz-writing"
+      ],
+      "docs_dir": "docs/02-产品开发",
+      "required_inputs": [
+        "architecture",
+        "design",
+        "client-intake"
+      ],
+      "outputs": [
+        "后端设计规范 HTML（05-后端设计规范）",
+        "接口契约（来自运行中的 OpenAPI）",
+        "数据库与部署方案"
+      ],
+      "crawl_focus": "official framework docs, API limits, security, deployment and compliance",
+      "approval": "user_technical_plan",
+      "next": "implementation",
+      "failure_route": "architecture",
+      "deliverables": [
+        {
+          "id": "technical-plan-review",
+          "name": "后端设计规范",
+          "audience": "dev",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "docs/02-产品开发/05-后端设计规范.html"
+        }
+      ],
+      "standard": "references/dev-documents.md",
+      "rule_cards": [
+        {
+          "skill": "luz-dev",
+          "card": "backend-module",
+          "for": "模块与业务模式的详细设计"
+        },
+        {
+          "skill": "luz-dev",
+          "card": "api-data",
+          "for": "接口契约与数据建模"
+        },
+        {
+          "skill": "luz-dev",
+          "card": "config-logging",
+          "for": "配置与日志"
+        }
+      ]
+    },
+    {
+      "id": "implementation",
+      "name": "产品开发",
+      "owner": "luz-dev",
+      "contributors": [
+        "luz-system",
+        "luz-design",
+        "luz-writing"
+      ],
+      "docs_dir": "docs/02-产品开发",
+      "required_inputs": [
+        "technical-plan"
+      ],
+      "outputs": [
+        "实现报告 HTML（06-实现报告）",
+        "src",
+        "test",
+        "infra",
+        "milestone evidence"
+      ],
+      "crawl_focus": "implementation constraints and current official references when facts are time-sensitive",
+      "approval": "user_milestone",
+      "next": "verification",
+      "failure_route": "technical-plan",
+      "deliverables": [
+        {
+          "id": "implementation-review",
+          "name": "实现报告",
+          "audience": "dev",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "docs/02-产品开发/06-实现报告.html"
+        },
+        {
+          "id": "user-terms-pdf",
+          "name": "用户协议",
+          "audience": "client",
+          "format": "pdf",
+          "kind": "legal-pdf",
+          "required": true,
+          "path": "docs/03-验收交付/用户协议.pdf",
+          "producers": [
+            "luz-dev",
+            "luz-writing",
+            "luz-design"
+          ],
+          "tool": "formal_doc.py build（assets/legal/user-terms.md 起草，经 Design 的 Word 排版导出）"
+        },
+        {
+          "id": "privacy-policy-pdf",
+          "name": "隐私政策",
+          "audience": "client",
+          "format": "pdf",
+          "kind": "legal-pdf",
+          "required": true,
+          "path": "docs/03-验收交付/隐私政策.pdf",
+          "producers": [
+            "luz-dev",
+            "luz-writing",
+            "luz-design"
+          ],
+          "tool": "formal_doc.py build（assets/legal/privacy-policy.md 起草，经 Design 的 Word 排版导出）"
+        }
+      ],
+      "client_dir": "docs/03-验收交付",
+      "standard": "references/dev-documents.md",
+      "rule_cards": [
+        {
+          "skill": "luz-dev",
+          "card": "project-handoff",
+          "for": "项目模式交接与 Ops 证据"
+        }
+      ]
+    },
+    {
+      "id": "verification",
+      "name": "验收测试",
+      "owner": "luz-ops",
+      "contributors": [
+        "luz-dev",
+        "luz-system",
+        "luz-design",
+        "luz-crawl"
+      ],
+      "docs_dir": "docs/02-产品开发",
+      "required_inputs": [
+        "implementation",
+        "design",
+        "technical-plan"
+      ],
+      "outputs": [
+        "验收测试报告 PDF（客户版，Word 排版）",
+        "test matrix",
+        "browser and device evidence",
+        "risk report"
+      ],
+      "crawl_focus": "platform test requirements, accessibility, security and runtime references",
+      "approval": "user_release_candidate",
+      "next": "release",
+      "failure_route": "implementation",
+      "deliverables": [
+        {
+          "id": "test-report-pdf",
+          "name": "验收测试报告",
+          "audience": "client",
+          "format": "pdf",
+          "kind": "ops-client-pdf",
+          "required": true,
+          "path": "docs/03-验收交付/验收测试报告.pdf",
+          "producers": [
+            "luz-ops",
+            "luz-design",
+            "luz-writing"
+          ],
+          "tool": "ops.py client-doc <项目> test-report"
+        },
+        {
+          "id": "verification-report",
+          "name": "验收测试报告",
+          "audience": "ops",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "docs/02-产品开发/07-验收测试评审.html"
+        }
+      ],
+      "client_dir": "docs/03-验收交付"
+    },
+    {
+      "id": "release",
+      "name": "发布交付",
+      "owner": "luz-ops",
+      "contributors": [
+        "luz-dev",
+        "luz-writing"
+      ],
+      "docs_dir": "docs/02-产品开发",
+      "required_inputs": [
+        "verification"
+      ],
+      "outputs": [
+        "发布说明 PDF（客户版，Word 排版）",
+        "release report",
+        "rollback evidence",
+        "release notes"
+      ],
+      "crawl_focus": "deployment provider docs, release limits, migration and rollback guidance",
+      "approval": "user_production_release",
+      "next": "operations",
+      "failure_route": "verification",
+      "deliverables": [
+        {
+          "id": "release-notes-pdf",
+          "name": "发布说明",
+          "audience": "client",
+          "format": "pdf",
+          "kind": "ops-client-pdf",
+          "required": true,
+          "path": "docs/03-验收交付/发布说明.pdf",
+          "producers": [
+            "luz-ops",
+            "luz-design",
+            "luz-writing"
+          ],
+          "tool": "ops.py client-doc <项目> release-notes"
+        },
+        {
+          "id": "release-report",
+          "name": "发布报告",
+          "audience": "ops",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "docs/02-产品开发/08-发布评审.html"
+        }
+      ],
+      "client_dir": "docs/03-验收交付"
+    },
+    {
+      "id": "operations",
+      "name": "运行交付",
+      "owner": "luz-ops",
+      "contributors": [
+        "luz-dev"
+      ],
+      "docs_dir": "docs/02-产品开发",
+      "required_inputs": [
+        "release"
+      ],
+      "outputs": [
+        "运维手册 PDF（客户版，Word 排版）",
+        "runbook",
+        "monitoring and backup evidence",
+        "handoff report"
+      ],
+      "crawl_focus": "monitoring, backup, incident response and platform operations",
+      "approval": "user_final_handoff",
+      "next": "handover",
+      "failure_route": "release",
+      "deliverables": [
+        {
+          "id": "operations-manual-pdf",
+          "name": "运维手册",
+          "audience": "client",
+          "format": "pdf",
+          "kind": "ops-client-pdf",
+          "required": true,
+          "path": "docs/03-验收交付/运维手册.pdf",
+          "producers": [
+            "luz-ops",
+            "luz-design",
+            "luz-writing"
+          ],
+          "tool": "ops.py client-doc <项目> operations-manual"
+        },
+        {
+          "id": "operations-report",
+          "name": "运行交付报告",
+          "audience": "ops",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "docs/02-产品开发/09-运维评审.html"
+        }
+      ],
+      "client_dir": "docs/03-验收交付"
+    },
+    {
+      "id": "handover",
+      "name": "交付验收",
+      "owner": "luz-project",
+      "contributors": [
+        "luz-ops",
+        "luz-writing",
+        "luz-design",
+        "luz-system",
+        "luz-dev"
+      ],
+      "docs_dir": "docs/03-验收交付",
+      "client_dir": "docs/03-验收交付",
+      "required_inputs": [
+        "operations"
+      ],
+      "outputs": [
+        "使用说明 PDF",
+        "验收清单 XLSX（客户逐项签字）",
+        "需求变更台账快照 XLSX",
+        "交付评审 HTML",
+        "data/acceptance/checklist.json"
+      ],
+      "deliverables": [
+        {
+          "id": "user-manual",
+          "name": "使用说明",
+          "audience": "client",
+          "format": "pdf",
+          "kind": "user-manual-pdf",
+          "required": true,
+          "path": "docs/03-验收交付/使用说明.pdf",
+          "producers": [
+            "luz-writing",
+            "luz-design"
+          ],
+          "tool": "project.py client manual"
+        },
+        {
+          "id": "acceptance-checklist",
+          "name": "验收清单",
+          "audience": "client",
+          "format": "xlsx",
+          "kind": "acceptance-checklist",
+          "required": true,
+          "path": "docs/03-验收交付/验收清单.xlsx",
+          "producers": [
+            "luz-ops",
+            "luz-design"
+          ],
+          "tool": "project.py client acceptance"
+        },
+        {
+          "id": "change-ledger-snapshot",
+          "name": "需求变更台账（交付快照）",
+          "audience": "client",
+          "format": "xlsx",
+          "kind": "change-ledger",
+          "required": true,
+          "path": "docs/03-验收交付/需求变更台账-交付快照.xlsx",
+          "producers": [
+            "luz-project"
+          ],
+          "tool": "project.py change snapshot"
+        },
+        {
+          "id": "handover-review",
+          "name": "交付评审页（开发版）",
+          "audience": "ops",
+          "format": "html",
+          "kind": "html",
+          "required": true,
+          "path": "raw/reviews/05-交付评审.html"
+        }
+      ],
+      "crawl_focus": "交付验收惯例、使用说明编写要点、行业合规与售后条款",
+      "approval": "client_final_acceptance",
+      "next": null,
+      "failure_route": "operations"
+    }
+  ],
+  "audiences": {
+    "client": "docs/01-需求对接（方案阶段 PDF/XLSX）或 docs/03-验收交付（使用说明、验收清单）",
+    "dev": "docs/02-产品开发（HTML 评审页与开发交接）",
+    "ops": "docs/02-产品开发（测试、发布、运维 HTML 证据页）和 raw/reviews（交付评审页）"
+  },
+  "directory_contract": {
+    "docs/01-需求对接": "需求对接阶段交给客户的文件，只有 PDF 和 XLSX，平铺不建子目录：01 需求说明书、02 方案说明书、03 系统架构图、04 功能清单、05 业务逻辑确认表与回填、06 需求变更台账；客户给的原始资料放 raw/uploads，Word 源文件放 raw/client-docs",
+    "docs/02-产品开发": "开发阶段的 HTML，平铺不建子目录，一个“两位序号加中文名”的顺序：01 系统架构、02 前端界面设计、各前端的原型（03 起，序号 + 前端名称 + 原型，有几个前端就几个，如 03-手机原型、04-后台原型）、05 后端设计规范、06 实现报告、07 验收测试评审、08 发布评审、09 运维评审",
+    "docs/03-验收交付": "交付给客户的文件，只有 PDF 和 XLSX，平铺不建子目录：使用说明、验收清单、需求变更台账快照、验收测试报告、发布说明、运维手册、用户协议、隐私政策",
+    "raw/reviews": "需求、调研、方案、客户信息、交付这几个阶段给你审批、给开发看的评审页（内部页，不交给客户，也不进 docs）：01 需求评审、02 调研结论、03 方案评审、04 业务逻辑确认评审、05 交付评审"
+  },
+  "global_ledgers": [
+    "data/changes.json",
+    "data/client/features.json",
+    "data/acceptance/checklist.json"
+  ]
+}

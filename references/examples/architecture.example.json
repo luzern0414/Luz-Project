@@ -1,0 +1,186 @@
+{
+  "title": "示例健身系统架构图册",
+  "icon": "layers",
+  "orientation": "landscape",
+  "min_fill": 0.3,
+  "style": "atlas",
+  "sections": [
+    {
+      "title": "功能模块与逻辑",
+      "key": "modules",
+      "blocks": [
+        {
+          "type": "table",
+          "columns": [
+            "模块",
+            "输入",
+            "处理",
+            "输出"
+          ],
+          "rows": [
+            [
+              "预约与核销",
+              "顾客选择的时段",
+              "校验库存并生成预约",
+              "预约单与核销码"
+            ]
+          ],
+          "caption": "模块的输入、处理与输出"
+        }
+      ]
+    },
+    {
+      "title": "模块依赖关系",
+      "key": "dependencies",
+      "blocks": [
+        {
+          "type": "table",
+          "columns": [
+            "被依赖的对象",
+            "被谁使用",
+            "不可用时的影响"
+          ],
+          "rows": [
+            [
+              "会员与积分服务",
+              "预约与核销服务",
+              "无法按会员价预约"
+            ]
+          ],
+          "caption": "被依赖对象与影响"
+        }
+      ]
+    },
+    {
+      "title": "数据链路与流转",
+      "key": "dataflow",
+      "blocks": [
+        {
+          "type": "table",
+          "columns": [
+            "数据",
+            "产生于",
+            "保存在"
+          ],
+          "rows": [
+            [
+              "预约单",
+              "顾客小程序",
+              "数据库"
+            ]
+          ],
+          "caption": "主要数据的来源与去向"
+        }
+      ]
+    },
+    {
+      "title": "总体架构",
+      "key": "layers",
+      "icon": "layers",
+      "blocks": [
+        {
+          "type": "figure",
+          "figure": "arch_layers",
+          "caption": "总体架构图",
+          "data": {
+            "layers": [
+              {
+                "name": "使用端",
+                "icon": "phone",
+                "nodes": [
+                  {
+                    "id": "U1",
+                    "name": "顾客小程序",
+                    "role": "预约、会员与积分",
+                    "icon": "phone"
+                  },
+                  {
+                    "id": "U2",
+                    "name": "管理后台",
+                    "role": "商品、核销与报表",
+                    "icon": "monitor"
+                  },
+                  {
+                    "id": "U3",
+                    "name": "经营助手",
+                    "role": "对话查询与绩效核算",
+                    "icon": "bolt"
+                  }
+                ]
+              },
+              {
+                "name": "业务服务",
+                "icon": "layers",
+                "nodes": [
+                  {
+                    "id": "S1",
+                    "name": "会员与积分服务",
+                    "role": "会员档案、积分账户",
+                    "icon": "users"
+                  },
+                  {
+                    "id": "S2",
+                    "name": "预约与核销服务",
+                    "role": "时段库存、核销记录",
+                    "icon": "calendar"
+                  },
+                  {
+                    "id": "S3",
+                    "name": "规则与核算服务",
+                    "role": "读取后台规则并核算",
+                    "icon": "sliders"
+                  }
+                ]
+              },
+              {
+                "name": "基础设施",
+                "icon": "server",
+                "nodes": [
+                  {
+                    "id": "B1",
+                    "name": "数据库与备份",
+                    "role": "业务数据保存与恢复",
+                    "icon": "database"
+                  },
+                  {
+                    "id": "B2",
+                    "name": "消息通知",
+                    "role": "订阅消息提醒",
+                    "icon": "bell"
+                  }
+                ]
+              }
+            ],
+            "flows": [
+              {
+                "from": "U1",
+                "to": "S1",
+                "n": 1
+              },
+              {
+                "from": "U2",
+                "to": "S2",
+                "n": 2
+              },
+              {
+                "from": "U3",
+                "to": "S3",
+                "n": 3
+              },
+              {
+                "from": "S1",
+                "to": "B1",
+                "n": 4
+              },
+              {
+                "from": "S2",
+                "to": "B2",
+                "n": 5
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
