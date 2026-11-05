@@ -7,12 +7,13 @@ so a later change to the sources is detected instead of silently shipping a stal
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
 from typing import Any
 
-from project_core import ProjectError, _read_json, _write_json, now_iso, sha256_file
+from project_core import ProjectError, _read_json, _write_json, locate, now_iso, relative_to_project, sha256_file
 
 SURFACES = {
     "miniprogram": "微信小程序",
@@ -117,6 +118,36 @@ def documents_config(root: Path) -> dict[str, Any]:
     return _read_json(root / "config" / "documents.json", {}) or {}
 
 
+def amounts_enabled(root: Path) -> bool:
+    """``config/documents.json`` ``"amounts": false`` keeps every price out of the client documents: no quote sheet in 04-功能清单 (``quote.json`` is not read),
+    no amounts in the proposal, the architecture book, the change ledger or the review pages. The person-days (``hours``) stay. Default: true."""
+    return documents_config(root).get("amounts", True) is not False
+
+
+# What puts the quote in front of the client: the words of a quote, a price per person-day, a total with a sum of money. A rule that merely mentions money
+# ("100 分抵 1 元", "订单金额满 200 元") is business logic and not matched; the feature list is held to the stricter pattern (any sum, 金额, a cell that starts with 合计 or 总计;
+# a description that merely says "演示数量合计" is not a total).
+PRICE = re.compile(r"报价|单价|小计|[¥￥]\s*\d|\d[\d,.]*\s*元\s*(?:每|/|／)\s*人天|(?:总价|合计|总计|基础功能|可选功能)[^。；\n]{0,10}\d[\d,.]*\s*(?:万)?元")
+PRICE_STRICT = re.compile(PRICE.pattern + r"|金额|^\s*(?:合计|总计)|(?<![\d.])\d[\d,]*(?:\.\d+)?\s*(?:万)?元(?![素宵旦])")
+
+
+def money_issues(text: str, strict: bool = False) -> list[str]:
+    """Words and figures that put a price in front of the client (报价, 单价, 小计, 12,750 元每人天, ¥500); ``strict`` also takes 金额, 合计 and any sum in yuan."""
+    return sorted({m.group(0).strip() for m in (PRICE_STRICT if strict else PRICE).finditer(text)})
+
+
+def document_version(root: Path) -> str:
+    """The version the client documents carry: ``config/documents.json`` ``version``, else the version on the proposal cover, else V1.0."""
+    configured = documents_config(root).get("version")
+    if configured:
+        return str(configured)
+    proposal = load(root, "client", "proposal.json", default={}) or {}
+    for pair in ((proposal.get("hero") or {}).get("info") or []):
+        if isinstance(pair, (list, tuple)) and len(pair) == 2 and pair[0] == "版本" and str(pair[1]).strip():
+            return str(pair[1]).strip()
+    return "V1.0"
+
+
 def project_theme(root: Path, spec: dict[str, Any] | None = None) -> str:
     theme = (spec or {}).get("theme") or documents_config(root).get("theme")
     if not theme:
@@ -183,11 +214,16 @@ def load_quote(root: Path) -> dict[str, Any] | None:
     return load(root, "client", "quote.json")
 
 
+def validate_hours(features: dict[str, Any]) -> list[str]:
+    """Every function in scope carries its estimate in person-days (``hours``): the feature list shows it with or without a price."""
+    missing = [f["id"] for f in active_features(features) if not isinstance(f.get("hours"), (int, float)) or f["hours"] <= 0]
+    return [f"这些功能没有工时（features.json 的 hours，人天）: {'、'.join(missing[:8])}"] if missing else []
+
+
 def validate_quote(features: dict[str, Any], quote: Any) -> list[str]:
     if not isinstance(quote, dict) or not isinstance(quote.get("unit_price"), (int, float)) or quote["unit_price"] <= 0:
         return ["quote.json 需含大于 0 的 unit_price（元/人天）"]
-    missing = [f["id"] for f in active_features(features) if not isinstance(f.get("hours"), (int, float)) or f["hours"] <= 0]
-    return [f"这些功能没有工时（features.json 的 hours，人天）: {'、'.join(missing[:8])}"] if missing else []
+    return validate_hours(features)
 
 
 def quote_totals(features: dict[str, Any], quote: dict[str, Any]) -> dict[str, float]:
@@ -375,12 +411,33 @@ def validate_manual(spec: Any, features: dict[str, Any]) -> list[str]:
 
 # --- build ledger (staleness) -----------------------------------------------------------------------------------
 
-def record_build(root: Path, key: str, sources: list[Path], outputs: list[Path]) -> None:
+def source_digest(root: Path, rel: str) -> str | None:
+    """Hash of a source file. ``file#a,b`` is the hash of only sections a and b of a JSON file (the other sections may change without making a
+    document built from the file stale); a plain path is the hash of the whole file. None when the file is not there or has no such sections."""
+    name, _, sections = rel.partition("#")
+    path = locate(root, name)
+    if not path.is_file():
+        return None
+    if not sections:
+        return sha256_file(path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    payload = {key: data.get(key) for key in sections.split(",")}
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def record_build(root: Path, key: str, sources: list[Path | str], outputs: list[Path]) -> None:
+    """``sources`` are files, or ``relative/path.json#section,section`` strings for a document that depends on only part of a file."""
     ledger = load(root, "client", "build.json", default={}) or {}
+    rels = [p if isinstance(p, str) else relative_to_project(root, p) for p in sources]
     ledger[key] = {
         "built_at": now_iso(),
-        "sources": {str(p.relative_to(root)).replace("\\", "/"): sha256_file(p) for p in sources if p.is_file()},
-        "outputs": {str(p.relative_to(root)).replace("\\", "/"): sha256_file(p) for p in outputs if p.is_file()},
+        "sources": {rel: digest for rel in rels if (digest := source_digest(root, rel)) is not None},
+        "outputs": {relative_to_project(root, p): sha256_file(p) for p in outputs if p.is_file()},
     }
     save(root, ledger, "client", "build.json")
 
@@ -391,13 +448,12 @@ def stale_sources(root: Path, key: str) -> list[str]:
         return [f"{key} 尚未生成"]
     stale = []
     for rel, digest in ledger.get("sources", {}).items():
-        path = root / rel
-        if not path.is_file():
+        if not locate(root, rel.partition("#")[0]).is_file():
             stale.append(f"来源已不存在: {rel}")
-        elif sha256_file(path) != digest:
+        elif source_digest(root, rel) != digest:
             stale.append(f"来源已变化: {rel}")
     for rel, digest in ledger.get("outputs", {}).items():
-        path = root / rel
+        path = locate(root, rel)
         if not path.is_file():
             stale.append(f"成品已不存在: {rel}")
     return stale

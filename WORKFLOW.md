@@ -1,6 +1,6 @@
 # Luz Project workflow
 
-`luz-project` owns the project lifecycle, the handoff ledger and the change ledger. It does not replace the specialist skills. A project run creates one root under `D:\Codes\skill输出\Luz-Project\NNN-项目名\`, while each specialist may keep its own raw working session and registers the approved artifact in the project manifest.
+`luz-project` owns the project lifecycle, the handoff ledger and the change ledger. It does not replace the specialist skills. A project has a session `D:\Codes\skill输出\Luz-Project\NNN-项目名\` (the summary page and `raw\`, the state root) and a project directory `D:\Codes\NNN-项目名` that holds results only; each specialist keeps its own session in its output root and hands the result to Luz-Project, which registers it and writes it into the project directory.
 
 ## 0. Project context and Crawl handshake
 
@@ -8,7 +8,7 @@ Read the project rule card and experience first. Before each stage, run the Luz-
 
 ## 1. Create the project
 
-`project.py init` creates `project.json`, `MANIFEST.json`, `APPROVALS.json`, `data/changes.json`, the full source/test/data/config/infra tree, and three documentation trees (需求对接 and 验收交付 for client files, 产品开发 for developer HTML; the review pages of the requirement stages go to `raw/reviews/`). Choose the document theme with `client theme` before the first client document.
+`project.py init <名称> --project-dir <项目目录>` creates the state root (`project.json` with `deliver_root`, `MANIFEST.json`, `APPROVALS.json`, `data/`, `config/`) and the summary page in the session, and in the project directory the three documentation folders (需求对接 and 验收交付 for client files, 产品开发 for developer HTML; the review pages of the requirement stages go to the state root's `reviews/`); `src/`, `test/` and the other implementation folders appear when something is written there. Choose the document theme with `client theme` before the first client document.
 
 ## 2. Requirements and research
 
@@ -16,7 +16,7 @@ A one-line request becomes a requirements page (goal, users, scope, success crit
 
 ## 3. Proposal documents for the client
 
-**The requirements document comes first**: when the client has none, `luz-writing` and `luz-design` write `01-需求说明书.pdf` (`project.py client requirements-draft`, then `project.py client requirements`; chapters in `references/client-documents.md` §3b); a client who brings its own document registers it from `raw/uploads/` instead. No proposal is written before one of the two exists. `luz-system` writes the function list (`data/client/features.json`, stable `FN-` IDs, 基础/可选, rules, surface, roles, tags). `luz-writing` writes the proposal text. `project.py client proposal` renders through Luz-Design the **方案说明书** (PDF), the **系统架构图** (PDF) and the **功能清单** (Excel: functions, and on sheet 2 the quote); what each file says is in `references/client-documents.md` §1. The developer review HTML is rendered separately into `raw/reviews/`. The client confirms the three files; the user records that approval.
+**The requirements document comes first**: when the client has none, `luz-writing` and `luz-design` write `01-需求说明书.pdf` (`project.py client requirements-draft`, then `project.py client requirements`; chapters in `references/client-documents.md` §3b); a client who brings its own document registers it from the state root's `uploads/` instead. No proposal is written before one of the two exists. `luz-system` writes the function list (`data/client/features.json`, stable `FN-` IDs, 基础/可选, rules, surface, roles, tags). `luz-writing` writes the proposal text. `project.py client proposal` renders through Luz-Design the **方案说明书** (PDF), the **系统架构图** (PDF) and the **功能清单** (Excel: functions, and on sheet 2 the quote; with `"amounts": false` in `config/documents.json` one sheet of functions and person-days, no money); what each file says is in `references/client-documents.md` §1. The developer review HTML is rendered separately into the state root's `reviews/`. The client confirms the three files; the user records that approval.
 
 ## 4. Client information collection
 

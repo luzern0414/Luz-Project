@@ -6,6 +6,8 @@ import unittest
 import sys
 from pathlib import Path
 
+from client_fixture import new_project
+from crawl_gate import evidence_session
 from project_core import ProjectError, approve_stage, create_project, register_artifact, set_stage_status
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Luz-Crawl" / "scripts"))
 from test_crawl_preflight import complete_fixture
@@ -24,12 +26,12 @@ class ProjectGateTests(unittest.TestCase):
         path.write_text(f"<!doctype html><html><body><h1>{stage}</h1><p>{text}</p></body></html>", encoding="utf-8")
         register_artifact(root, stage, path, "html")
         client_fixture.requirements_provided(root)
-        complete_fixture(root, "luz-crawl" if stage == "research" else "luz-project", stage)
+        complete_fixture(evidence_session(root), "luz-crawl" if stage == "research" else "luz-project", stage)
         return path
 
     def test_changed_predecessor_blocks_later_approval(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = create_project("hash", Path(tmp))
+            root = new_project("hash", tmp)
             req = self.artifact(root, "requirements")
             approve_stage(root, "requirements", "用户确认需求", "用户")
             self.artifact(root, "research")
@@ -39,7 +41,7 @@ class ProjectGateTests(unittest.TestCase):
 
     def test_moving_approved_stage_back_invalidates_downstream(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = create_project("reopen", Path(tmp))
+            root = new_project("reopen", tmp)
             for stage in ("requirements", "research"):
                 self.artifact(root, stage)
                 approve_stage(root, stage, "用户确认", "用户")
@@ -51,11 +53,11 @@ class ProjectGateTests(unittest.TestCase):
 
     def test_json_without_review_html_cannot_be_approved(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = create_project("no-html", Path(tmp))
-            path = root / "data" / "requirements.json"
+            root = new_project("no-html", tmp)
+            path = root / "data" / "stages" / "requirements.json"
             path.write_text('{}', encoding="utf-8")
             register_artifact(root, "requirements", path, "json")
-            complete_fixture(root, "luz-project", "requirements")
+            complete_fixture(evidence_session(root), "luz-project", "requirements")
             with self.assertRaises(ProjectError):
                 approve_stage(root, "requirements", "用户确认", "用户")
 

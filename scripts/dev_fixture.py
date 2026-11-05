@@ -23,13 +23,15 @@ def table(caption: str) -> dict[str, Any]:
 
 def prototype(root: Path, title: str, name: str, kind: str = "phone") -> dict[str, Any]:
     """A prototype page that carries every marker the standard looks for (never a real prototype). ``kind`` phone names Vant, wide names Element Plus."""
-    path = Path(root) / "raw" / "fixtures" / f"{name}.html"
+    digits = "".join(c for c in name if c.isdigit()) or "0"
+    rel = f"docs/02-产品开发/{int(digits) + 2:02d}-{name}.html"                  # prototypes of a project sit in docs/02-产品开发 with a two-digit number
+    path = dd.project_file(root, rel)
     path.parent.mkdir(parents=True, exist_ok=True)
     marks = "@media (prefers-reduced-motion: reduce) {} dlg.showModal(); UI.demo({});"
     parts = ["button", "input", "table", "dialog", "tag", "card", "tabs", "switch"]
     classes = " ".join(f"{'van' if kind == 'phone' else 'el'}-{c}" for c in parts)     # the rehearsal names eight components of the library it declares
     path.write_text("<!doctype html><title>演练原型</title><script>" + marks + "</script><div class='" + classes + "'></div><!--" + "x" * 130_000 + "-->", encoding="utf-8")
-    return {"type": "prototype", "file": f"raw/fixtures/{name}.html", "title": title, "kind": kind, "library": "vant" if kind == "phone" else "element-plus"}
+    return {"type": "prototype", "file": rel, "title": title, "kind": kind, "library": "vant" if kind == "phone" else "element-plus"}
 
 
 def paths_blocks(prototypes: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -111,3 +113,21 @@ def sample_spec(stage: str, root: Path, frontends: list[tuple[str, str, str]] | 
     for title in std["sections"]:
         sections.append({"title": title, "blocks": blocks_for(title, {"tables": std.get("tables", {}).get(title, 0), "figures": std.get("figures", {}).get(title, 0)})})
     return {"title": f"{stage} 离线演练", "conclusion": "只验证路由、门禁和文档标准，不构成真实的开发文档，也不是产品验收。", "sections": sections, "sources": SOURCES}
+
+def frontend_handover(root: Path) -> None:
+    """The 界面功能说明 and entrance table an architecture stage of a project with screens hands over (references/dev-documents.md): minimal files that
+    answer for every function of the function list, registered as artifacts of the stage (never real content)."""
+    import json
+
+    import client_data as cd
+    from project_core import locate, register_artifact, state_name
+
+    root = Path(root)
+    folder = locate(root, state_name(root, "architecture/frontend-spec"))
+    folder.mkdir(parents=True, exist_ok=True)
+    ids = [f["id"] for f in cd.active_features(cd.load_features(root))]
+    (folder / "frontend-spec.json").write_text(json.dumps({"fn_homes": [{"fn": i} for i in ids]}, ensure_ascii=False), encoding="utf-8")
+    (folder / "界面功能说明.html").write_text("<!doctype html><title>界面功能说明（演练）</title><h1>界面功能说明</h1>", encoding="utf-8")
+    (folder / "entrances.json").write_text(json.dumps({"entrances": [{"fn": i} for i in ids], "no_entrance": []}, ensure_ascii=False), encoding="utf-8")
+    for name, kind in (("frontend-spec.json", "frontend-spec"), ("界面功能说明.html", "frontend-spec-page"), ("entrances.json", "entrances")):
+        register_artifact(root, "architecture", folder / name, kind)

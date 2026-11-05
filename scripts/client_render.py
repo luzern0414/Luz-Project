@@ -2,8 +2,8 @@
 
 Luz-Project owns *what* goes into a client document (facts in ``data/client``); Luz-Design owns how it looks: the Word route
 (make_docx_paginated.py, file-design.html 客户正式文档), the atlas figures and tables (make_showcase.py, 系统架构图册) and the
-spreadsheet builder with its no-clipping checks. Everything is built into ``raw/client-docs/`` first, so a document that
-fails a check never reaches ``docs/``.
+spreadsheet builder with its no-clipping checks. Everything is built into ``client-docs/`` of the state root first, so a document that
+fails a check never reaches the project directory's ``docs/``.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from project_core import ProjectError
+from project_core import ProjectError, locate, state_name
 
 DESIGN_SCRIPTS = Path(__file__).resolve().parents[2] / "Luz-Design" / "scripts"
 
@@ -34,7 +34,7 @@ def design_modules():
 
 
 def staging(root: Path) -> Path:
-    path = root / "raw" / "client-docs"
+    path = locate(root, state_name(root, "client-docs"))
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -61,6 +61,7 @@ def build_showcase(root: Path, name: str, spec: dict[str, Any], *, min_fill: flo
         print("WARN", w)
     if page_errors:
         raise ProjectError(f"{name}: PDF 检查未通过: " + "; ".join(page_errors))
+    page_sheets(pdf_path)                       # the page-by-page reading starts from these overview images (client-docs/<name>-pages-N.png, never delivered)
     return pdf_path, html_path
 
 
@@ -117,12 +118,17 @@ def expand_auto(spec: dict[str, Any], features: dict[str, Any], theme: str) -> d
                         rows.append([m["name"]] + [("✓" if any(r in f["roles"] or "全部角色" in f["roles"] for f in fs) else "—") for r in roles])
                 blocks.append({"type": "matrix", "columns": ["功能模块"] + roles, "rows": rows, "widths": [3] + [1.3] * len(roles), "caption": "各角色可使用的功能模块"})
             elif what == "requirement_list":          # the needs, module by module, taken from the feature list so the two cannot disagree
+                number = 0                            # the client reads running numbers 1, 2, 3 ...; the stable function ids (FN-001) stay in the data files
                 for m in modules:
                     fs = [f for f in items if f["module"] == m["id"]]
                     if fs:
+                        rows = []
+                        for f in fs:
+                            number += 1
+                            rows.append([str(number), f["name"], f["summary"], f.get("rules") or "—", f["tier"]])
                         blocks.append({"type": "sub", "text": m["name"]})
-                        blocks.append({"type": "table", "columns": ["编号", "需求", "具体要求", "业务规则", "类型"], "widths": [1.9, 2.2, 4, 4, 1.2],
-                                       "rows": [[f["id"], f["name"], f["summary"], f.get("rules") or "—", f["tier"]] for f in fs], "caption": f"{m['name']}的需求"})
+                        blocks.append({"type": "table", "columns": ["编号", "需求", "具体要求", "业务规则", "类型"], "widths": [1.3, 2.4, 4.2, 4.6, 1.2],
+                                       "rows": rows, "caption": f"{m['name']}的需求"})
             else:
                 raise ProjectError(f"未知 auto 块: {what}")
         sec["blocks"] = blocks
@@ -156,6 +162,33 @@ def proposal_docx_spec(spec: dict[str, Any]) -> dict[str, Any]:
             "sections": [{"heading": s["title"], "blocks": blocks(s)} for s in spec["sections"]]}
 
 
+def page_sheets(pdf: Path, per: int = 6) -> list[Path]:
+    """Overview images of every page, six to a sheet, next to the PDF (``client-docs/<name>-pages-N.png``, never delivered): the page-by-page
+    reading that every client PDF needs before delivery starts from them. Skipped when PyMuPDF is not installed."""
+    try:
+        import fitz  # type: ignore
+    except ImportError:
+        return []
+    for old in pdf.parent.glob(f"{pdf.stem}-pages-*.png"):
+        old.unlink()
+    written = []
+    with fitz.open(str(pdf)) as doc:
+        rect = doc[0].rect
+        w, h = rect.width, rect.height
+        for start in range(0, len(doc), per):
+            sheet = fitz.open()
+            page = sheet.new_page(width=w * 2, height=h * 3)
+            for k, i in enumerate(range(start, min(start + per, len(doc)))):
+                cell = fitz.Rect((k % 2) * w, (k // 2) * h, (k % 2 + 1) * w, (k // 2 + 1) * h)
+                page.show_pdf_page(cell, doc, i)
+                page.draw_rect(cell, color=(0.7, 0.7, 0.7), width=1)
+            out = pdf.with_name(f"{pdf.stem}-pages-{start // per + 1}.png")
+            page.get_pixmap(dpi=60).save(out)
+            sheet.close()
+            written.append(out)
+    return written
+
+
 def build_docx(root: Path, name: str, spec: dict[str, Any]) -> tuple[Path, Path]:
     """Word first: build the .docx, let a Word-compatible application lay it out (contents page numbers, 续表), export the PDF from it."""
     design_modules()
@@ -171,6 +204,7 @@ def build_docx(root: Path, name: str, spec: dict[str, Any]) -> tuple[Path, Path]
         raise ProjectError(f"{name}: Word 排版失败: {exc}") from exc
     if check_document.main(["--allow", "paper", "--allow", "cover", "--allow", "header", str(out)]) != 0:
         raise ProjectError(f"{name}.docx 未通过 Luz-Design check_document")
+    page_sheets(out.with_suffix(".pdf"))
     return out, out.with_suffix(".pdf")
 
 
@@ -187,9 +221,11 @@ def ordered_features(features: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(items, key=lambda f: (surface_rank.get(f["surface"], 99), role_rank["、".join(f["roles"])], module_rank.get(f["module"], 99), f["id"]))
 
 
-def feature_list_xlsx_spec(features: dict[str, Any], project_name: str, theme: str, quote: dict[str, Any] | None = None) -> dict[str, Any]:
+def feature_list_xlsx_spec(features: dict[str, Any], project_name: str, theme: str, quote: dict[str, Any] | None = None, *, version: str = "V1.0",
+                           day: str | None = None, hours_column: bool = False) -> dict[str, Any]:
     """功能清单: 使用端 → 使用角色 → 功能模块 (merged, big to small), 功能, 功能说明, 类型 — no code column, no business rules (those are in the
-    业务逻辑确认表). With a quote there is a second sheet 报价清单: the same list plus 工时（人天） and 报价（元）, and the totals under it."""
+    业务逻辑确认表). With a quote there is a second sheet 报价清单: the same list plus 工时（人天） and 报价（元）, and the totals under it.
+    Without prices (``amounts: false``) there is one sheet only; ``hours_column`` adds 工时（人天） to it (the estimate stays, the money does not)."""
     from client_data import SURFACES, quote_totals
 
     names = {m["id"]: m["name"] for m in features["modules"]}
@@ -197,10 +233,13 @@ def feature_list_xlsx_spec(features: dict[str, Any], project_name: str, theme: s
     groups = [{"name": "使用端", "merge": True}, {"name": "使用角色", "merge": True}, {"name": "功能模块", "merge": True}]
     rows = [[SURFACES.get(f["surface"], f["surface"]), "、".join(f["roles"]), names[f["module"]], f["name"], f["summary"], f["tier"]] for f in ordered]
     columns = groups + [{"name": "功能"}, {"name": "功能说明", "type": "longtext"}, {"name": "类型", "tags": ["基础", "可选"]}]
-    today = date.today().isoformat()
+    today = day or date.today().isoformat()
     look = {"tint_by": "功能模块", "highlight": {"column": "类型", "values": ["可选"]}}          # one pale colour per module, yellow for what the client chooses
     legend = "底色区分功能模块，黄色为可选功能"
-    listing = {"sheet": "功能清单", "title": f"{project_name}功能清单", "subtitle": f"{project_name}　·　V1.0　·　{today}　·　{legend}", "columns": columns, "rows": rows, **look}
+    if hours_column and not quote:
+        rows = [r + [f["hours"]] for r, f in zip(rows, ordered)]
+        columns = columns + [{"name": "工时（人天）", "type": "days"}]
+    listing = {"sheet": "功能清单", "title": f"{project_name}功能清单", "subtitle": f"{project_name}　·　{version}　·　{today}　·　{legend}", "columns": columns, "rows": rows, **look}
     if not quote:
         return {"title": listing["title"], "theme": theme, **{k: v for k, v in listing.items() if k != "title"}}
     totals = quote_totals(features, quote)

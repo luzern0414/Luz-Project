@@ -26,6 +26,8 @@
 
 三张表各管一类：`stack` 和 `frontend` 按底座项编号（`STK-…`、`FE-…`）表态；`modules` 按底座的基础功能模块编号（`login`、`order` 等 18 个）表态，每个模块都要说明。项目里**每个功能到哪个基础功能**，写在系统架构文档的功能卡里（`inherits` 写基础功能编号如 `BF-LOGIN-01`，`status` 写沿用、调整或新增，调整要用 `change` 写与底座哪里不同），不重复写进 `data/baseline.json`。
 
+**批准之后谁能改哪一段**：`data/baseline.json` 的三段分属两个阶段。`stack` 和 `modules` 属于架构阶段：架构阶段批准时把这两段的内容哈希（只算这两段，写作 `data/baseline.json#stack,modules`）记进该阶段的 `approved_sources`，之后无论谁改了这两段，`project.py check` 都报“阶段 architecture 批准后 data/baseline.json 的 stack、modules 两段已变化”，要先 `change add` 登记变更、重开架构阶段、重新批准；`frontend` 段（和 `baseline_version`）属于前端界面设计阶段，设计阶段改它不影响架构的批准，也不进架构的哈希。键的顺序、缩进不算内容。早于这条规则批准的架构阶段没有记录这个哈希，`project.py migrate` 会在架构文档与 `data/baseline.json` 逐行一致（状态相同）时补记当下的哈希，不一致就只提示、不绑定；`migrate` 不写审批记录，也不使任何已有批准失效。
+
 | 状态 | 含义 | 要写什么 |
 |---|---|---|
 | 沿用 | 照底座做 | 不用写，文档里显示底座的规定 |

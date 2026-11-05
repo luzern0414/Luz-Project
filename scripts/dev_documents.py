@@ -29,6 +29,16 @@ from typing import Any
 
 import baseline as bl
 import dev_tabs
+from project_paths import ProjectError, locate
+
+
+def project_file(root: Path | str, rel: str) -> Path:
+    """The absolute path of a project-relative file (docs/... in the project directory, the rest in the state root); a plain directory without
+    project.json (the offline rehearsals) is read as one root."""
+    try:
+        return locate(root, rel)
+    except ProjectError:
+        return Path(root) / rel
 
 # --- the standard ----------------------------------------------------------------------------------------------------
 
@@ -111,8 +121,11 @@ def project_context(root: Path | None) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     data = json.loads(path.read_text(encoding="utf-8-sig"))
-    return {"modules": data.get("modules", []), "features": data.get("features", []),
-            "surfaces": {f.get("surface") for f in data.get("features", []) if f.get("surface")}}
+    # A function the change ledger removed (status removed) keeps its number but is no longer part of the project: no card, no module of its own, no use of its surface.
+    features = [f for f in data.get("features", []) if f.get("status", "in-scope") != "removed"]
+    used = {str(f.get("module")) for f in features}
+    modules = [m for m in data.get("modules", []) if not features or str(m.get("id")) in used]
+    return {"modules": modules, "features": features, "surfaces": {f.get("surface") for f in features if f.get("surface")}}
 
 
 def expected_tabs(stage: str, ctx: dict[str, Any] | None, spec: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -477,7 +490,7 @@ def _block_errors(section: str, b: dict[str, Any], root: Path | None) -> list[st
         if len(str(b.get("alt", "")).strip()) < 4 or not str(b.get("caption", "")).strip():
             out.append(f"{where}的截图要写替代文字（至少 4 个字）和图题")
         file = b.get("file")
-        if not file or (root is not None and not (Path(root) / str(file)).is_file()):
+        if not file or (root is not None and not project_file(root, str(file)).is_file()):
             out.append(f"{where}的截图文件不存在: {file}")
     for t in texts:
         if PLACEHOLDER.search(t):
@@ -533,7 +546,7 @@ def _prototype_errors(where: str, b: dict[str, Any], root: Path | None) -> list[
     if not file or not str(file).endswith(".html"):
         return out + [f"{where}的原型「{name}」缺少 html 文件"]
     if root is not None:
-        path = Path(root) / str(file)
+        path = project_file(root, str(file))
         if not path.is_file():
             return out + [f"{where}的原型文件不存在: {file}"]
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -760,7 +773,7 @@ def _inline(text: str) -> str:
 
 
 def _image_uri(root: Path, file: str) -> str:
-    path = Path(root) / file
+    path = project_file(root, file)
     mime = {".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}[path.suffix.lower()]
     return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode("ascii")
 
@@ -783,8 +796,8 @@ def render_body(spec: dict[str, Any], root: Path, doc_dir: Path | None = None) -
     def prototype_html(b: dict[str, Any]) -> str:
         """The prototype as a frame: the real interface, with a bar that has the title and two buttons (reload, open in a new window). Nothing else."""
         counters["proto"] += 1
-        base = Path(doc_dir) if doc_dir else Path(root) / "docs" / "02-产品开发"
-        src = os.path.relpath(Path(root) / b["file"], base).replace(os.sep, "/")
+        base = Path(doc_dir) if doc_dir else project_file(root, "docs/02-产品开发")
+        src = os.path.relpath(project_file(root, b["file"]), base).replace(os.sep, "/")
         height = int(b.get("height", 900 if b.get("kind") == "phone" else 860))
         fid = f"proto-{counters['proto']}"
         return (f'<div class="proto" role="group" aria-label="{E(b["title"], quote=True)}"><div class="proto-bar"><strong>{E(b["title"])}</strong><span class="proto-act">'

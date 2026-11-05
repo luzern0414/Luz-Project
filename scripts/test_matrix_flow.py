@@ -11,11 +11,14 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[2] / "Luz-Crawl/scripts"))
 sys.path.append(str(Path(__file__).resolve().parents[2] / "Luz-Ops/scripts"))
 from test_crawl_preflight import complete_fixture
+from client_fixture import new_project
+from crawl_gate import evidence_session
 from project_core import ProjectError, approve_stage, create_project, gate_stage, load_matrix, load_project, validate_project
 from stage_documents import write_document
 import dev_documents
 import dev_fixture
 import client_fixture
+import client_flow
 from ops_core import operations_matrix, record_check
 from ops_fixtures import evidence_for
 
@@ -23,7 +26,7 @@ from ops_fixtures import evidence_for
 class MatrixFlowTests(unittest.TestCase):
     def test_every_stage_requires_its_own_research_before_synthetic_approval(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = create_project("离线路由演练", Path(tmp))
+            root = new_project("离线路由演练", tmp)
             stages = load_matrix()["stages"]
             for definition in stages:
                 stage, owner = definition["id"], definition["owner"]
@@ -39,10 +42,13 @@ class MatrixFlowTests(unittest.TestCase):
                         write_document(root, stage, spec)
                     self.assertIn("Crawl", str(refused.exception))
                     self.assertTrue(any("Crawl" in e for e in gate_stage(root, stage)))
-                    complete_fixture(root, owner, stage)
+                    complete_fixture(evidence_session(root), owner, stage)
                     write_document(root, stage, spec)
                     if stage in {"requirements", "proposal", "client-intake", "handover"}:
                         client_fixture.prepare(root, stage)
+                    if stage == "architecture":                                    # a project with screens hands over its 界面功能说明 and entrance tables
+                        self.assertTrue(any("--kind frontend-spec" in e for e in client_flow.stage_checks(root, stage)))
+                        dev_fixture.frontend_handover(root)
                     if owner == "luz-ops":
                         proof = Path(tmp) / f"offline-{stage}.json"
                         proof.write_text(json.dumps({"kind": "test-fixture", "stage": stage}), encoding="utf-8")

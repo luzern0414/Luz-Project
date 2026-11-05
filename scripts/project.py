@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Command line interface for the Luz project control plane."""
+"""Command line interface for the Luz project control plane.
+
+A project is given as its project directory (``D:\\Codes\\NNN-项目名``) or as its state root (the ``raw`` of its session in the output root); every
+command except ``init`` takes either."""
 
 from __future__ import annotations
 
@@ -12,8 +15,12 @@ from project_core import (
     ProjectError,
     approve_stage,
     create_project,
+    deliver_root,
+    is_legacy,
     load_matrix,
     load_project,
+    output_root,
+    resolve_state_root,
     project_status,
     register_artifact,
     render_project,
@@ -37,9 +44,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Luz 完整项目生命周期控制台")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    init = sub.add_parser("init", help="创建完整项目目录")
+    init = sub.add_parser("init", help="创建项目：会话（状态根与汇总页）在输出根，项目目录只有成果")
     init.add_argument("name")
-    init.add_argument("--output-root", default=r"D:\Codes\skill输出\Luz-Project")
+    init.add_argument("--project-dir", required=True, help="项目目录 D:/Codes/NNN-项目名（不存在则创建）；会话目录与它同名")
+    init.add_argument("--output-root", help="Luz-Project 的输出根（默认 D:/Codes/skill输出/Luz-Project，或环境变量 LUZ_PROJECT_OUTPUT）")
     init.add_argument("--repository")
 
     status = sub.add_parser("status", help="查看项目状态")
@@ -69,10 +77,10 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("--note", required=True)
     approve.add_argument("--approver", required=True)
 
-    render = sub.add_parser("render", help="重新生成项目 HTML")
+    render = sub.add_parser("render", help="重新生成会话的汇总页")
     render.add_argument("project")
 
-    check = sub.add_parser("check", help="检查项目目录和产物")
+    check = sub.add_parser("check", help="检查状态根、项目目录（只放成果）、会话和产物")
     check.add_argument("project")
     check.add_argument("--strict", action="store_true")
 
@@ -90,16 +98,26 @@ def build_parser() -> argparse.ArgumentParser:
     document.add_argument("stage")
     document.add_argument("--file", required=True)
 
-    adopt = sub.add_parser("adopt", help="把既有仓库就地接入为 Luz 项目（不改代码目录；文档按 --move 迁移）")
+    adopt = sub.add_parser("adopt", help="把既有仓库就地接入为 Luz 项目（仓库做项目目录，不改代码目录；文档按 --move 迁移）")
     adopt.add_argument("project")
+    adopt.add_argument("--output-root", help="Luz-Project 的输出根")
     adopt.add_argument("--name")
     adopt.add_argument("--move", action="append", default=[], metavar="旧=新", help="相对项目根的路径迁移，可重复；已跟踪文件用 git mv")
     adopt.add_argument("--alias", action="append", default=[], metavar="标准目录=实际目录", help="例如 test=tests、infra=config、raw/logs=logs")
     relink = sub.add_parser("relink", help="按接入时记录的迁移（或 --move 旧=新）修复 Markdown 链接和文档路径提及")
     relink.add_argument("project")
     relink.add_argument("--move", action="append", default=[], metavar="旧=新")
-    migrate = sub.add_parser("migrate", help="把旧项目升级到当前矩阵（新增阶段与目录）")
+    migrate = sub.add_parser("migrate", help="把旧项目迁到新布局并升级到当前矩阵；默认只预演，加 --apply 才执行")
     migrate.add_argument("project")
+    migrate.add_argument("--apply", action="store_true", help="执行迁移（默认只列出会搬什么、会改什么）")
+    migrate.add_argument("--output-root", help="Luz-Project 的输出根（旧项目的新会话建在这里）")
+    session = sub.add_parser("session", help="登记或列出其他技能为本项目产出的会话（汇总页的会话索引）")
+    session.add_argument("project")
+    session.add_argument("action", choices=["add", "list"])
+    session.add_argument("--skill")
+    session.add_argument("--path")
+    session.add_argument("--stage", default="")
+    session.add_argument("--note", default="")
     trace = sub.add_parser("trace", help="功能 → 架构 → 使用说明 → 验收项 → 变更 的追溯与缺口")
     trace.add_argument("project")
 
@@ -132,7 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     change.add_argument("--source", default="客户", choices=["客户", "内部", "测试发现", "政策法规"])
     change.add_argument("--requester", default="")
     change.add_argument("--refs", default="", help="关联功能/需求 ID，逗号分隔")
-    change.add_argument("--affects", default="", help="影响的阶段 ID，逗号分隔")
+    change.add_argument("--affects", default="", help="影响的阶段 ID，逗号分隔；update 时替换原有的，已确认的变更会重开新补进的已批准阶段（--no-reopen 只记录）")
     change.add_argument("--impact", default="")
     change.add_argument("--status", choices=["待确认", "已确认", "已实施", "已驳回"])
     change.add_argument("--confirmed-by")
@@ -147,7 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
 def run_client(args: argparse.Namespace) -> object:
     import client_flow as cf
 
-    root = _path(args.project).resolve()
+    root = resolve_state_root(_path(args.project))
     act = args.action
     if act == "theme":
         return cf.set_theme(root, args.value or "")
@@ -187,7 +205,7 @@ def run_client(args: argparse.Namespace) -> object:
 def run_change(args: argparse.Namespace) -> object:
     import client_flow as cf
 
-    root = _path(args.project).resolve()
+    root = resolve_state_root(_path(args.project))
     split = lambda value: [x.strip() for x in value.split(",") if x.strip()]
     visible_flag = lambda value: {"是": True, "否": False, "默认": "default" if args.action == "update" else None}.get(value)
     if args.action == "add":
@@ -201,9 +219,10 @@ def run_change(args: argparse.Namespace) -> object:
         if args.all_confirmed:
             return [cf.update_change(root, c["id"], status="已实施", note=args.note or "") ["id"] for c in cf._ledger(root)["changes"] if c["status"] == "已确认"]
         if not args.id:
-            raise ProjectError("change update 需要 变更编号，以及 --status 或 --client-visible / --detail / --impact / --confirmed-by / --note 之一")
+            raise ProjectError("change update 需要 变更编号，以及 --status 或 --client-visible / --detail / --impact / --confirmed-by / --affects / --note 之一")
         return cf.update_change(root, args.id, status=args.status, confirmed_by=args.confirmed_by, note=args.note or "", reopen=not args.no_reopen,
-                                client_visible=visible_flag(args.client_visible), detail=args.detail, impact=args.impact if args.impact else None)
+                                client_visible=visible_flag(args.client_visible), detail=args.detail, impact=args.impact if args.impact else None,
+                                affects=split(args.affects) or None)
     if args.action == "render":
         path = cf.render_ledger(root)
         if not path:
@@ -219,7 +238,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "init":
-            _print({"project": str(create_project(args.name, _path(args.output_root), args.repository))})
+            state = create_project(args.name, _path(args.project_dir), _path(args.output_root) if args.output_root else output_root(), args.repository)
+            _print({"project": str(deliver_root(state)), "state_root": str(state), "session": str(state.parent), "summary": str(state.parent / f"{state.parent.name}.html")})
         elif args.command == "status":
             _print(project_status(_path(args.project)))
         elif args.command == "route":
@@ -250,28 +270,36 @@ def main(argv: list[str] | None = None) -> int:
             _print({"rendered": [str(path) for path in render_project(_path(args.project))]})
         elif args.command == "check":
             errors = validate_project(_path(args.project), args.strict)
-            _print({"ok": not errors, "errors": errors})
+            notes = ["项目是旧布局（状态与过程文件还在项目目录里）：运行 project.py migrate <项目> 预演迁移，确认后加 --apply"] if not errors and is_legacy(_path(args.project)) else []
+            _print({"ok": not errors, "errors": errors, **({"notes": notes} if notes else {})})
             return 1 if errors else 0
         elif args.command == "adopt":
             from project_core import adopt_project
             pair = lambda v: tuple(x.strip() for x in v.split("=", 1))
-            _print(adopt_project(_path(args.project), args.name, moves=[pair(v) for v in args.move], aliases=dict(pair(v) for v in args.alias)))
+            _print(adopt_project(_path(args.project), args.name, moves=[pair(v) for v in args.move], aliases=dict(pair(v) for v in args.alias),
+                                 output=_path(args.output_root) if args.output_root else None))
         elif args.command == "relink":
             from project_core import load_project, relink_after_moves
             pairs = [tuple(x.strip() for x in v.split("=", 1)) for v in args.move] or [tuple(x) for x in load_project(_path(args.project)).get("adopted", {}).get("pairs", [])]
             _print(relink_after_moves(_path(args.project), pairs))
         elif args.command == "migrate":
             from project_core import migrate_project
-            _print(migrate_project(_path(args.project)))
+            _print(migrate_project(_path(args.project), apply=args.apply, output=_path(args.output_root) if args.output_root else None))
+        elif args.command == "session":
+            import project_summary
+            if args.action == "add":
+                _print(project_summary.register_session(_path(args.project), args.skill or "", args.path or "", args.stage, args.note))
+            else:
+                _print(project_summary.sessions(resolve_state_root(_path(args.project))))
         elif args.command == "trace":
             import client_flow
-            result = client_flow.trace(_path(args.project).resolve())
+            result = client_flow.trace(resolve_state_root(_path(args.project)))
             _print(result)
             return 1 if result["gaps"] else 0
         elif args.command == "link":
             import client_flow
             split = lambda v: [x.strip() for x in v.split(",") if x.strip()]
-            _print(client_flow.link_feature(_path(args.project).resolve(), args.feature, arch=split(args.arch), design=split(args.design), dev=split(args.dev)))
+            _print(client_flow.link_feature(resolve_state_root(_path(args.project)), args.feature, arch=split(args.arch), design=split(args.design), dev=split(args.dev)))
         elif args.command == "client":
             _print(run_client(args))
         elif args.command == "change":

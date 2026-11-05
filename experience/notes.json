@@ -47,20 +47,28 @@
   {
     "key": "stable-ids-traceability",
     "kind": "fact",
-    "text": "REQ/FN/ACC/CHG 稳定 ID 串起需求、功能、架构落点、使用说明、验收项与变更；trace 报缺口，防止上下文在技能之间丢失。",
-    "why": null,
-    "uses": 1,
+    "text": "REQ/FN/ACC/CHG 稳定 ID 串起需求、功能、架构落点、使用说明、验收项与变更；trace 报缺口，防止上下文在技能之间丢失。trace 的架构缺口读系统架构 spec 里 function 功能卡的所属模块（也兼容旧的 logic.modules）：范围内的功能没有 link 登记、登记的模块与功能卡所属模块不一致、引用了不存在的模块，都是缺口。",
+    "why": "trace 曾只认旧结构，新结构读不到就整段跳过，gaps 为空是假的“无缺口”",
+    "uses": 2,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-04",
+    "previous": {
+      "text": "REQ/FN/ACC/CHG 稳定 ID 串起需求、功能、架构落点、使用说明、验收项与变更；trace 报缺口，防止上下文在技能之间丢失。",
+      "replaced_at": "2026-11-04"
+    }
   },
   {
     "key": "adopt-in-place",
     "kind": "lesson",
-    "text": "既有仓库用 adopt 就地接入：文档 git mv 进三个目录并自动修复链接，代码目录靠 paths.json 别名保留，不预设任何阶段已批准。",
+    "text": "既有仓库用 adopt 接入：仓库本身做项目目录（目录名要是 NNN-项目名），状态与过程文件进新建的会话 raw（状态根）；文档 --move 到 docs 三个目录时用 git mv 并自动修复链接，旧文档等源文件 --move 到状态根（如 uploads/旧文档/…），代码目录靠状态根 config/paths.json 的别名保留，不预设任何阶段已批准。",
     "why": null,
-    "uses": 1,
+    "uses": 2,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "既有仓库用 adopt 就地接入：文档 git mv 进三个目录并自动修复链接，代码目录靠 paths.json 别名保留，不预设任何阶段已批准。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "intake-library-scope",
@@ -74,11 +82,15 @@
   {
     "key": "client-doc-ids-visible",
     "kind": "lesson",
-    "text": "功能编号（FN-001…）只在数据文件、变更台账和验收清单里使用，客户看的功能清单不带编号；台账里用中文阶段名与功能名，不出现英文标识。",
-    "why": null,
-    "uses": 2,
+    "text": "客户看的文字里不出现技术词、内部编号和其他文件的名称：功能编号（FN-001…）只在数据文件、变更台账和验收清单里用，客户功能清单不带编号。变更台账（06 与交付快照）是客户文件：变更条目用 client_visible 决定进不进（默认只有来源为客户、分类为需求/规则/范围的可见，显式设置优先），内部、技术、界面变更只留在 data/changes.json；detail 只写客户看得懂的逻辑，审批编号、阶段名、出处这类过程记录写进 note（update 的 --note 也只进 note），可见条目含 APPROVAL-/STK-/FE- 编号或《文件名》会被拒绝；确认日期按北京时间（UTC+8）取日期，和提出日期都是日期型单元格。自动登记的条目也一样：出处写进 note，detail 和提出人不写“业务逻辑确认表”“M02”。",
+    "why": "审计发现交给客户的台账里有“组件库选 Vant”“基线 FE-IC-08”、审批编号过程日志、UTC 切错的确认日期，以及自动登记条目里的文件名和模块编号",
+    "uses": 3,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-04",
+    "previous": {
+      "text": "功能编号（FN-001…）只在数据文件、变更台账和验收清单里使用，客户看的功能清单不带编号；台账里用中文阶段名与功能名，不出现英文标识。",
+      "replaced_at": "2026-11-04"
+    }
   },
   {
     "key": "client-docs-through-design-showcase",
@@ -92,11 +104,15 @@
   {
     "key": "dev-pages-follow-design",
     "kind": "lesson",
-    "text": "开发评审页和项目索引同样走 Design 的页面构建：标题图标、主题色、标签页图标、按列对齐的表格、中文状态词，不再用自带的临时样式。",
+    "text": "开发评审页同样走 Design 的页面构建：标题图标、主题色、标签页图标、按列对齐的表格、中文状态词，不再用自带的临时样式；项目总览是会话根的汇总页，用 make_summary.py 的统一版式，项目目录里不生成索引页。",
     "why": null,
-    "uses": 1,
+    "uses": 2,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "开发评审页和项目索引同样走 Design 的页面构建：标题图标、主题色、标签页图标、按列对齐的表格、中文状态词，不再用自带的临时样式。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "worked-example",
@@ -110,11 +126,15 @@
   {
     "key": "client-gets-pdf-only",
     "kind": "preference",
-    "text": "给客户的是 PDF 和 Excel：方案说明书、系统架构图、使用说明是 PDF（方案和使用说明用 Word 排版后导出，Word 源文件留在 raw 不交给客户），功能清单、业务逻辑确认表、台账是 Excel；HTML 只给开发看（放产品开发目录），需求对接目录出现 HTML 视为错误。",
+    "text": "给客户的是 PDF 和 Excel：方案说明书、系统架构图、使用说明是 PDF（方案和使用说明用 Word 排版后导出，Word 源文件留在状态根的 client-docs，不交给客户），功能清单、业务逻辑确认表、台账是 Excel；HTML 只给开发看（放项目目录的产品开发文件夹），需求对接和验收交付目录出现 HTML 视为错误；文件名都是两位序号加名称。",
     "why": null,
-    "uses": 2,
+    "uses": 3,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "给客户的是 PDF 和 Excel：方案说明书、系统架构图、使用说明是 PDF（方案和使用说明用 Word 排版后导出，Word 源文件留在 raw 不交给客户），功能清单、业务逻辑确认表、台账是 Excel；HTML 只给开发看（放产品开发目录），需求对接目录出现 HTML 视为错误。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "client-doc-theme",
@@ -209,11 +229,15 @@
   {
     "key": "legal-docs-are-client-deliverables",
     "kind": "preference",
-    "text": "用户协议和隐私政策是 implementation 阶段给客户的交付物：PDF，放 docs/03-验收交付，文件名固定为 用户协议.pdf、隐私政策.pdf；由 Luz-Dev 的 formal_doc.py build 经 Design 的 Word 排版导出，再用 project.py artifact <项目> implementation <PDF> --kind legal-pdf 登记。验收测试报告、发布说明、运维手册同理是 Ops 三个阶段的客户 PDF。",
+    "text": "用户协议和隐私政策是 implementation 阶段给客户的交付物：PDF，放项目目录的 docs/03-验收交付，文件名固定为 07-用户协议.pdf、08-隐私政策.pdf；由 Luz-Dev 的 formal_doc.py build 经 Design 的 Word 排版导出，再用 project.py artifact <项目> implementation <PDF> --kind legal-pdf 登记。04-验收测试报告、05-发布说明、06-运维手册同理是 Ops 三个阶段的客户 PDF。",
     "why": "用户要求把协议和隐私政策加进交付物；给客户的只有 PDF 和 Excel，目录由矩阵和 test_project 的目录约定测试把关",
-    "uses": 1,
+    "uses": 2,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "用户协议和隐私政策是 implementation 阶段给客户的交付物：PDF，放 docs/03-验收交付，文件名固定为 用户协议.pdf、隐私政策.pdf；由 Luz-Dev 的 formal_doc.py build 经 Design 的 Word 排版导出，再用 project.py artifact <项目> implementation <PDF> --kind legal-pdf 登记。验收测试报告、发布说明、运维手册同理是 Ops 三个阶段的客户 PDF。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "acceptance-plan-before-verification",
@@ -227,20 +251,28 @@
   {
     "key": "crawl-before-every-document",
     "kind": "preference",
-    "text": "每个文档的生成必须先走 Luz-Crawl 取得足够的信息才能写入：阶段评审页、方案说明书、系统架构图、功能清单、业务逻辑确认表、使用说明、验收清单（Project），验收测试报告、发布说明、运维手册（Ops），用户协议、隐私政策（Dev）。没有该阶段通过 check 的前置检索时，生成命令直接报错、什么都不写；变更台账、客户回填导入、项目索引页除外。",
+    "text": "每个文档的生成必须先走 Luz-Crawl 取得足够的信息才能写入：阶段评审页、方案说明书、系统架构图、功能清单、业务逻辑确认表、使用说明、验收清单（Project），验收测试报告、发布说明、运维手册（Ops），用户协议、隐私政策（Dev）。没有该阶段通过 check 的前置检索时，生成命令直接报错、什么都不写；变更台账、客户回填导入、汇总页除外。",
     "why": "用户明确要求：每个文档的生成，必须走 crawl 获取足够的信息才能写入；之前只在审批和校验时检查，写文档的入口没有拦",
-    "uses": 1,
+    "uses": 2,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "每个文档的生成必须先走 Luz-Crawl 取得足够的信息才能写入：阶段评审页、方案说明书、系统架构图、功能清单、业务逻辑确认表、使用说明、验收清单（Project），验收测试报告、发布说明、运维手册（Ops），用户协议、隐私政策（Dev）。没有该阶段通过 check 的前置检索时，生成命令直接报错、什么都不写；变更台账、客户回填导入、项目索引页除外。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "dev-documents-standard",
     "kind": "preference",
-    "text": "给开发看的 HTML 放 docs/02-产品开发，用“两位序号加中文名”，平铺、一个序号顺序：01-系统架构、02-前端界面设计、03-小程序原型、04-后台原型、05-后端设计规范、06-实现报告、07-验收测试评审、08-发布评审、09-运维评审；需求阶段的评审页另排（01-需求评审到 05-交付评审），放 raw/reviews。不为每个阶段写空壳概况页，总览只有 README.html。每份文档的章节、必须有的表、图、原型和来源见 references/dev-documents.md，scripts/dev_documents.py 校验，不合格写不出来也不能审批。接口和库表从代码取，界面用来自真实组件库的可交互原型，来源来自本阶段的 Crawl 前置检索。",
-    "why": "用户要的是“系统具体架构、前端 UI 设计、后端具体设计规范”三份有具体内容的 HTML，并要求重命名、重新制定标准；之前的阶段页只有空壳概况",
-    "uses": 1,
+    "text": "给开发看的 HTML 放项目目录的 docs/02-产品开发，用“两位序号加中文名”，平铺、一个序号顺序：01-系统架构、02-前端界面设计、各前端的原型（03 起，序号加前端名称加“原型”，有几个前端就几个：手机页加后台是 03-手机原型、04-后台原型，小程序加后台是 03-小程序原型）、05-后端设计规范、06-实现报告、07-验收测试评审、08-发布评审、09-运维评审；需求阶段的评审页另排（01-需求评审到 05-交付评审），放状态根的 reviews。设计阶段的交付物清单不写死在矩阵里：init、migrate、context、document 都按项目 data/stages/design.json 的 prototype 块生成，document 同时把原型文件登记为 design 阶段产物，没有设计文档时才用矩阵默认；check 查已登记评审页的阶段，其必须的 HTML 交付物是否都在。不为每个阶段写空壳概况页，总览只有会话根的汇总页。每份文档的章节、必须有的表、图、原型和来源见 references/dev-documents.md，scripts/dev_documents.py 校验，不合格写不出来也不能审批。接口和库表从代码取，界面用来自真实组件库的可交互原型，来源来自本阶段的 Crawl 前置检索。",
+    "why": "用户要的是“系统具体架构、前端 UI 设计、后端具体设计规范”三份有具体内容的 HTML；审计发现矩阵把设计交付物写死为 03-小程序原型，手机网页加后台的项目就一直对不上",
+    "uses": 3,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "给开发看的 HTML 放 docs/02-产品开发，用“两位序号加中文名”，平铺、一个序号顺序：01-系统架构、02-前端界面设计、各前端的原型（03 起，序号加前端名称加“原型”，有几个前端就几个：手机页加后台是 03-手机原型、04-后台原型，小程序加后台是 03-小程序原型）、05-后端设计规范、06-实现报告、07-验收测试评审、08-发布评审、09-运维评审；需求阶段的评审页另排（01-需求评审到 05-交付评审），放 raw/reviews。设计阶段的交付物清单不写死在矩阵里：init、migrate、context、document 都按项目 data/stages/design.json 的 prototype 块生成，document 同时把原型文件登记为 design 阶段产物，没有设计文档时才用矩阵默认；check 查已登记评审页的阶段，其必须的 HTML 交付物是否都在。不为每个阶段写空壳概况页，总览只有 README.html。每份文档的章节、必须有的表、图、原型和来源见 references/dev-documents.md，scripts/dev_documents.py 校验，不合格写不出来也不能审批。接口和库表从代码取，界面用来自真实组件库的可交互原型，来源来自本阶段的 Crawl 前置检索。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "dev-docs-facts-from-code",
@@ -254,11 +286,15 @@
   {
     "key": "init-vs-adopt-current-dir",
     "kind": "lesson",
-    "text": "用户要求在当前目录规范文件夹时用 adopt，不用 init：init 会在输出根下另建编号子目录，adopt 就地建标准目录，目录里已有的原始需求文件保持原位，check 仍通过。",
-    "why": "当前目录只有 docs/01-需求对接/需求.txt，adopt 后 check 与 --strict 均通过。",
-    "uses": 1,
+    "text": "init 要显式给 --project-dir（NNN-项目名，不存在则建）：项目目录只放成果，会话与状态根建在输出根下同名目录里；当前目录已经是仓库、里面有代码或文档时用 adopt，仓库就是项目目录，原有文件保持原位，check 仍通过。",
+    "why": "两个根分开之后，init 不再在输出根下替项目目录取号，项目目录由用户定",
+    "uses": 2,
     "first_seen": "2026-11-03",
-    "last_confirmed": "2026-11-03"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "用户要求在当前目录规范文件夹时用 adopt，不用 init：init 会在输出根下另建编号子目录，adopt 就地建标准目录，目录里已有的原始需求文件保持原位，check 仍通过。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "web-voice-input-routes",
@@ -272,11 +308,15 @@
   {
     "key": "baseline-single-statement",
     "kind": "lesson",
-    "text": "项目对技术底座的表态只写一份 data/baseline.json（stack、frontend、modules 三张表），开发文档里的底座对照表必须与它一致，校验器两边都查；功能到基础功能的对应写在功能卡的 inherits 里，不再写进表态文件。",
-    "why": "文档和数据文件各写一遍会漂移；tech-baseline.md 的示例曾与实际校验的键不一致，改完才对得上",
-    "uses": 1,
+    "text": "项目对技术底座的表态只写一份 data/baseline.json（stack、frontend、modules 三张表），开发文档里的底座对照表必须与它一致，校验器两边都查；功能到基础功能的对应写在功能卡的 inherits 里，不再写进表态文件。三段分属两个阶段：stack 和 modules 属架构阶段，批准时把这两段的内容哈希记为 data/baseline.json#stack,modules（approved_sources 的键可以带 #段名，只算那几段），之后改动要走变更台账；frontend 段属设计阶段，不进架构的哈希。早批准的架构阶段由 migrate 在文档与文件逐行一致时补记，不写审批记录。",
+    "why": "文档和数据文件各写一遍会漂移；baseline.json 不在任何阶段的跟踪里时，批准之后谁改 stack 都不会使架构审批失效",
+    "uses": 2,
     "first_seen": "2026-11-03",
-    "last_confirmed": "2026-11-03"
+    "last_confirmed": "2026-11-04",
+    "previous": {
+      "text": "项目对技术底座的表态只写一份 data/baseline.json（stack、frontend、modules 三张表），开发文档里的底座对照表必须与它一致，校验器两边都查；功能到基础功能的对应写在功能卡的 inherits 里，不再写进表态文件。",
+      "replaced_at": "2026-11-04"
+    }
   },
   {
     "key": "tabbed-doc-browser-pass",
@@ -308,20 +348,28 @@
   {
     "key": "migrate-docs-dir-stale",
     "kind": "lesson",
-    "text": "skill 改了 docs 目录规则后，旧项目跑 migrate 不会刷新 project.json 各阶段的 docs_dir，render 会把旧子目录重新建出来、check 持续报“只有一层”。处理：按矩阵同步各阶段 docs_dir，删空目录，再 render 与 check --strict。",
-    "why": "skill 在会话中被改为平铺目录，migrate 后 00-需求与方案 反复出现，根因是前四个阶段的 docs_dir 仍是旧值。",
-    "uses": 1,
+    "text": "skill 改了目录规则后，旧项目先 project.py migrate <项目> 预演（列出会搬的文件和会改的路径，不改任何东西），确认后加 --apply，再 check --strict；migrate 同步各阶段的 docs_dir 与交付物路径，不会自动执行，预演里没有的文件它不动。",
+    "why": "skill 在会话中被改为平铺目录，migrate 后 00-需求与方案 反复出现，根因是前四个阶段的 docs_dir 仍是旧值；后来迁移改为默认只预演",
+    "uses": 2,
     "first_seen": "2026-11-03",
-    "last_confirmed": "2026-11-03"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "skill 改了 docs 目录规则后，旧项目跑 migrate 不会刷新 project.json 各阶段的 docs_dir，render 会把旧子目录重新建出来、check 持续报“只有一层”。处理：按矩阵同步各阶段 docs_dir，删空目录，再 render 与 check --strict。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "docs-flat-three-folders",
     "kind": "preference",
-    "text": "项目 docs 只有三个目录且每个只有一层，按目录名放：01-需求对接和 03-验收交付只放给客户的 PDF、XLSX，02-产品开发只放开发阶段（系统架构、前端界面设计与各前端原型、后端设计规范、实现报告、测试、发布、运维）的 HTML；需求、调研、方案、客户信息、交付的评审页是内部页，放 raw/reviews，不进 docs；不建子目录，客户原始资料放 raw/uploads，Word 源文件和旧 Markdown 放 raw，空目录不预先建。",
+    "text": "项目目录的 docs 只有三个目录且每个只有一层，按目录名放：01-需求对接和 03-验收交付只放给客户的 PDF、XLSX，02-产品开发只放开发阶段（系统架构、前端界面设计与各前端原型、后端设计规范、实现报告、测试、发布、运维）的 HTML，文件名 NN-名称；需求、调研、方案、客户信息、交付的评审页是内部页，放状态根的 reviews，不进项目目录；不建子目录，客户原始资料放状态根的 uploads，Word 源文件放 client-docs，旧 Markdown 放状态根，空目录不预先建。",
     "why": "用户两次纠正：层级太多，客户的文件和开发的 HTML 要分开放；技能的路径表曾写死子目录并让 03 混放；需求阶段的评审页后来从 01 移到 raw/reviews",
-    "uses": 2,
+    "uses": 3,
     "first_seen": "2026-11-03",
-    "last_confirmed": "2026-11-03"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "项目 docs 只有三个目录且每个只有一层，按目录名放：01-需求对接和 03-验收交付只放给客户的 PDF、XLSX，02-产品开发只放开发阶段（系统架构、前端界面设计与各前端原型、后端设计规范、实现报告、测试、发布、运维）的 HTML；需求、调研、方案、客户信息、交付的评审页是内部页，放 raw/reviews，不进 docs；不建子目录，客户原始资料放 raw/uploads，Word 源文件和旧 Markdown 放 raw，空目录不预先建。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "skill-rules-must-be-checked-not-only-written",
@@ -362,11 +410,15 @@
   {
     "key": "requirements-document-first",
     "kind": "preference",
-    "text": "需求对接要先有需求文档：客户没有就先写一份 PDF 需求说明书（项目背景与按使用方的现状问题、建设目标、范围与使用者、需求清单、业务规则与约束、验收标准、需要客户确认的事项），用 Luz-Design 的客户正式文档版式（Word 排版导出）；之后才写方案和功能清单；客户有自己的需求文档时放 raw/uploads 并登记。",
+    "text": "需求对接要先有需求文档：客户没有就先写一份 PDF 需求说明书（项目背景与按使用方的现状问题、建设目标、范围与使用者、需求清单、业务规则与约束、验收标准、需要客户确认的事项），用 Luz-Design 的客户正式文档版式（Word 排版导出）；之后才写方案和功能清单；客户有自己的需求文档时放状态根的 uploads 并登记。",
     "why": "用户要求：没有需求文档就先生成 PDF 需求文档，列清具体的背景和需求，再生成方案等",
-    "uses": 1,
+    "uses": 2,
     "first_seen": "2026-11-03",
-    "last_confirmed": "2026-11-03"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "需求对接要先有需求文档：客户没有就先写一份 PDF 需求说明书（项目背景与按使用方的现状问题、建设目标、范围与使用者、需求清单、业务规则与约束、验收标准、需要客户确认的事项），用 Luz-Design 的客户正式文档版式（Word 排版导出）；之后才写方案和功能清单；客户有自己的需求文档时放 raw/uploads 并登记。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "client-doc-build-pitfalls",
@@ -391,15 +443,6 @@
     "kind": "lesson",
     "text": "crawl_preflight run 里任何一个 --url 采集失败（如当前网络打不开的境外站）会让整轮记录标 blocked 且没有来源；先用 curl 探测官方页是否可达，只把可达的网址放进 --url。整轮要把全部查询放进同一次 run，后一次 run 会覆盖同阶段的记录。",
     "why": "需求阶段检索：一个境外官方文档站点打不开导致一整轮作废，改用探测过的官方页重跑才通过",
-    "uses": 1,
-    "first_seen": "2026-11-03",
-    "last_confirmed": "2026-11-03"
-  },
-  {
-    "key": "init-into-existing-empty-numbered-dir",
-    "kind": "lesson",
-    "text": "project.py init 的编号取父目录里最大编号加一；要建到已存在的空目录 NNN-名称，先 rmdir 这个空目录，再用名称（不含编号）和 --output-root 父目录 init，文件夹名才会正好是 NNN-名称。目录非空时 rmdir 会失败，不会误删。",
-    "why": "在已有的空编号目录上验证",
     "uses": 1,
     "first_seen": "2026-11-03",
     "last_confirmed": "2026-11-03"
@@ -488,11 +531,15 @@
   {
     "key": "intake-import-dry-run",
     "kind": "lesson",
-    "text": "客户回填表导入前，先复制项目到临时目录试导入一次：导入会写变更台账并重新生成 06-需求变更台账.xlsx，正式项目上失败会留下半成品状态；功能选“待定”仍算必填未答，需决定或 intake-defer。复制的项目里 Crawl 检索记录是绝对路径，副本的 project.py check 会报“记录无效”，那是复制造成的，不是正式项目的问题。",
+    "text": "客户回填表导入前，先试导入一次：导入会写变更台账并重新生成 06-需求变更台账.xlsx，正式项目上失败会留下半成品状态。试导入要复制状态根（raw）和项目目录两处到临时目录，并把副本 project.json 的 deliver_root 改成副本的项目目录，否则成果会写回正式项目；功能选“待定”仍算必填未答，需决定或 intake-defer。副本里 Crawl 检索记录是绝对路径，副本的 project.py check 会报“记录无效”，那是复制造成的，不是正式项目的问题。",
     "why": "试导入时台账从 3 行增到 8 行，Luz-Design check_document 的分组列启发式把变更类型、分类等列误判为排在变更编号之后的分组列，导入在重渲染台账时报错；已在 _check_group_order 对首列为“变更编号”的台账表跳过该检查，并补测试。",
-    "uses": 2,
+    "uses": 3,
     "first_seen": "2026-11-03",
-    "last_confirmed": "2026-11-03"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "客户回填表导入前，先复制项目到临时目录试导入一次：导入会写变更台账并重新生成 06-需求变更台账.xlsx，正式项目上失败会留下半成品状态；功能选“待定”仍算必填未答，需决定或 intake-defer。复制的项目里 Crawl 检索记录是绝对路径，副本的 project.py check 会报“记录无效”，那是复制造成的，不是正式项目的问题。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "baseline-by-surface",
@@ -538,5 +585,148 @@
     "uses": 1,
     "first_seen": "2026-11-04",
     "last_confirmed": "2026-11-04"
+  },
+  {
+    "key": "check-green-by-skipping",
+    "kind": "lesson",
+    "text": "检查器读不到它认识的结构时，不能整段跳过后报“通过”：数据结构换了版本，就同步改读取方，并为它写“删掉一项登记应该报缺口”的反例测试，用真实项目的副本验证一次（先看现状仍是绿的，再删一项看是否变红）。新增检查接进 check 之前，先在真实项目上只读跑一遍，确认它不会把本来没问题的项目标红：门槛要放在“这个阶段已经把文档交出来审阅”这类明确条件上，不是“阶段已批准”。",
+    "why": "trace 读旧字段导致 gaps 恒为空；交付物存在性检查若按“已批准”判断，会让许多只登记了评审页的现有流程变红",
+    "uses": 1,
+    "first_seen": "2026-11-04",
+    "last_confirmed": "2026-11-04"
+  },
+  {
+    "key": "init-makes-only-what-tools-read",
+    "kind": "lesson",
+    "text": "init 只建契约第一层和工具马上要写的东西：项目目录只有 docs 的三个目录，状态根只有 data/client、data/stages、data/ops 和 config 三个工具文件；没有任何代码读取的骨架文件（data/sources.json、data/decisions.json、crawl/evidence.json、config 里的空 project/environments/urls/features/validation.json）不生成，data/acceptance 等到写验收清单时才建，src/test/infra 等到有东西要写时才建；要去掉某个文件先 grep 确认确实没人读。project.json 的 crawl.evidence_index 指向真实记录所在的 00-crawl（旧布局是 raw/00-crawl）。契约文字、init、validate、adopt、migrate 和测试五处要一起改；旧项目的空骨架由 migrate 指出，删不删交给用户。项目目录的 .gitignore 起手就带 .env、node_modules/、dist/、build/，adopt 和 migrate 只补缺的行。",
+    "why": "审计在 014 项目里发现 20 个空目录、四个无人读取的骨架文件、指向空文件的 evidence_index，以及只有两行的 .gitignore",
+    "uses": 2,
+    "first_seen": "2026-11-04",
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "init 只建契约第一层和工具马上要写的东西（data/client、data/stages、data/ops）；没有任何代码读取的骨架文件（data/sources.json、data/decisions.json、raw/crawl/evidence.json、config 里的空 project/environments/urls/features/validation.json）不生成，data/acceptance 等到写验收清单时才建；要去掉某个文件先 grep 确认确实没人读。project.json 的 crawl.evidence_index 指向真实记录所在的 raw/00-crawl。契约文字、init、validate、adopt、migrate 和测试五处要一起改；旧项目的空骨架由 migrate 指出，删不删交给用户。.gitignore 起手就带 .env、node_modules/、dist/、build/、raw/client-docs/，adopt 和 migrate 只补缺的行。",
+      "replaced_at": "2026-11-05"
+    }
+  },
+  {
+    "key": "artifact-number-never-reused",
+    "kind": "lesson",
+    "text": "产物编号（ART-NNN）发出去就不再发：新编号取登记表、各阶段 artifact_ids、阶段 approved_hashes 和 APPROVALS 里出现过的最大号加一，手工删了登记表里的条目也不会重发旧号；登记表里同一个号出现两次、同一阶段列表里一个号登记两次、一个号属于两个阶段，check 报错，register_artifact 直接拒绝登记，migrate 只去掉阶段列表里重复的号。",
+    "why": "014 的 design 阶段 artifact_ids 出现 [ART-029, ART-030, ART-030]：移除再重登记时编号被重发",
+    "uses": 1,
+    "first_seen": "2026-11-04",
+    "last_confirmed": "2026-11-04"
+  },
+  {
+    "key": "derived-docs-freeze-features-first",
+    "kind": "lesson",
+    "text": "需求说明书的需求清单由 features.json 自动生成，功能清单的任何改动（删功能、改规则、补标签）都会让 01 过期并改变 PDF 哈希，使已批准的需求作废；返工时先把已知的功能清单改动全部登记并生效，再生成 01、写评审页、批准需求。",
+    "why": "014 返工：FN-009 录音时长、FN-001 规则统一、标签、删三项功能若分散在需求与方案两段做，01 要重做并重批。",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "change-update-affects",
+    "kind": "fact",
+    "text": "change update 可用 --affects 补记或改正影响的阶段（替换原列表并记进 note）；已确认的变更会重开新补进且已批准的阶段，--no-reopen 只记录；已实施或已驳回的只记录。三项功能被拿掉后，原先新增它们的变更标已驳回，不留已实施。",
+    "why": "014 返工：CHG-005 要补 requirements、client-intake，CHG-006 要补 architecture，工具原先没有改 affects 的入口。",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "requirement-list-client-reading",
+    "kind": "lesson",
+    "text": "客户读的需求清单用连续序号作编号，不出现 FN 编号；只列客户仍然要的功能（确认表里选“不需要”的不列，在不在本期范围里写明）；来源登记 features.json 和 intake.json#feature_choices，选择变了 01 即过期，而确认表其他内容变了不连带过期。",
+    "why": "FN-001 这类编号在写作规则里算内部编号；可选功能被客户拒绝后仍列在需求清单里会和范围章矛盾。",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "stage-review-page-blocks",
+    "kind": "fact",
+    "text": "阶段评审页的 sections 可以用 blocks（text、sub、bullets、带表题的 table）代替 content，表题自动编号为表 N；同类产品对比、需求与功能对照这类内容写成表，别拼成一段文字。评审页避免“摘要”类章节标题、“说明：建议：”开头的段落和“下一步计划”这类元信息词，check_document 会报。",
+    "why": "014 返工：01 评审页被判附属章节与建议前缀，来源表里的“下一步计划”也被拦。",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "client-docs-no-amounts",
+    "kind": "preference",
+    "text": "用户决定客户文件不出现金额时，在 config/documents.json 写 amounts:false：04 功能清单只留“功能清单”一张表并在类型后加工时（人天）列，不读也可以删掉 quote.json；方案、架构图册、需求说明书、确认表项目专属问题、台账里客户可见的条目和 03、04 两页评审页里出现报价、单价、小计、元每人天、合计加金额都会被 check、gate、approve 拦下，评审页讲这件事写“价格页”；只顺带提到钱的业务规则（100 分抵 1 元）不算",
+    "why": "用户 2026-11-04 整体返工的决定；工具开关、检查和回归测试在 Luz-Project 的 client_data.py、client_flow.py",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "intake-changed-logic-reconfirm",
+    "kind": "lesson",
+    "text": "确认表里某行的拟定逻辑改过之后，客户原来的“确认”是针对旧文字的：清空该行回填格（不改客户的其他答案），用 intake-defer 登记待客户重新确认并写进评审页的待确认清单；选用可选功能的“需要”是功能选择，保留；原始回填找不回时在评审页和批准说明里如实写明，不编答案、不代签。确认表给基础功能预填“确认”，已答的“确认”是否逐条看过无法核实，也要写明",
+    "why": "审计 A-12 与 014 整体返工：FN-001、FN-009 和保存期限的拟定逻辑在返工中变了",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "ledger-shows-function-names",
+    "kind": "lesson",
+    "text": "客户可见的变更台账“关联功能”列写功能名，不写 FN 编号；三个客户 Excel（功能清单、确认表、台账）的副标题版本取方案封面的“版本”，日期取北京时间；确认表的“需要修改”和“需修改”两种写法都要当作客户写了新逻辑",
+    "why": "014 返工：台账显示 FN 编号违反客户文字不出现内部编号；导入只认“需修改”，功能行的下拉却是“需要修改”",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "atlas-overview-images",
+    "kind": "fact",
+    "text": "系统架构图册（atlas）构建后也在状态根的 client-docs 写页面总览图 <名>-pages-N.png，和 Word 客户 PDF 一样先逐页看图再交付；架构图册页面占满率不满时调整块的顺序、缩短泳道步骤文字，不加空白",
+    "why": "审计 A-32；014 架构图册从 13 页调到 12 页、各页不低于 70%",
+    "uses": 2,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "系统架构图册（atlas）构建后也在 raw/client-docs 写页面总览图 <名>-pages-N.png，和 Word 客户 PDF 一样先逐页看图再交付；架构图册页面占满率不满时调整块的顺序、缩短泳道步骤文字，不加空白",
+      "replaced_at": "2026-11-05"
+    }
+  },
+  {
+    "key": "removed-feature-needs-no-architecture-card",
+    "kind": "lesson",
+    "text": "功能清单里 status 为 removed 的功能（编号作废、不复用）不要求功能卡，它独占的模块不要求子标签、独占的使用端不要求页签和底座层；project_context 先去掉它们再核对。trace 仍列出它们（in_scope 为 false，带变更编号）作为编号作废的记录，gaps 里不出现。",
+    "why": "014 架构返工：拿掉 FN-026 至 FN-028 后文档校验仍要求它们的卡",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "architecture-approval-needs-frontend-spec-bundle",
+    "kind": "lesson",
+    "text": "有界面的项目，architecture 阶段批准前必须登记界面功能说明数据（frontend-spec）、界面功能说明页面（frontend-spec-page）和入口表（entrances，各份合起来每个仍在项目里的功能有一行入口或 no_entrance 理由）；缺一项 approve 不放行（client_flow.architecture_frontend_errors）。离线演练用 dev_fixture.frontend_handover 生成最小文件。",
+    "why": "014 审计 B-06、B-22：界面功能说明在 raw 里没登记，批准说明点名了它却不受哈希保护",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "project-two-roots",
+    "kind": "preference",
+    "text": "项目有两个根：项目目录（D:\\Codes\\NNN-项目名）只放成果，即 docs 三个平铺目录和产品的实现；状态与过程文件（project.json、MANIFEST、APPROVALS、data、config 的工具文件、00-crawl、uploads、reviews、client-docs、备份）都在会话的 raw（状态根）。工具给一个路径找状态根：有 project.json 的就是状态根，否则按项目目录名到输出根下找；写成果时 deliver = deliver_root，没有则状态根（旧项目）。路径登记成相对它所在的根，不要在项目目录里放 raw、README.html、project.json。",
+    "why": "用户 2026-11-05 定的输出目录规范：项目不保存任何原始文件，只在项目目录下生成结果，原始与过程文件进 skill输出 的会话 raw",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "migrate-previews-first-and-keeps-approved-files",
+    "kind": "lesson",
+    "text": "migrate 默认只预演；--apply 才搬。被审批绑定哈希的文件（登记的数据文件与评审页、被跟踪的客户数据、Crawl 检索记录）内容不改：只改登记表里的路径，旧写法 raw/… 的引用在新布局里仍指向状态根的同名文件夹。检索记录里写着旧项目根下日志的绝对路径，搬家后 crawl_gate 在新的 00-crawl 下按同样的位置读取，日志哈希照样核对；不要为了它去改记录。",
+    "why": "迁移预演发现真实项目的检索记录里有旧项目根下日志的绝对路径",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
   }
 ]

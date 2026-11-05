@@ -8,6 +8,7 @@ import dev_documents
 import dev_fixture
 import dev_tabs
 import reading_style
+from client_fixture import new_project
 from project_core import create_project
 from stage_documents import write_document
 
@@ -24,7 +25,7 @@ class ReadingStyleTests(unittest.TestCase):
 
     def test_a_page_has_the_markdown_type_and_the_component_styles_only_use_its_tokens(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = create_project("阅读排版", Path(tmp))
+            root = new_project("阅读排版", tmp)
             fx.crawled(root, "architecture")
             page = write_document(root, "architecture", dev_fixture.sample_spec("architecture", root)).read_text(encoding="utf-8")
         head = page[:page.index("</head>")]

@@ -50,6 +50,6 @@ py -X utf8 D:\Codes\Luz-Project\scripts\project.py change <项目> add --type �
 - **只含客户可见的条目**（`client_visible`，默认规则见上）；内部变更、技术和界面变更、被标 `否` 的条目不进 06 和交付快照，仍在 `data/changes.json` 和 `change list` 里。`change render` 会报告可见和仅内部各几条，并列出可见条目里仍含内部编号或其他文件名的文字（旧数据只报告，不改写）。
 - **日期按北京时间**：提出日期取登记当天（北京日期）；`confirmed_at` 存的是 UTC，台账里的确认日期按 +08 换算成北京日期（UTC 11-03 23:15 显示 11-04）。提出日期和确认日期都是日期型单元格，未确认的确认日期写“—”。
 - 旧版本在 `detail` 末尾追加的 `[日期] 过程记录` 行，渲染客户台账时不显示；自动登记的旧条目里“来自业务逻辑确认表的功能勾选（M02）；”这类前缀和提出人“客户（业务逻辑确认表）”也不显示（数据本身不改写）。新登记的条目 `detail` 不含这些，出处写在 `note`。
-- `change update <编号>` 可以不改状态，只改 `--client-visible`、`--detail`（改写客户读的逻辑，原文自动记进 `note`）、`--impact`、`--confirmed-by`（给没有确认人的已确认条目补上）、`--note`。
+- `change update <编号>` 可以不改状态，只改 `--client-visible`、`--detail`（改写客户读的逻辑，原文自动记进 `note`）、`--impact`、`--confirmed-by`（给没有确认人的已确认条目补上）、`--affects`（补记或改正影响的阶段，替换原列表并记进 `note`；已确认的变更会重开新补进的已批准阶段，不要重开就加 `--no-reopen`，已实施或已驳回的只记录）、`--note`。
 
 交付：`change update --all-confirmed --note "随版本 V1.0 实施"` 把已确认变更标为已实施（逐条确认对应功能已上线后再批量执行），`change snapshot` 冻结台账；交付门禁要求没有待确认、已确认未实施的条目，且快照哈希与当前台账一致。

@@ -8,6 +8,8 @@ from pathlib import Path
 import client_fixture as fx
 import dev_documents as dd
 import dev_fixture
+from client_fixture import new_project
+from project_paths import locate
 from project_core import create_project, ProjectError
 from stage_documents import write_document
 
@@ -27,16 +29,16 @@ def find_block(spec, kind):
 class DocumentTests(unittest.TestCase):
     def test_a_stage_page_is_not_written_before_the_stage_has_crawled(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = create_project("先检索", Path(tmp))
+            root = new_project("先检索", tmp)
             with self.assertRaises(ProjectError) as refused:
                 write_document(root, "architecture", architecture_spec(root))
             self.assertIn("Crawl", str(refused.exception))
-            self.assertFalse((root / "docs" / "02-产品开发" / "01-系统架构.html").exists())
+            self.assertFalse((locate(root, "docs") / "02-产品开发" / "01-系统架构.html").exists())
             self.assertFalse((root / "data" / "stages" / "architecture.json").exists())
 
     def test_a_tabbed_document_is_one_page_with_top_tabs_baseline_tables_and_function_cards(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = create_project("架构", Path(tmp))
+            root = new_project("架构", tmp)
             fx.crawled(root, "architecture")
             path = write_document(root, "architecture", architecture_spec(root))
             self.assertEqual(path.name, "01-系统架构.html")
@@ -145,7 +147,7 @@ class DocumentTests(unittest.TestCase):
 
     def test_every_function_of_the_project_has_one_card_in_the_sub_tab_of_its_module(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = create_project("功能", Path(tmp))
+            root = new_project("功能", tmp)
             data = {"modules": [{"id": "M01", "name": "登录"}, {"id": "M02", "name": "订单"}],
                     "features": [{"id": "FN-001", "module": "M01", "name": "微信登录", "surface": "miniprogram"}, {"id": "FN-002", "module": "M02", "name": "下单", "surface": "miniprogram"}]}
             (root / "data" / "client").mkdir(parents=True, exist_ok=True)
@@ -166,6 +168,26 @@ class DocumentTests(unittest.TestCase):
             spec = copy.deepcopy(good)
             find_tab(spec, "功能与技术方案")["sections"][0]["title"] = "别的名字"
             self.assertTrue(any("features.json 的模块" in e for e in dd.validate("architecture", spec, root)))
+
+    def test_a_removed_function_needs_no_card_and_its_module_and_surface_drop_out_with_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = new_project("拿掉的功能", tmp)
+            data = {"modules": [{"id": "M01", "name": "登录"}, {"id": "M02", "name": "订单"}, {"id": "M03", "name": "小程序提醒"}],
+                    "features": [{"id": "FN-001", "module": "M01", "name": "账号登录", "surface": "web-admin"}, {"id": "FN-002", "module": "M02", "name": "下单", "surface": "web-admin"},
+                                 {"id": "FN-003", "module": "M02", "name": "查看登录记录", "surface": "web-admin", "status": "removed"},
+                                 {"id": "FN-004", "module": "M03", "name": "订阅提醒", "surface": "miniprogram", "status": "removed"}]}
+            (root / "data" / "client").mkdir(parents=True, exist_ok=True)
+            (root / "data" / "client" / "features.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            ctx = dd.project_context(root)
+            self.assertEqual([f["id"] for f in ctx["features"]], ["FN-001", "FN-002"])
+            self.assertEqual([m["id"] for m in ctx["modules"]], ["M01", "M02"], "没有一个在用功能的模块不再要子标签")
+            self.assertEqual(ctx["surfaces"], {"web-admin"}, "只有被拿掉的功能用的使用端，不要求这个端的页签和底座层")
+            spec = dev_fixture.sample_spec("architecture", root)
+            self.assertEqual([s["title"] for s in find_tab(spec, "功能与技术方案")["sections"]], ["登录", "订单"])
+            self.assertEqual(dd.validate("architecture", spec, root), [])
+            card = {"type": "function", "id": "FN-003", "name": "查看登录记录", "system": "电脑浏览器", "module": "订单", "summary": "不再做的功能"}
+            find_tab(spec, "功能与技术方案")["sections"][1]["blocks"].append(dict(next(b for b in find_tab(spec, "功能与技术方案")["sections"][1]["blocks"] if b["type"] == "function"), **card))
+            self.assertTrue(any("FN-003" in e and "不在 features.json 里" in e for e in dd.validate("architecture", spec, root)), "拿掉的功能不应再有卡")
 
     def test_a_function_card_needs_real_text_and_a_valid_baseline_function(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -210,13 +232,13 @@ class DocumentTests(unittest.TestCase):
 
     def test_a_document_that_fails_the_standard_is_not_written(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = create_project("缺失", Path(tmp))
+            root = new_project("缺失", tmp)
             fx.crawled(root, "architecture")
             spec = architecture_spec(root)
             spec["tabs"] = spec["tabs"][:2]
             with self.assertRaises(ProjectError):
                 write_document(root, "architecture", spec)
-            self.assertFalse((root / "docs" / "02-产品开发" / "01-系统架构.html").exists())
+            self.assertFalse((locate(root, "docs") / "02-产品开发" / "01-系统架构.html").exists())
 
     def test_the_design_document_has_the_frontend_foundation_first_then_one_tab_per_frontend_with_only_its_prototype(self):
         std = dd.STANDARDS["design"]["tabs"]
@@ -227,14 +249,14 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual([s["title"] for s in std[0]["sections"]], list(bl.FRONTEND_CATEGORIES.values()) + ["页面与路径"])     # 十三类底座分类，加一个放所有路径的子标签
         self.assertEqual([t["title"] for t in dd.expected_tabs("design", None)], ["前端规范", "小程序", "管理后台", "检查与差异"])
         with tempfile.TemporaryDirectory() as tmp:
-            root = create_project("界面", Path(tmp))
+            root = new_project("界面", tmp)
             fx.crawled(root, "design")
             spec = dev_fixture.sample_spec("design", root)
             self.assertEqual(dd.validate("design", spec, root), [])
             page = write_document(root, "design", spec).read_text(encoding="utf-8")
             self.assertEqual(page.count("<iframe"), 2)                       # 小程序与后台各一个
             self.assertEqual(page.count("data-src="), 2)                     # 切到那个标签页才加载，隐藏时宽度为零的页面不会画错
-            self.assertIn('data-src="../../raw/fixtures/', page)             # 相对文档所在目录，文件夹整体搬走也能打开
+            self.assertIn('data-src="03-proto1.html"', page)                 # 相对文档所在目录，文件夹整体搬走也能打开
             self.assertIn("在新窗口打开", page)
             self.assertIn("重新载入", page)
             self.assertLess(page.index(">前端规范<"), page.index(">小程序<"))
@@ -247,8 +269,8 @@ class DocumentTests(unittest.TestCase):
                 for gone in ("<h2", "<h3", "<p", "<table", "<ul", "<img", "<figcaption"):
                     self.assertNotIn(gone, panel)
             self.assertIn(">页面与路径<", page)                               # every path is in 前端规范
-            self.assertIn("raw/fixtures/proto1.html", page)
-            self.assertIn("raw/fixtures/proto2.html", page)
+            self.assertIn("docs/02-产品开发/03-proto1.html", page)
+            self.assertIn("docs/02-产品开发/04-proto2.html", page)
             self.assertIn("导航结构", page)
             self.assertIn("检索来源与采用位置", page)                          # 来源与依据 stays at the end of the document, out of the tabs
 
@@ -332,10 +354,10 @@ class DocumentTests(unittest.TestCase):
 
     def test_the_old_review_page_is_replaced_by_the_numbered_document(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = create_project("改名", Path(tmp))
+            root = new_project("改名", tmp)
             fx.crawled(root, "requirements")
             from project_core import register_artifact
-            old = root / "raw" / "reviews" / "requirements-review.html"
+            old = root / "reviews" / "requirements-review.html"
             old.parent.mkdir(parents=True, exist_ok=True)
             old.write_text("<html>旧页面</html>", encoding="utf-8")
             register_artifact(root, "requirements", old, "html", [])
@@ -347,6 +369,25 @@ class DocumentTests(unittest.TestCase):
             self.assertFalse(old.exists())
             data = json.loads((root / "data" / "artifacts.json").read_text(encoding="utf-8"))
             self.assertFalse(any(str(a.get("path", "")).endswith("requirements-review.html") for a in data))
+
+    def test_a_review_page_section_can_carry_titled_tables(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = new_project("评审页表格", tmp)
+            fx.crawled(root, "research")
+            blocks = [{"type": "text", "text": "三款同类产品都把拜访记录放在客户的时间线上。"},
+                      {"type": "table", "caption": "同类产品对比", "columns": ["产品", "记录内容"], "rows": [["甲", "时间、联系人、沟通内容"], ["乙", "时间、结果、备注"]]},
+                      {"type": "bullets", "items": ["只看官方帮助页", "不看第三方转述"]}]
+            spec = {"title": "调研结论", "conclusion": "同类产品的做法一致，可以照此设计。", "sections": [{"title": "同类产品", "blocks": blocks}, {"title": "其他", "content": "没有其他。"}],
+                    "sources": [{"id": "SRC-001", "url": "https://example.org/a", "finding": "示例", "applies_to": "同类产品"}]}
+            page = write_document(root, "research", spec).read_text(encoding="utf-8")
+            self.assertIn("表 1　同类产品对比", page)
+            self.assertIn("表 2　检索来源与采用位置", page)
+            self.assertIn("<li>只看官方帮助页</li>", page)
+            for bad in ({"type": "table", "caption": "", "columns": ["产品"], "rows": [["甲"]]},
+                        {"type": "table", "caption": "空格", "columns": ["产品", "内容"], "rows": [["甲", ""]]},
+                        {"type": "image", "file": "x.png"}):
+                with self.assertRaises(ProjectError):
+                    write_document(root, "research", {**spec, "sections": [{"title": "同类产品", "blocks": [bad]}]})
 
 
 def design_project(tmp, surfaces):

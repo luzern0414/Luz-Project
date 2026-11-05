@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "mode": "explicit-project-only",
   "html_required": true,
   "canonical_state": "project.json",
@@ -26,7 +26,7 @@
       ],
       "outputs": [
         "需求说明书 PDF（项目背景、建设目标、范围与使用者、需求清单、业务规则与约束、验收标准、需要客户确认的事项；客户没有需求文档时先写这一份，Word 排版后导出）",
-        "需求评审 HTML（给开发，放 raw/reviews）",
+        "需求评审 HTML（给开发，放状态根的 reviews）",
         "scope and module ledger",
         "success criteria"
       ],
@@ -56,7 +56,7 @@
           "format": "html",
           "kind": "html",
           "required": true,
-          "path": "raw/reviews/01-需求评审.html"
+          "path": "reviews/01-需求评审.html"
         }
       ]
     },
@@ -91,7 +91,7 @@
           "format": "html",
           "kind": "html",
           "required": true,
-          "path": "raw/reviews/02-调研结论.html"
+          "path": "reviews/02-调研结论.html"
         }
       ]
     },
@@ -168,7 +168,7 @@
           "format": "html",
           "kind": "html",
           "required": true,
-          "path": "raw/reviews/03-方案评审.html"
+          "path": "reviews/03-方案评审.html"
         }
       ],
       "crawl_focus": "同类方案书的结构与范围、行业业务规则与术语、竞品功能边界、平台入驻与合规前提",
@@ -231,7 +231,7 @@
           "format": "html",
           "kind": "html",
           "required": true,
-          "path": "raw/reviews/04-业务逻辑确认评审.html"
+          "path": "reviews/04-业务逻辑确认评审.html"
         }
       ],
       "crawl_focus": "目标平台的入驻与上线前置资料（小程序主体资质、类目、备案、支付商户）、行业必填业务规则",
@@ -257,7 +257,8 @@
       "outputs": [
         "系统架构 HTML（01-系统架构）",
         "功能编号到模块、页面、接口的追溯",
-        "入口表 entrances.json（给前端界面设计）"
+        "界面功能说明（界面功能说明.html 与 frontend-spec.json，有界面的项目；登记为本阶段产物）",
+        "入口表 entrances*.json（给前端界面设计，多端项目每个使用端或角色一份）与原型逻辑 proto-logic*.json"
       ],
       "crawl_focus": "product flows, navigation, component behavior, platform constraints",
       "approval": "user_architecture",
@@ -491,7 +492,7 @@
           "format": "pdf",
           "kind": "legal-pdf",
           "required": true,
-          "path": "docs/03-验收交付/用户协议.pdf",
+          "path": "docs/03-验收交付/07-用户协议.pdf",
           "producers": [
             "luz-dev",
             "luz-writing",
@@ -506,7 +507,7 @@
           "format": "pdf",
           "kind": "legal-pdf",
           "required": true,
-          "path": "docs/03-验收交付/隐私政策.pdf",
+          "path": "docs/03-验收交付/08-隐私政策.pdf",
           "producers": [
             "luz-dev",
             "luz-writing",
@@ -559,7 +560,7 @@
           "format": "pdf",
           "kind": "ops-client-pdf",
           "required": true,
-          "path": "docs/03-验收交付/验收测试报告.pdf",
+          "path": "docs/03-验收交付/04-验收测试报告.pdf",
           "producers": [
             "luz-ops",
             "luz-design",
@@ -609,7 +610,7 @@
           "format": "pdf",
           "kind": "ops-client-pdf",
           "required": true,
-          "path": "docs/03-验收交付/发布说明.pdf",
+          "path": "docs/03-验收交付/05-发布说明.pdf",
           "producers": [
             "luz-ops",
             "luz-design",
@@ -658,7 +659,7 @@
           "format": "pdf",
           "kind": "ops-client-pdf",
           "required": true,
-          "path": "docs/03-验收交付/运维手册.pdf",
+          "path": "docs/03-验收交付/06-运维手册.pdf",
           "producers": [
             "luz-ops",
             "luz-design",
@@ -709,7 +710,7 @@
           "format": "pdf",
           "kind": "user-manual-pdf",
           "required": true,
-          "path": "docs/03-验收交付/使用说明.pdf",
+          "path": "docs/03-验收交付/01-使用说明.pdf",
           "producers": [
             "luz-writing",
             "luz-design"
@@ -723,7 +724,7 @@
           "format": "xlsx",
           "kind": "acceptance-checklist",
           "required": true,
-          "path": "docs/03-验收交付/验收清单.xlsx",
+          "path": "docs/03-验收交付/02-验收清单.xlsx",
           "producers": [
             "luz-ops",
             "luz-design"
@@ -737,7 +738,7 @@
           "format": "xlsx",
           "kind": "change-ledger",
           "required": true,
-          "path": "docs/03-验收交付/需求变更台账-交付快照.xlsx",
+          "path": "docs/03-验收交付/03-需求变更台账-交付快照.xlsx",
           "producers": [
             "luz-project"
           ],
@@ -750,7 +751,7 @@
           "format": "html",
           "kind": "html",
           "required": true,
-          "path": "raw/reviews/05-交付评审.html"
+          "path": "reviews/05-交付评审.html"
         }
       ],
       "crawl_focus": "交付验收惯例、使用说明编写要点、行业合规与售后条款",
@@ -762,13 +763,13 @@
   "audiences": {
     "client": "docs/01-需求对接（方案阶段 PDF/XLSX）或 docs/03-验收交付（使用说明、验收清单）",
     "dev": "docs/02-产品开发（HTML 评审页与开发交接）",
-    "ops": "docs/02-产品开发（测试、发布、运维 HTML 证据页）和 raw/reviews（交付评审页）"
+    "ops": "docs/02-产品开发（测试、发布、运维 HTML 证据页）和状态根的 reviews（交付评审页）"
   },
   "directory_contract": {
-    "docs/01-需求对接": "需求对接阶段交给客户的文件，只有 PDF 和 XLSX，平铺不建子目录：01 需求说明书、02 方案说明书、03 系统架构图、04 功能清单、05 业务逻辑确认表与回填、06 需求变更台账；客户给的原始资料放 raw/uploads，Word 源文件放 raw/client-docs",
+    "docs/01-需求对接": "需求对接阶段交给客户的文件，只有 PDF 和 XLSX，平铺不建子目录：01 需求说明书、02 方案说明书、03 系统架构图、04 功能清单、05 业务逻辑确认表与回填、06 需求变更台账；客户给的原始资料放状态根的 uploads，Word 源文件放状态根的 client-docs",
     "docs/02-产品开发": "开发阶段的 HTML，平铺不建子目录，一个“两位序号加中文名”的顺序：01 系统架构、02 前端界面设计、各前端的原型（03 起，序号 + 前端名称 + 原型，有几个前端就几个，如 03-手机原型、04-后台原型）、05 后端设计规范、06 实现报告、07 验收测试评审、08 发布评审、09 运维评审",
-    "docs/03-验收交付": "交付给客户的文件，只有 PDF 和 XLSX，平铺不建子目录：使用说明、验收清单、需求变更台账快照、验收测试报告、发布说明、运维手册、用户协议、隐私政策",
-    "raw/reviews": "需求、调研、方案、客户信息、交付这几个阶段给你审批、给开发看的评审页（内部页，不交给客户，也不进 docs）：01 需求评审、02 调研结论、03 方案评审、04 业务逻辑确认评审、05 交付评审"
+    "docs/03-验收交付": "交付给客户的文件，只有 PDF 和 XLSX，平铺不建子目录：01 使用说明、02 验收清单、03 需求变更台账快照、04 验收测试报告、05 发布说明、06 运维手册、07 用户协议、08 隐私政策",
+    "reviews（状态根）": "需求、调研、方案、客户信息、交付这几个阶段给你审批、给开发看的评审页（内部页，不交给客户，也不进 docs）：01 需求评审、02 调研结论、03 方案评审、04 业务逻辑确认评审、05 交付评审"
   },
   "global_ledgers": [
     "data/changes.json",

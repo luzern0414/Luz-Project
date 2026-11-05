@@ -6,6 +6,18 @@ from pathlib import Path
 import client_data as cd
 
 
+def new_project(name: str, tmp: Path | str, repository: str | None = None) -> Path:
+    """A new project in a temporary folder (test helper): the project directory is ``<tmp>/work/014-<name>`` and the Luz-Project output root ``<tmp>/out``
+    (LUZ_PROJECT_OUTPUT points there, so a project is found from either path). Returns the state root, ``<tmp>/out/014-<name>/raw``."""
+    import os
+
+    from project_core import create_project
+
+    out = Path(tmp) / "out"
+    os.environ["LUZ_PROJECT_OUTPUT"] = str(out)
+    return create_project(name, Path(tmp) / "work" / f"014-{name}", out, repository=repository)
+
+
 def features() -> dict:
     modules = [
         {"id": "M01", "name": "会员与积分", "summary": "顾客注册成为会员，消费累计积分并抵扣"},
@@ -52,11 +64,14 @@ def requirements() -> dict:
 
 
 def requirements_provided(root: Path) -> None:
-    """The client brought its own requirements document: it sits under raw/uploads and requirements.json registers it."""
-    uploads = root / "raw" / "uploads"
+    """The client brought its own requirements document: it sits in uploads/ of the state root and requirements.json registers it."""
+    from project_core import locate, state_name
+
+    folder = state_name(root, "uploads")
+    uploads = locate(root, folder)
     uploads.mkdir(parents=True, exist_ok=True)
     (uploads / "客户需求说明.docx").write_text("客户自己的需求文档", encoding="utf-8")
-    cd.save(root, {"client_document": {"file": "raw/uploads/客户需求说明.docx", "note": "客户提供的需求文档"}}, "client", "requirements.json")
+    cd.save(root, {"client_document": {"file": f"{folder}/客户需求说明.docx", "note": "客户提供的需求文档"}}, "client", "requirements.json")
 
 
 def proposal() -> dict:
@@ -133,7 +148,11 @@ def fill_intake(path: Path, root: Path | None = None) -> Path:
                     ws.cell(r, idx["审核结果"]).value = "不需要"
             elif ws.cell(r, idx["必填"]).value == "必填":
                 ws.cell(r, idx["客户填写"]).value = "已填写（测试）"
-    out = path.with_name("filled.xlsx")
+    from project_core import locate, state_name
+
+    folder = locate(root, state_name(root, "uploads")) if root is not None else path.parent        # what the client sends back is an upload, not a result
+    folder.mkdir(parents=True, exist_ok=True)
+    out = folder / "filled.xlsx"
     wb.save(out)
     return out
 
@@ -144,10 +163,11 @@ def crawled(root: Path, *stages: str) -> None:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Luz-Crawl" / "scripts"))
     from test_crawl_preflight import complete_fixture
+    from crawl_gate import evidence_session
     from project_core import _stage_record, load_project
 
     for stage in stages:
-        complete_fixture(root, _stage_record(load_project(root), stage)["owner"], stage)
+        complete_fixture(evidence_session(root), _stage_record(load_project(root), stage)["owner"], stage)
 
 
 def prepare(root: Path, stage: str) -> None:
@@ -160,7 +180,7 @@ def prepare(root: Path, stage: str) -> None:
         write_all(root)
         cf.build_proposal(root)
     elif stage == "client-intake":
-        cf.import_intake(root, fill_intake(cf.build_intake_form(root)))
+        cf.import_intake(root, fill_intake(cf.build_intake_form(root), root))
     elif stage == "handover":
         features = cd.load_features(root)
         checklist = cf.generate_acceptance(root)

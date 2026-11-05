@@ -1,10 +1,11 @@
 """Core project control-plane helpers for the :mod:`luz-project` skill.
 
 The module deliberately uses only the Python standard library.  ``project.json``
-is the canonical project state; the root ``MANIFEST.json`` and
-``APPROVALS.json`` are human and tooling friendly mirrors/ledgers.  Generated
-HTML is always derived from that state so a reviewer can inspect a project
-without having to run the CLI.
+is the canonical project state; the ``MANIFEST.json`` and ``APPROVALS.json`` next
+to it are human and tooling friendly mirrors/ledgers.  A project has two roots
+(project_paths.py): the *state root* holds those files and everything the tools
+keep, the *deliver root* is the project directory with the results only.  Every
+function here takes either path and works on the state root.
 """
 
 from __future__ import annotations
@@ -21,38 +22,50 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import quote, unquote, urlsplit
 
+from project_paths import (  # noqa: F401  (re-exported: the other skills read these names from here)
+    DEFAULT_OUTPUT_ROOT,
+    DELIVER_DIRS,
+    ProjectError,
+    deliver_root,
+    is_legacy,
+    kind_of,
+    legacy_at,
+    locate,
+    output_root,
+    relative_to_project,
+    resolve_state_root,
+    session_dir,
+    state_name,
+    summary_path,
+)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX_FILE = ROOT / "references" / "development-matrix.json"
 
-REQUIRED_DIRS = (
-    "src",
-    "test",
-    "assets",
-    "infra",
-    "raw",
-    "scripts",
-    "config",
-    "data",
-    "data/stages",
-    "docs/01-需求对接",
-    "docs/02-产品开发",
-    "docs/03-验收交付",
-)
+# What init makes. The project directory gets the three document folders; src, test, assets, infra, scripts and the business data folders (data/schema,
+# data/seeds ...) are made when something is written there. The state root gets data/ and config/ and the folders the tools write to.
+DELIVER_MADE = ("docs/01-需求对接", "docs/02-产品开发", "docs/03-验收交付")
+STATE_DIRS = ("data", "data/stages", "config")
 # Added in schema 1.1 (client documents, change ledger, acceptance checklist); older projects get them from ``migrate``. Only the folder every project
 # uses at once is made up front: data/acceptance appears when the checklist is first written (project-structure.md rule 3, no empty folders in advance).
 V11_DIRS = ("data/client",)
-# What a project's .gitignore starts with: secrets, dependencies, build output, the Word sources and build intermediates of the client documents, local data.
-GITIGNORE_LINES = (".env", ".env.*", "!.env.example", "config/*.local.*", "config/secrets*", "!config/keys.example.json", "node_modules/", ".venv/", "__pycache__/",
-                   "dist/", "build/", "coverage/", "raw/logs/", "raw/uploads/", "raw/client-docs/", "data/users/*", "data/imports/*", "data/exports/*", "data/snapshots/*")
+SCHEMA_VERSION = "1.2"          # 1.2: two roots (project_paths.py); 1.1 projects have none and keep everything in the project root
+# What the project directory's .gitignore starts with: secrets, dependencies, build output, local data.
+GITIGNORE_LINES = (".env", ".env.*", "!.env.example", "config/*.local.*", "config/secrets*", "node_modules/", ".venv/", "__pycache__/",
+                   "dist/", "build/", "coverage/", "data/users/*", "data/imports/*", "data/exports/*", "data/snapshots/*")
 # The part of that list an existing repository can take without surprises (adopt and migrate append the missing lines only).
-GITIGNORE_SAFE = (".env", ".env.*", "!.env.example", "node_modules/", "dist/", "build/", "raw/client-docs/")
-# Where the Crawl preflight records really are (raw/00-crawl/<caller>-<stage>.json and .html); project.json points at that folder.
-EVIDENCE_DIR = "raw/00-crawl"
+GITIGNORE_SAFE = (".env", ".env.*", "!.env.example", "node_modules/", "dist/", "build/")
+PATHS = {"src": "src", "frontend": "src/frontend", "backend": "src/backend", "shared": "src/shared", "test": "test", "unit": "test/unit", "integration": "test/integration",
+         "e2e": "test/e2e", "docs": "docs", "assets": "assets", "infra": "infra", "migrations": "infra/migrations"}       # config/paths.json: where the folders of the project directory are
+# Folders of the state root (``raw/<name>`` in a project of the old layout; state_name() gives the right one).
+EVIDENCE_DIR = "00-crawl"       # Crawl preflight records: <caller>-<stage>.json and .html; project.json points at the folder
+UPLOADS_DIR = "uploads"         # the client's original material
+CLIENT_DOCS_DIR = "client-docs" # Word sources, build intermediates and page overview images of the client documents
 # docs/ has exactly three folders and no folder below them, and holds only what is handed over: the PDF and XLSX of the client in 需求对接 and
 # 验收交付, the HTML of the development stages in 产品开发. The review pages of the other stages (for your approval and for developers) are internal:
-# they live in raw/reviews.
-REVIEW_DIR = "raw/reviews"
+# they live in the state root's reviews/.
+REVIEW_DIR = "reviews"
 DOC_FOLDERS = {
     "docs/01-需求对接": ((".pdf", ".xlsx"), "需求对接阶段交给客户的 PDF 和 XLSX"),
     "docs/02-产品开发": ((".html",), "开发阶段（架构、前端、后端、实现、测试、发布、运维）的 HTML"),
@@ -63,14 +76,16 @@ DEVELOPMENT_STAGES = ("architecture", "design", "technical-plan", "implementatio
 DOC_DIRS = {**{stage: "docs/01-需求对接" for stage in REQUIREMENT_STAGES}, **{stage: "docs/02-产品开发" for stage in DEVELOPMENT_STAGES}, "handover": "docs/03-验收交付"}
 
 
-def expected_doc_folder(stage: str, suffix: str) -> str | None:
+def expected_doc_folder(stage: str, suffix: str, project: Path | str | None = None) -> str | None:
     """Where a file of this stage and type belongs. The client's PDF and XLSX go to 需求对接 (requirement stages) or 验收交付 (handover and what the
-    development stages hand over); the HTML of a development stage goes to 产品开发; the review pages of the other stages go to raw/reviews."""
+    development stages hand over); the HTML of a development stage goes to 产品开发; the review pages of the other stages go to the state root's
+    reviews (``raw/reviews`` in a project of the old layout, which ``project`` tells)."""
     html = suffix.lower() == ".html"
+    reviews = state_name(project, REVIEW_DIR) if project is not None else REVIEW_DIR
     if stage in REQUIREMENT_STAGES:
-        return REVIEW_DIR if html else "docs/01-需求对接"
+        return reviews if html else "docs/01-需求对接"
     if stage == "handover":
-        return REVIEW_DIR if html else "docs/03-验收交付"
+        return reviews if html else "docs/03-验收交付"
     if stage in DEVELOPMENT_STAGES:
         return "docs/02-产品开发" if html else "docs/03-验收交付"
     return None
@@ -120,8 +135,17 @@ LAYOUT_MOVES = (
     ("docs/01-需求对接/03-功能清单.xlsx", "docs/01-需求对接/04-功能清单.xlsx"),
     ("docs/01-需求对接/02-系统架构图.pdf", "docs/01-需求对接/03-系统架构图.pdf"),
     ("docs/01-需求对接/01-方案说明书.pdf", "docs/01-需求对接/02-方案说明书.pdf"),
+    # the handover files had no number in front of them
+    ("docs/03-验收交付/使用说明.pdf", "docs/03-验收交付/01-使用说明.pdf"),
+    ("docs/03-验收交付/验收清单.xlsx", "docs/03-验收交付/02-验收清单.xlsx"),
+    ("docs/03-验收交付/需求变更台账-交付快照.xlsx", "docs/03-验收交付/03-需求变更台账-交付快照.xlsx"),
+    ("docs/03-验收交付/验收测试报告.pdf", "docs/03-验收交付/04-验收测试报告.pdf"),
+    ("docs/03-验收交付/发布说明.pdf", "docs/03-验收交付/05-发布说明.pdf"),
+    ("docs/03-验收交付/运维手册.pdf", "docs/03-验收交付/06-运维手册.pdf"),
+    ("docs/03-验收交付/用户协议.pdf", "docs/03-验收交付/07-用户协议.pdf"),
+    ("docs/03-验收交付/隐私政策.pdf", "docs/03-验收交付/08-隐私政策.pdf"),
 )
-# Client originals (a client's own Word, PDF, spreadsheets) are inputs, not deliverables: they live in raw/uploads.
+# Client originals (a client's own Word, PDF, spreadsheets) are inputs, not deliverables: they live in uploads/ of the state root.
 CLIENT_ORIGINALS_DIR = "docs/01-需求对接/00-客户原始资料"
 STAGE_STATUSES = {
     "pending",
@@ -139,10 +163,6 @@ SECRET_PATTERNS = (
     re.compile(r"(?i)\b(?:access[_-]?token|auth[_-]?token|bearer|cookie)\s*[:=]\s*[\"']?[A-Za-z0-9._~+/=-]{16,}"),
     re.compile(r"(?i)\b(?:api[_-]?key|client[_-]?secret|password)\s*[:=]\s*[\"']?(?!\$\{|[A-Z][A-Z0-9_]+\b)[A-Za-z0-9._~+/=-]{10,}"),
 )
-
-
-class ProjectError(ValueError):
-    """Raised for an invalid project operation."""
 
 
 def now_iso() -> str:
@@ -203,10 +223,8 @@ def _stage_defs() -> dict[str, dict[str, Any]]:
 
 
 def _project_root(project: Path | str) -> Path:
-    root = Path(project).expanduser()
-    if not root.is_absolute():
-        root = Path.cwd() / root
-    return root.resolve()
+    """The state root of a project given as its state root, its session directory or its project directory (project_paths.resolve_state_root)."""
+    return resolve_state_root(project)
 
 
 def _manifest_path(project: Path) -> Path:
@@ -263,15 +281,18 @@ def _design_prototypes(root: Path | None) -> list[dict[str, Any]]:
 def stage_deliverables(root: Path | None, item: dict[str, Any]) -> list[dict[str, Any]]:
     """The deliverables of a stage. Those of the matrix, except that the design stage lists one prototype per front end of the project's own design
     document (data/stages/design.json: a phone page and a back office give 03-手机原型 and 04-后台原型, a mini program gives 03-小程序原型);
-    without that document the matrix default stands."""
+    without that document the matrix default stands. Paths are relative to the root they belong to (docs/... to the project directory, reviews/...
+    to the state root); a project of the old layout keeps its review pages under raw/."""
     base = [dict(d) for d in item.get("deliverables", [])]
-    if item.get("id") != "design":
-        return base
-    found = _design_prototypes(root)
-    if not found:
-        return base
-    first = next((i for i, d in enumerate(base) if d.get("kind") == "prototype"), len(base))
-    return [d for d in base[:first] if d.get("kind") != "prototype"] + found + [d for d in base[first:] if d.get("kind") != "prototype"]
+    found = _design_prototypes(root) if item.get("id") == "design" else []
+    if found:
+        first = next((i for i, d in enumerate(base) if d.get("kind") == "prototype"), len(base))
+        base = [d for d in base[:first] if d.get("kind") != "prototype"] + found + [d for d in base[first:] if d.get("kind") != "prototype"]
+    if root is not None and legacy_at(root):
+        for d in base:
+            if str(d.get("path", "")).startswith(REVIEW_DIR + "/"):
+                d["path"] = "raw/" + str(d["path"])
+    return base
 
 
 def _empty_stage(item: dict[str, Any], current: bool = False, root: Path | None = None) -> dict[str, Any]:
@@ -312,33 +333,41 @@ def _write_initial_file(path: Path, content: str = "") -> None:
         path.write_text(content, encoding="utf-8")
 
 
-def create_project(name: str, output_root: Path | str, repository: str | None = None) -> Path:
-    """Create a numbered project root and its complete, safe scaffold."""
-    if not str(name).strip():
-        raise ProjectError("项目名称不能为空")
-    parent = Path(output_root).expanduser()
+def _number_of(project_dir: Path) -> int:
+    match = re.match(r"^(\d{3,})-", project_dir.name)
+    return int(match.group(1)) if match else 1
+
+
+def _session_for(project_dir: Path, output: Path | str) -> Path:
+    """The Luz-Project session of a project directory: ``<输出根>/<项目目录名>``. The directory name is ``NNN-项目名`` and the session carries the same name."""
+    from project_paths import SESSION_NAME
+
+    if not SESSION_NAME.match(project_dir.name):
+        raise ProjectError(f"项目目录名应为“三位序号-项目名”（如 014-示例项目），当前是 {project_dir.name}；会话目录与项目目录同名")
+    parent = Path(output).expanduser()
     if not parent.is_absolute():
         parent = Path.cwd() / parent
-    parent = parent.resolve()
-    parent.mkdir(parents=True, exist_ok=True)
-    number = _next_number(parent)
-    folder = parent / f"{number:03d}-{_slug(name)}"
-    folder.mkdir(parents=False, exist_ok=False)
-    for relative in (*REQUIRED_DIRS, *V11_DIRS):
-        (folder / relative).mkdir(parents=True, exist_ok=True)
-    for relative in ("src/.gitkeep", "test/.gitkeep", "assets/.gitkeep", "infra/.gitkeep", "raw/.gitkeep"):     # folders below the first level are made when something is written there
-        _write_initial_file(folder / relative)
+    return parent.resolve() / project_dir.name
 
-    matrix = _load_matrix()
-    stages = [_empty_stage(item, current=(index == 0), root=folder) for index, item in enumerate(matrix["stages"])]
-    manifest: dict[str, Any] = {
-        "schema_version": "1.1",
+
+def _project_dir(path: Path | str) -> Path:
+    folder = Path(path).expanduser()
+    if not folder.is_absolute():
+        folder = Path.cwd() / folder
+    return folder.resolve()
+
+
+def _new_manifest(name: str, project_dir: Path, stages: list[dict[str, Any]], repository: str | None) -> dict[str, Any]:
+    number = _number_of(project_dir)
+    return {
+        "schema_version": SCHEMA_VERSION,
         "project_id": f"PROJECT-{number:03d}",
         "name": str(name).strip(),
         "slug": _slug(name),
         "status": "draft",
         "current_stage": stages[0]["id"] if stages else None,
         "repository": repository,
+        "deliver_root": str(project_dir),
         "created_at": now_iso(),
         "updated_at": now_iso(),
         "crawl": {
@@ -355,27 +384,50 @@ def create_project(name: str, output_root: Path | str, repository: str | None = 
             "production_data_in_project": False,
         },
     }
-    _write_json(folder / "project.json", manifest)
-    _write_json(folder / "MANIFEST.json", manifest)
-    _write_json(folder / "data" / "project.json", manifest)
-    _write_json(folder / "APPROVALS.json", {"schema_version": "1.0", "approvals": []})
-    _write_json(folder / "data" / "artifacts.json", [])
-    _write_json(folder / "data" / "ops" / "checks.json", [])
-    _write_json(folder / "data" / "changes.json", {"schema_version": "1.0", "changes": []})
-    _write_json(folder / "config" / "documents.json", {"theme": None, "note": "客户文档主题：按本项目行业和受众从 Luz-Design references/themes.json 选择，运行 project.py client theme 设置"})
-    _write_initial_file(folder / ".gitignore", "\n".join(GITIGNORE_LINES) + "\n")
-    _write_initial_file(folder / ".env.example", "# Set values locally; never commit the real .env.\nAPP_ENV=local\nAPI_BASE_URL=\nSERVICE_API_KEY=\n")
-    # Only the config the tools use from the start: where things live, the document theme (above) and the list of key references. project, environments,
-    # urls, features and validation.json are written by the stage that has something to put in them (technical-plan, implementation), never as empty files.
-    config_files = {
-        "keys.example.json": {"api_key_env": "", "secret_ref": ""},
-        "paths.json": {"src": "src", "frontend": "src/frontend", "backend": "src/backend", "shared": "src/shared", "test": "test", "unit": "test/unit", "integration": "test/integration", "e2e": "test/e2e", "docs": "docs", "raw": "raw", "crawl": EVIDENCE_DIR, "assets": "assets", "infra": "infra", "migrations": "infra/migrations"},
-    }
-    for filename, payload in config_files.items():
-        _write_json(folder / "config" / filename, payload)
-    # The first render makes a newly created project immediately reviewable.
-    render_project(folder)
-    return folder
+
+
+def _write_state_files(state: Path, manifest: dict[str, Any]) -> None:
+    """The files every project's state root starts with (an existing file is not touched)."""
+    for relative in (*STATE_DIRS, *V11_DIRS):
+        (state / relative).mkdir(parents=True, exist_ok=True)
+    _write_json(state / "project.json", manifest)
+    _write_json(state / "MANIFEST.json", manifest)
+    _write_json(state / "data" / "project.json", manifest)
+    for path, payload in (
+        (state / "APPROVALS.json", {"schema_version": "1.0", "approvals": []}),
+        (state / "data" / "artifacts.json", []),
+        (state / "data" / "ops" / "checks.json", []),
+        (state / "data" / "changes.json", {"schema_version": "1.0", "changes": []}),
+        (state / "config" / "documents.json", {"theme": None, "note": "客户文档主题：按本项目行业和受众选择（Luz-Design 的主题表），运行 project.py client theme 设置"}),
+        (state / "config" / "keys.example.json", {"api_key_env": "", "secret_ref": ""}),
+    ):
+        if not path.exists():
+            _write_json(path, payload)
+
+
+def create_project(name: str, project_dir: Path | str, output: Path | str, repository: str | None = None) -> Path:
+    """Create a project: its Luz-Project session ``<output>/<项目目录名>`` (a ``raw`` folder, the state root, and the summary page) and its
+    project directory, which gets the three document folders only. Returns the state root."""
+    if not str(name).strip():
+        raise ProjectError("项目名称不能为空")
+    deliver = _project_dir(project_dir)
+    if (deliver / "project.json").is_file():
+        raise ProjectError(f"{deliver} 是旧布局的项目（有 project.json）：用 project.py migrate 迁移，不要再 init")
+    session = _session_for(deliver, output)
+    state = session / "raw"
+    if (state / "project.json").exists():
+        raise ProjectError(f"这个项目已经有会话: {session}")
+    state.mkdir(parents=True, exist_ok=True)
+    for relative in DELIVER_MADE:
+        (deliver / relative).mkdir(parents=True, exist_ok=True)
+    stages = [_empty_stage(item, current=(index == 0), root=state) for index, item in enumerate(_load_matrix()["stages"])]
+    manifest = _new_manifest(name, deliver, stages, repository)
+    _write_state_files(state, manifest)
+    _write_json(state / "config" / "paths.json", dict(PATHS))
+    _write_initial_file(deliver / ".gitignore", "\n".join(GITIGNORE_LINES) + "\n")
+    _write_initial_file(deliver / ".env.example", "# Set values locally; never commit the real .env.\nAPP_ENV=local\nAPI_BASE_URL=\nSERVICE_API_KEY=\n")
+    render_project(state)                 # the summary page makes a newly created project immediately reviewable
+    return state
 
 
 def _artifacts_path(project: Path) -> Path:
@@ -426,42 +478,37 @@ def _next_artifact_id(root: Path, manifest: dict[str, Any], artifacts: list[dict
     used: list[dict[str, Any]] = [{"id": str(a.get("id"))} for a in artifacts]
     for stage in manifest.get("stages", []):
         used += [{"id": str(i)} for i in [*(stage.get("artifact_ids") or []), *((stage.get("approved_hashes") or {}).keys())]]
-    for approval in _read_json(root / "APPROVALS.json", {}).get("approvals", []) if isinstance(_read_json(root / "APPROVALS.json", {}), dict) else []:
+    ledger = _read_json(root / "APPROVALS.json", {})
+    for approval in (ledger.get("approvals") if isinstance(ledger, dict) else None) or []:
         used += [{"id": str(i)} for i in (approval.get("artifact_hashes") or {}).keys()]
     return _next_id(used, "ART")
 
 
 def _safe_relative(root: Path, path: Path | str) -> tuple[Path, str]:
-    candidate = Path(path)
-    if not candidate.is_absolute():
-        candidate = root / candidate
-    candidate = candidate.resolve()
-    try:
-        relative = candidate.relative_to(root)
-    except ValueError as exc:
-        raise ProjectError(f"产物必须位于项目目录内: {candidate}") from exc
-    return candidate, relative.as_posix()
+    """The absolute path and the project-relative form of an artifact. A relative path is read as project-relative (docs/... in the project
+    directory, everything else in the state root); an absolute one must be inside either root."""
+    candidate = locate(root, path).resolve()
+    return candidate, relative_to_project(root, candidate)
 
 
-def stage_document_path(stage: str) -> str:
-    """The relative path of the developer document of a stage, from its deliverable in the matrix."""
+def stage_document_path(stage: str, project: Path | str | None = None) -> str:
+    """The project-relative path of the developer document of a stage, from its deliverable in the matrix (a project of the old layout keeps its
+    review pages under raw/, which ``project`` tells)."""
     for item in _load_matrix()["stages"]:
         if item["id"] == stage:
             pages = [d for d in item.get("deliverables", []) if d.get("format") == "html"]
             pages.sort(key=lambda d: d.get("audience") != "dev")               # the developer document first, then Luz-Ops' page
             if pages:
-                return str(pages[0]["path"])
+                path = str(pages[0]["path"])
+                return state_name(project, path) if project is not None and path.startswith(REVIEW_DIR + "/") else path
     raise ProjectError(f"阶段 {stage} 在开发矩阵里没有开发文档")
 
 
-def _stage_page(stage: str) -> str | None:
-    """The first HTML deliverable of a stage (developer document, or Luz-Ops' report page), if the matrix names one."""
-    for item in _load_matrix()["stages"]:
-        if item["id"] == stage:
-            for d in item.get("deliverables", []):
-                if d.get("format") == "html":
-                    return str(d["path"])
-    return None
+def evidence_dir(project: Path | str, manifest: dict[str, Any] | None = None) -> str:
+    """The folder of the Crawl preflight records, relative to the state root: ``crawl.evidence_index`` of project.json (``00-crawl``; ``raw/00-crawl`` in a
+    project of the old layout); the default when the index is missing or is a file."""
+    index = str(((manifest or load_project(project)).get("crawl") or {}).get("evidence_index") or "").replace(chr(92), "/").strip("/")
+    return index if index and not index.lower().endswith(".json") else state_name(project, EVIDENCE_DIR)
 
 
 def require_crawl(project: Path | str, stage: str) -> None:
@@ -582,7 +629,7 @@ def unregister_artifacts(project: Path | str, kinds: Iterable[str], *, delete_fi
     _save_manifest(root, manifest)
     removed = []
     for a in gone:
-        path = root / a["path"]
+        path = locate(root, a["path"])
         if delete_files and path.is_file():
             path.unlink()
         removed.append(a["path"])
@@ -612,7 +659,7 @@ def approve_stage(project: Path | str, stage: str, note: str, approver: str) -> 
     research_errors = crawl_errors(root, stage, caller=stage_record["owner"])
     if research_errors:
         raise ProjectError("; ".join(research_errors))
-    preflight = root / "raw" / "00-crawl" / f'{stage_record["owner"]}-{stage}.json'
+    preflight = locate(root, f'{evidence_dir(root, manifest)}/{stage_record["owner"]}-{stage}.json')
     record = _read_json(preflight)
     task_root = str(Path(record["task_root"]).resolve())
     bound_task = manifest["crawl"].get("task_root")
@@ -648,7 +695,7 @@ def approve_stage(project: Path | str, stage: str, note: str, approver: str) -> 
             raise ProjectError("客户文档/变更门禁未通过: " + "; ".join(problems))
     hashes: dict[str, str] = {}
     for item in current:
-        path = root / str(item["path"])
+        path = locate(root, str(item["path"]))
         if not path.is_file():
             raise ProjectError(f"阶段产物不存在: {path}")
         digest = sha256_file(path)
@@ -743,160 +790,56 @@ def _html_page(
 
 
 def render_project(project: Path | str) -> list[Path]:
-    """Render the project index; it links each stage to its developer document (the numbered pages under docs/), none is written per stage."""
+    """Write the summary page of the project (``<会话>/<项目目录名>.html``): the results with their place in the project directory, the stages with their
+    approvals, the sessions of the other skills. A project of the old layout has no session yet: nothing is written until ``migrate``."""
     root = _project_root(project)
-    manifest = load_project(root)
-    artifacts = _load_artifacts(root)
-    rendered: list[Path] = []
-    stages = manifest.get("stages", [])
-    stage_rows = []
-    registered_paths = {str(item.get("path", "")).replace(chr(92), chr(47)) for item in artifacts}
-    page_links: dict[str, str] = {}
-    for item in stages:
-        stage_id = str(item["id"])
-        docs_dir = root / DOC_DIRS.get(stage_id, "docs")           # only to find pages an older version wrote; the folder is never created here
-        for stub in (docs_dir / f"{stage_id}.html", docs_dir / f"stage-{stage_id}.html"):       # pages an older version wrote for every stage
-            relative = stub.relative_to(root).as_posix()
-            if relative in registered_paths or not stub.is_file():
-                continue
-            text = stub.read_text(encoding="utf-8", errors="replace")
-            if "阶段概况" in text or f'data-document-id="DOC-{manifest["project_id"]}-{stage_id}"' in text:      # a page this tool wrote for the stage itself
-                stub.unlink()
-        document = _stage_page(stage_id)
-        link = document if document and (root / document).is_file() else ""
-        page_links[stage_id] = link
-        stage_rows.append(
-            f'<tr><td>{html.escape(str(item.get("name", stage_id)))}</td>'
-            f'<td>{html.escape(stage_id)}</td>'
-            f'<td>{html.escape(str(item.get("owner", "—")))}</td>'
-            f'<td>{html.escape(STATUS_LABELS.get(str(item.get("status", "pending")), str(item.get("status", "pending"))))}</td>'
-            f'<td>{f"<a href={chr(34)}{html.escape(link, quote=True)}{chr(34)}>{html.escape(Path(link).stem)}</a>" if link else "尚未编写"}</td></tr>'
-        )
-    approvals = _load_approvals(root).get("approvals", [])
-    approval_rows = "".join(f'<tr><td>{html.escape(str(a.get("stage")))}</td><td>{html.escape(str(a.get("approver")))}</td><td>{html.escape(str(a.get("approved_at")))}</td><td>{html.escape(str(a.get("note")))}</td></tr>' for a in approvals) or "<tr><td colspan=4>暂无审批</td></tr>"
-    contract_rows = "".join(f"<tr><td>{html.escape(k)}</td><td>{html.escape(v)}</td></tr>" for k, v in _load_matrix().get("directory_contract", {}).items())
-    requirement_link, architecture_link, verification_link = "docs/01-需求对接", "docs/02-产品开发", "docs/03-验收交付"
-    body = f'<h2>项目概况</h2><div class="meta"><span class="chip-s">{html.escape(STATUS_LABELS.get(str(manifest.get("status", "draft")), str(manifest.get("status", "draft"))))}</span><span>项目编号：{html.escape(str(manifest.get("project_id")))}</span><span>当前阶段：{html.escape(next((str(x.get("name")) for x in stages if x.get("id") == manifest.get("current_stage")), str(manifest.get("current_stage"))))}</span></div><p class="notice">项目目录是项目管理和配置边界：config 保存参数与 Key 引用，data 保存开发/测试/脱敏业务数据，生产数据库仍是线上事实源。</p><h2>开发矩阵</h2><table><thead><tr><th>阶段</th><th>稳定 ID</th><th>负责人</th><th>状态</th><th>文档</th></tr></thead><tbody>{"".join(stage_rows)}</tbody></table><h2>审批记录</h2><table><thead><tr><th>阶段</th><th>审批人</th><th>时间</th><th>说明</th></tr></thead><tbody>{approval_rows}</tbody></table><h2>目录入口</h2><ul><li><a href="{html.escape(requirement_link, quote=True)}">需求对接</a></li><li><a href="{html.escape(architecture_link, quote=True)}">产品开发与系统架构</a></li><li><a href="{html.escape(verification_link, quote=True)}">验收交付</a></li></ul><h2>目录约定</h2><table><thead><tr><th>目录</th><th>放什么</th></tr></thead><tbody>{contract_rows}</tbody></table>'
-    index = root / "README.html"
-    index.write_text(_html_page(project_id=str(manifest["project_id"]), document_id=f'DOC-{manifest["project_id"]}-README', stage="project", status=str(manifest.get("status", "draft")), version=str(manifest.get("updated_at", "")), title=f'{manifest["name"]} · 项目索引', body=body, theme=doc_theme(root)), encoding="utf-8")
-    rendered.insert(0, index)
-    write_docs_index(root, manifest)
-    return rendered
+    import project_summary
+
+    page = project_summary.render_summary(root)
+    return [page] if page else []
 
 
-DOCS_INDEX_MARK = "文档导航"
-FOLDER_NOTE = {"docs/01-需求对接": "需求对接阶段交给客户的文件，只有 PDF 和 Excel，平铺不建子目录；客户给的原始资料放 raw/uploads，需求、调研、方案、客户信息的评审页放 raw/reviews。",
-               "docs/02-产品开发": "开发阶段的 HTML，只有 HTML，平铺不建子目录，一个“两位序号加中文名”的顺序：系统架构、前端界面设计、各前端原型、后端设计规范、实现报告、测试、发布、运维评审（标准见 Luz-Project 的 references/dev-documents.md）。",
-               "docs/03-验收交付": "交付给客户的 PDF 和 Excel：使用说明、验收清单、台账快照、测试报告、发布说明、运维手册、用户协议、隐私政策，平铺不建子目录。"}
+def layout_errors(project: Path | str) -> list[str]:
+    """The project directory holds results only: what check_output_layout.py's project check finds (a source or process file, a folder or file in
+    docs that does not belong, a document without its two-digit number). A project of the old layout still has its tool files in the project root:
+    only the rules of docs/ apply to it, and the numbers and the generated docs/README.md are left for ``migrate``."""
+    import check_output_layout
+
+    root = _project_root(project)
+    errors, _notes = check_output_layout.check_project(deliver_root(root))
+    if is_legacy(root):
+        errors = [e for e in errors if e.startswith("docs") and "应以两位序号开头" not in e and not e.endswith("多出文件 README.md")]
+    return [f"目录约定：{e}" for e in errors]
 
 
-def write_docs_index(root: Path, manifest: dict[str, Any]) -> Path | None:
-    """docs/README.md lists the files that exist, folder by folder; a README somebody wrote by hand is left alone."""
-    target = root / "docs" / "README.md"
-    if target.is_file() and f"{DOCS_INDEX_MARK}" not in target.read_text(encoding="utf-8", errors="replace").splitlines()[0]:
-        return None
-    lines = [f"# {manifest['name']} · {DOCS_INDEX_MARK}", "", "目录按阶段划分：需求对接交给客户的文件在 01，开发阶段的 HTML 在 02，交付给客户的文件在 03；每个目录只有一层，给你审批的评审页在 raw/reviews。客户文档由 `data/client/` 里的数据生成，不手改；需求变更先登记到需求变更台账。项目索引见根目录 `README.html`。", ""]
-    for folder, note in FOLDER_NOTE.items():
-        base = root / folder
-        if not base.is_dir():
-            continue
-        lines += [f"## {Path(folder).name}", "", note, ""]
-        files = [f for f in sorted(base.iterdir()) if f.is_file() and not f.name.startswith(".")]
-        lines += [f"- [{f.name}]({quote(f.relative_to(root / 'docs').as_posix())})" for f in files] + [""]
-    target.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-    return target
+def session_errors(project: Path | str) -> list[str]:
+    """The session of a project (its folder name, ``raw``, the summary page) by check_output_layout.py's session check."""
+    import check_output_layout
+
+    session = session_dir(project)
+    if session is None:
+        return []
+    errors, _notes = check_output_layout.check_session(session, False)
+    return [f"会话目录：{e}" for e in errors]
 
 
-def layout_errors(root: Path) -> list[str]:
-    """docs/ keeps three folders, one level each: the files in them are the ones their readers use, and nothing else."""
+def placement_errors(artifacts: list[dict[str, Any]], project: Path | str | None = None) -> list[str]:
+    """A registered document sits in the folder its stage names: a requirement page in the state root's reviews, a development page in 产品开发."""
     errors: list[str] = []
-    docs = root / "docs"
-    if not docs.is_dir():
-        return errors
-    for item in sorted(docs.iterdir()):
-        name = f"docs/{item.name}"
-        if item.is_dir() and name not in DOC_FOLDERS and not item.name.startswith("."):
-            errors.append(f"目录约定：docs 里只有 01-需求对接、02-产品开发、03-验收交付三个目录，多出了 {name}/（客户原始资料放 raw/uploads，其他文档放 raw/）")
-        elif item.is_file() and item.name != "README.md":
-            errors.append(f"目录约定：docs 根目录只放 README.md，{name} 要放进三个目录之一或移出 docs")
-    for folder, (suffixes, what) in DOC_FOLDERS.items():
-        base = root / folder
-        if not base.is_dir():
-            continue
-        for item in sorted(base.iterdir()):
-            relative = f"{folder}/{item.name}"
-            if item.name.startswith("."):
-                continue
-            if item.is_dir():
-                errors.append(f"目录约定：{folder} 只有一层，不能有子目录 {item.name}/（里面的文件直接放在 {folder}，不属于这里的移到 raw/）；旧项目运行 project.py migrate")
-            elif item.suffix.lower() not in suffixes:
-                errors.append(f"目录约定：{folder} 只放{what}（{'、'.join(suffixes)}），{relative} 不属于这里；原始资料和 Word 源文件放 raw/")
-    return errors
-
-
-def placement_errors(artifacts: list[dict[str, Any]]) -> list[str]:
-    """A registered document sits in the folder its stage names: a requirement page in 需求对接, a development page in 产品开发."""
-    errors: list[str] = []
+    reviews = state_name(project, REVIEW_DIR) if project is not None else REVIEW_DIR
     for item in artifacts:
         rel = str(item.get("path", "")).replace(chr(92), "/")
         parts = rel.split("/")
-        if len(parts) < 3 or parts[0] not in ("docs", "raw") or (parts[0] == "raw" and parts[1] != "reviews"):
+        if len(parts) >= 3 and parts[0] == "docs":
+            folder = f"{parts[0]}/{parts[1]}"
+        elif rel.startswith(reviews + "/"):
+            folder = reviews
+        else:
             continue
-        expected = expected_doc_folder(str(item.get("stage", "")), Path(rel).suffix)
-        if expected and f"{parts[0]}/{parts[1]}" != expected:
-            errors.append(f"目录约定：{item.get('stage')} 阶段的 {Path(rel).suffix} 文件放 {expected}，不放 {parts[0]}/{parts[1]}：{rel}")
+        expected = expected_doc_folder(str(item.get("stage", "")), Path(rel).suffix, project)
+        if expected and folder != expected:
+            errors.append(f"目录约定：{item.get('stage')} 阶段的 {Path(rel).suffix} 文件放 {expected}，不放 {folder}：{rel}")
     return errors
-
-
-def _rewrite_text_paths(root: Path, moves: list[tuple[str, str]]) -> list[str]:
-    """Point the project's data files at the new locations of moved files; returns the files that changed."""
-    changed: list[str] = []
-    candidates = [root / "data" / "artifacts.json", root / "data" / "client" / "build.json", root / "config" / "paths.json"]
-    candidates += sorted((root / "data" / "stages").glob("*.json"))
-    for path in candidates:
-        if not path.is_file():
-            continue
-        text = path.read_text(encoding="utf-8-sig")
-        new = text
-        for old, fresh in moves:
-            new = new.replace(old, fresh).replace(old.replace("/", "\\\\"), fresh.replace("/", "\\\\"))
-        if new != text:
-            path.write_text(new, encoding="utf-8")
-            changed.append(path.relative_to(root).as_posix())
-    return changed
-
-
-def migrate_layout(root: Path) -> dict[str, Any]:
-    """Move the files of the older docs layouts to the flat one. Only files the standard knows are moved; everything else is reported."""
-    import shutil
-
-    moves: list[tuple[str, str]] = []
-    for old, fresh in LAYOUT_MOVES:
-        source, target = root / old, root / fresh
-        if source.is_file() and not target.exists():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(source), str(target))
-            moves.append((old, fresh))
-    originals = root / CLIENT_ORIGINALS_DIR
-    if originals.is_dir():
-        uploads = root / "raw" / "uploads"
-        uploads.mkdir(parents=True, exist_ok=True)
-        for f in sorted(originals.rglob("*")):
-            if f.is_file():
-                target = uploads / f.name
-                n = 1
-                while target.exists():
-                    target = uploads / f"{f.stem}-{n}{f.suffix}"
-                    n += 1
-                shutil.move(str(f), str(target))
-                moves.append((f.relative_to(root).as_posix(), target.relative_to(root).as_posix()))
-    for old_dir in (_ORIGINAL, f"{_FLAT_V1}/原型", CLIENT_ORIGINALS_DIR):
-        folder = root / old_dir
-        if folder.is_dir() and not any(folder.rglob("*")):
-            shutil.rmtree(folder)
-    rewritten = _rewrite_text_paths(root, moves)
-    leftovers = layout_errors(root)
-    return {"moved": [{"from": a, "to": b} for a, b in moves], "rewritten": rewritten, "leftovers": leftovers}
 
 
 def _scan_secret(text: str) -> bool:
@@ -945,27 +888,32 @@ def deliverable_errors(root: Path, manifest: dict[str, Any], artifacts: list[dic
             continue
         for d in stage.get("deliverables") or []:
             path = str(d.get("path", "")).replace(chr(92), "/")
-            if d.get("format") == "html" and d.get("required", True) and path and path != primary and not (root / path).is_file():
+            if d.get("format") == "html" and d.get("required", True) and path and path != primary and not locate(root, path).is_file():
                 errors.append(f"交付物不存在: {path}（阶段 {stage.get('id')} 的「{d.get('name', d.get('id'))}」；该阶段的文档已登记，它列出的交付物要一并存在。清单过期时运行 project.py migrate 按设计文档刷新）")
     return errors
 
 
 def validate_project(project: Path | str, strict: bool = False) -> list[str]:
-    """Return actionable validation errors; an empty list means the project is valid."""
-    root = _project_root(project)
+    """Return actionable validation errors; an empty list means the project is valid. The project is given as its state root or its project directory."""
+    try:
+        root = _project_root(project)
+    except ProjectError as exc:
+        return [str(exc)]
     errors: list[str] = []
-    if not root.is_dir():
-        return [f"项目目录不存在: {root}"]
+    deliver = deliver_root(root)
+    if not deliver.is_dir():
+        return [f"项目目录不存在: {deliver}"]
     aliases = _aliases(root)
-    for relative in REQUIRED_DIRS:
+    for relative in STATE_DIRS:
+        if not (root / relative).is_dir():
+            errors.append(f"缺少目录: {relative}（状态根 {root}）")
+    for relative in DELIVER_MADE:
         target = _alias_target(aliases, relative)
-        if target is None:
-            continue
-        if not (root / target).is_dir():
+        if target is not None and not (deliver / target).is_dir():
             errors.append(f"缺少目录: {relative}" + (f"（别名 {target}）" if target != relative else ""))
-    for filename in ("project.json", "MANIFEST.json", "APPROVALS.json", "README.html", "data/artifacts.json"):
+    for filename in ("project.json", "MANIFEST.json", "APPROVALS.json", "data/artifacts.json"):
         if not (root / filename).is_file():
-            errors.append(f"缺少文件: {filename}")
+            errors.append(f"缺少文件: {filename}（状态根 {root}）")
     try:
         manifest = load_project(root)
     except ProjectError as exc:
@@ -986,6 +934,7 @@ def validate_project(project: Path | str, strict: bool = False) -> list[str]:
                 errors.append(f"缺少目录: {relative}")
         import client_flow
         errors.extend(client_flow.tracked_drift(root, manifest))
+        errors.extend(client_flow.amount_errors(root))
     artifacts = []
     try:
         artifacts = _load_artifacts(root)
@@ -1012,7 +961,8 @@ def validate_project(project: Path | str, strict: bool = False) -> list[str]:
         approvals = []
     if schema_at_least(manifest, "1.1"):
         errors.extend(layout_errors(root))
-        errors.extend(placement_errors(artifacts))
+        errors.extend(session_errors(root))
+        errors.extend(placement_errors(artifacts, root))
     for stage in manifest_stages:
         status = str(stage.get("status", "pending"))
         if status not in STAGE_STATUSES:
@@ -1036,14 +986,17 @@ def validate_project(project: Path | str, strict: bool = False) -> list[str]:
                     errors.append(f"审批引用的产物不存在: {artifact_id}")
                 elif artifact.get("sha256") != approved_hash:
                     errors.append(f"审批后产物已变化: {artifact.get('path')}")
-    for html_path in [root / "README.html", *(root / "docs").rglob("*.html"), *(root / REVIEW_DIR).glob("*.html")]:
+    pages = [*(deliver / "docs").rglob("*.html"), *(root / state_name(root, REVIEW_DIR)).glob("*.html")]
+    if is_legacy(root):
+        pages.insert(0, root / "README.html")                   # the index page of the old layout
+    for html_path in pages:
         if not html_path.is_file():
             continue
         if any(part in {".git", "__pycache__"} for part in html_path.parts):
             continue
         content = html_path.read_text(encoding="utf-8", errors="replace")
         if _scan_secret(content):
-            errors.append(f"HTML 疑似包含秘密值: {html_path.relative_to(root)}")
+            errors.append(f"HTML 疑似包含秘密值: {relative_to_project(root, html_path)}")
         errors.extend(_validate_links(html_path))
     if strict:
         if str(manifest.get("project_id", "")).startswith("PROJECT-") is False:
@@ -1102,77 +1055,11 @@ def _bind_architecture_baseline(root: Path, manifest: dict[str, Any]) -> str | N
     return "架构阶段已批准，data/baseline.json 的 stack、modules 两段与架构文档一致，已纳入架构阶段的跟踪（之后改动要走变更台账并重新批准）"
 
 
-def migrate_project(project: Path | str) -> dict[str, Any]:
-    """Bring a project to the current matrix: add new stages as pending, refresh stage names, outputs and deliverables, add the new folders."""
-    root = _project_root(project)
-    layout = migrate_layout(root)
-    manifest = load_project(root)
-    existing = {str(item["id"]): item for item in manifest.get("stages", [])}
-    stages, added = [], []
-    deduped: list[str] = []
-    for item in _load_matrix()["stages"]:
-        record = existing.get(item["id"])
-        if record is None:
-            record = _empty_stage(item, root=root)
-            added.append(item["id"])
-        else:
-            record.update({"name": item.get("name", record.get("name")), "docs_dir": item.get("docs_dir", record.get("docs_dir")), "required_inputs": list(item.get("required_inputs", [])), "next": item.get("next"), "failure_route": item.get("failure_route", item["id"]),
-                           "client_dir": item.get("client_dir"), "deliverables": stage_deliverables(root, item), "outputs": list(item.get("outputs", [])),
-                           "standard": item.get("standard"), "rule_cards": list(item.get("rule_cards", []))})
-            record.setdefault("approved_sources", {})
-            unique = list(dict.fromkeys(str(i) for i in record.get("artifact_ids") or []))
-            if unique != list(record.get("artifact_ids") or []):
-                record["artifact_ids"] = unique
-                deduped.append(item["id"])
-        stages.append(record)
-    for old in existing:
-        if old not in {s["id"] for s in stages}:
-            raise ProjectError(f"项目含矩阵里已不存在的阶段: {old}")
-    manifest["stages"] = stages
-    manifest["schema_version"] = "1.1"
-    last_old = stages[[s["id"] for s in stages].index("operations")]
-    if manifest.get("status") == "completed" and "handover" in added:
-        manifest["status"] = "active"
-        if last_old.get("status") == "completed":
-            last_old["status"] = "approved"
-        manifest["current_stage"] = "handover"
-    for relative in V11_DIRS:
-        (root / relative).mkdir(parents=True, exist_ok=True)
-    if not (root / "data" / "changes.json").is_file():
-        _write_json(root / "data" / "changes.json", {"schema_version": "1.0", "changes": []})
-    if not (root / "config" / "documents.json").is_file():
-        _write_json(root / "config" / "documents.json", {"theme": None})
-    notes = []
-    crawl = manifest.setdefault("crawl", {})                       # the Crawl records are in raw/00-crawl; an empty raw/crawl/evidence.json was only ever a placeholder
-    if crawl.get("evidence_index") in (None, "", "raw/crawl/evidence.json"):
-        crawl["evidence_index"] = EVIDENCE_DIR
-    paths_file = root / "config" / "paths.json"
-    paths = _read_json(paths_file, None)
-    if isinstance(paths, dict) and paths.get("crawl") == "raw/crawl":
-        paths["crawl"] = EVIDENCE_DIR
-        _write_json(paths_file, paths)
-    added_ignore = ensure_gitignore(root, GITIGNORE_SAFE)
-    if added_ignore:
-        notes.append(".gitignore 补上了: " + "、".join(added_ignore))
-    if deduped:
-        notes.append("去掉了阶段 " + "、".join(deduped) + " 的 artifact_ids 里重复的产物编号")
-    bound = _bind_architecture_baseline(root, manifest)
-    if bound:
-        notes.append(bound)
-    _save_manifest(root, manifest)
-    render_project(root)
-    for relative, empty in (("raw/crawl/evidence.json", lambda v: isinstance(v, dict) and not v.get("sources") and not v.get("coverage") and not v.get("unresolved")),
-                            ("data/sources.json", lambda v: v == []), ("data/decisions.json", lambda v: v == [])):
-        if (root / relative).is_file() and empty(_read_json(root / relative, None)):
-            notes.append(f"{relative} 是空骨架，没有任何工具读取，可以删除")
-    approved = [s["id"] for s in stages if s.get("status") in {"approved", "completed"}]
-    late = [a for a in added if any(stages_index > [s["id"] for s in stages].index(a) for stages_index in [[s["id"] for s in stages].index(x) for x in approved])]
-    if late:
-        notes.append(f"新增阶段 {', '.join(late)} 位于已批准阶段之前：补做客户文档后用 project.py stage <阶段> pending-review 重新走审批，或在备注中说明沿用既有批准")
-    if layout["moved"]:
-        notes.append(f"已把 {len(layout['moved'])} 个文件移到平铺的新目录（docs 只有三个目录，每个一层）；移动过的 HTML 里的相对链接可能失效，对应阶段用 project.py document 重新生成")
-    notes += layout["leftovers"]
-    return {"added": added, "notes": notes, "layout": {"moved": layout["moved"], "rewritten": layout["rewritten"]}}
+def migrate_project(project: Path | str, *, apply: bool = False, output: Path | str | None = None) -> dict[str, Any]:
+    """Preview (default) or carry out the migration of an older project to the current layout and matrix (project_migrate.py)."""
+    import project_migrate
+
+    return project_migrate.migrate_project(project, apply=apply, output=output)
 
 
 def _aliases(root: Path) -> dict[str, str]:
@@ -1192,31 +1079,34 @@ def _alias_target(aliases: dict[str, str], relative: str) -> str | None:
     return relative
 
 
-def _move(root: Path, old: str, new: str, log: list[str], pairs: list[tuple[str, str]] | None = None) -> None:
+def _move(root: Path, old: str, new: str, log: list[str], pairs: list[tuple[str, str]] | None = None, state: Path | None = None) -> None:
+    """Move ``old`` (relative to the project directory ``root``) to ``new``: inside the project directory when ``new`` is a place for results, else into the
+    state root (an old document is source material, not a result). Only moves inside the project directory are recorded in ``pairs`` for the relink."""
     import shutil
     import subprocess
 
-    if pairs is not None:
+    inside = state is None or kind_of(new) == "deliver"
+    if pairs is not None and inside:
         pairs.append((old, new))
 
-    src, dst = root / old, root / new
+    src, dst = root / old, (root if inside else state) / new           # type: ignore[operator]
     if not src.exists():
         raise ProjectError(f"要移动的路径不存在: {old}")
     dst.parent.mkdir(parents=True, exist_ok=True)
     if src.is_dir() and dst.is_dir():
         for child in sorted(src.iterdir()):
-            _move(root, f"{old}/{child.name}", f"{new}/{child.name}", log, pairs)
+            _move(root, f"{old}/{child.name}", f"{new}/{child.name}", log, pairs, state)
         if not any(src.iterdir()):
             src.rmdir()
         return
     if dst.exists():
         raise ProjectError(f"目标已存在，不覆盖: {new}")
     tracked = (root / ".git").exists() and subprocess.run(["git", "ls-files", "--error-unmatch", old], cwd=root, capture_output=True).returncode == 0
-    if tracked and subprocess.run(["git", "mv", old, new], cwd=root, capture_output=True).returncode == 0:
+    if inside and tracked and subprocess.run(["git", "mv", old, new], cwd=root, capture_output=True).returncode == 0:
         log.append(f"git mv {old} -> {new}")
         return
     shutil.move(str(src), str(dst))
-    log.append(f"move {old} -> {new}")
+    log.append(f"move {old} -> {new}" + ("" if inside else "（状态根）"))
 
 
 _SKIP_DIRS = {"node_modules", ".git", "dist", "unpackage", "target", ".claude", "__pycache__"}
@@ -1235,10 +1125,14 @@ def _map_path(mapping: list[tuple[str, str]], path: str) -> str:
 
 
 def relink_after_moves(project: Path | str, pairs: Iterable[tuple[str, str]]) -> dict[str, Any]:
-    """Repair Markdown links and docs/... path mentions after files were moved (relative links are recomputed per file)."""
+    """Repair Markdown links and docs/... path mentions in the project directory after files were moved."""
+    return _relink(deliver_root(project), pairs)
+
+
+def _relink(root: Path, pairs: Iterable[tuple[str, str]]) -> dict[str, Any]:
+    """The repair itself: relative links are recomputed per Markdown file of ``root`` (the project directory)."""
     from posixpath import dirname, normpath, relpath
 
-    root = _project_root(project)
     mapping = [(a.replace("\\", "/"), b.replace("\\", "/")) for a, b in pairs]
     reverse = [(b, a) for a, b in mapping]
     changed: list[str] = []
@@ -1291,73 +1185,55 @@ def ensure_gitignore(root: Path, lines: Iterable[str]) -> list[str]:
     have = {line.strip() for line in text.splitlines()}
     added = [line for line in lines if line not in have]
     if added:
-        ignore.write_text((text.rstrip("\n") + "\n" if text.strip() else "") + "# Luz：密钥、依赖、构建输出与客户文档构建中间件\n" + "\n".join(added) + "\n", encoding="utf-8")
+        ignore.write_text((text.rstrip("\n") + "\n" if text.strip() else "") + "# Luz：密钥、依赖与构建输出\n" + "\n".join(added) + "\n", encoding="utf-8")
     return added
 
 
-def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterable[tuple[str, str]] = (), aliases: dict[str, str] | None = None) -> dict[str, Any]:
-    """Turn an existing repository into a Luz project in place.
+def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterable[tuple[str, str]] = (), aliases: dict[str, str] | None = None,
+                  output: Path | str | None = None) -> dict[str, Any]:
+    """Turn an existing repository into a Luz project in place: the repository stays the project directory, its state goes to a new session.
 
     Code folders are never renamed: ``aliases`` records where a standard folder really lives (for example ``test`` -> ``tests``).
     Document folders are relocated with ``moves`` (git mv when tracked). Nothing is overwritten and no stage is pre-approved.
     """
-    root = _project_root(project)
-    if not root.is_dir():
-        raise ProjectError(f"目录不存在: {root}")
-    if (root / "project.json").exists():
-        raise ProjectError("已经是 Luz 项目（存在 project.json）")
+    deliver = _project_dir(project)
+    if not deliver.is_dir():
+        raise ProjectError(f"目录不存在: {deliver}")
+    if (deliver / "project.json").exists():
+        raise ProjectError("这是旧布局的 Luz 项目（存在 project.json）：用 project.py migrate")
+    session = _session_for(deliver, output if output is not None else output_root())
+    state = session / "raw"
+    if (state / "project.json").exists():
+        raise ProjectError(f"这个项目已经有会话: {session}")
     log: list[str] = []
     pairs: list[tuple[str, str]] = []
+    state.mkdir(parents=True, exist_ok=True)
     for old, new in moves:
-        _move(root, old.strip("/\\"), new.strip("/\\"), log, pairs)
+        _move(deliver, old.strip("/\\"), new.strip("/\\"), log, pairs, state)
     for old, _ in moves:                                   # folders a move leaves empty are removed, not kept as clutter
-        folder = (root / old.strip("/\\")).parent
-        while folder != root and folder.is_dir() and not any(folder.iterdir()):
+        folder = (deliver / old.strip("/\\")).parent
+        while folder != deliver and folder.is_dir() and not any(folder.iterdir()):
             folder.rmdir()
             folder = folder.parent
     aliases = dict(aliases or {})
     for real in aliases.values():
-        if not (root / real).is_dir():
+        if not (deliver / real).is_dir():
             raise ProjectError(f"别名指向的目录不存在: {real}")
-    for relative in (*REQUIRED_DIRS, *V11_DIRS):
+    for relative in DELIVER_MADE:
         target = _alias_target(aliases, relative)
         if target is not None:
-            (root / target).mkdir(parents=True, exist_ok=True)
-    match = re.match(r"^(\d+)", root.name)
-    number = int(match.group(1)) if match else 1
-    stages = [_empty_stage(item, current=(index == 0), root=root) for index, item in enumerate(_load_matrix()["stages"])]
-    shown = (name or root.name).strip()
-    manifest: dict[str, Any] = {
-        "schema_version": "1.1", "project_id": f"PROJECT-{number:03d}", "name": shown, "slug": _slug(shown),
-        "status": "draft", "current_stage": stages[0]["id"], "repository": str(root), "created_at": now_iso(), "updated_at": now_iso(),
-        "adopted": {"at": now_iso(), "aliases": aliases, "moves": log, "note": "既有仓库就地接入：不预设任何阶段为已批准，历史文档只是输入材料"},
-        "crawl": {"task_id": None, "task_root": None, "evidence_index": EVIDENCE_DIR, "reuse_policy": "reuse-within-project"},
-        "stages": stages,
-        "policies": {"html_generated": True, "require_user_approval": True, "secret_values_in_artifacts": False, "production_data_in_project": False},
-    }
-    _write_json(root / "project.json", manifest)
-    _write_json(root / "MANIFEST.json", manifest)
-    _write_json(root / "data" / "project.json", manifest)
-    for path, payload in (
-        (root / "APPROVALS.json", {"schema_version": "1.0", "approvals": []}),
-        (root / "data" / "artifacts.json", []),
-        (root / "data" / "ops" / "checks.json", []),
-        (root / "data" / "changes.json", {"schema_version": "1.0", "changes": []}),
-        (root / "config" / "documents.json", {"theme": None, "note": "客户文档主题：从 Luz-Design themes.json 选择，运行 project.py client theme 设置"}),
-    ):
-        if not path.exists():
-            _write_json(path, payload)
-    paths_file = root / "config" / "paths.json"
-    paths = _read_json(paths_file, {}) or {}
-    paths.setdefault("docs", "docs")
-    paths["aliases"] = aliases
-    _write_json(paths_file, paths)
-    added = ensure_gitignore(root, GITIGNORE_SAFE)
-    relinked = relink_after_moves(root, pairs) if pairs else {"files_updated": []}
+            (deliver / target).mkdir(parents=True, exist_ok=True)
+    stages = [_empty_stage(item, current=(index == 0), root=state) for index, item in enumerate(_load_matrix()["stages"])]
+    manifest = _new_manifest((name or deliver.name).strip(), deliver, stages, str(deliver))
+    manifest["adopted"] = {"at": now_iso(), "aliases": aliases, "moves": log, "note": "既有仓库就地接入：不预设任何阶段为已批准，历史文档只是输入材料"}
+    _write_state_files(state, manifest)
+    _write_json(state / "config" / "paths.json", {"docs": "docs", "aliases": aliases})
+    added = ensure_gitignore(deliver, GITIGNORE_SAFE)
+    relinked = _relink(deliver, pairs) if pairs else {"files_updated": []}
     manifest["adopted"]["pairs"] = [list(p) for p in pairs]
-    _save_manifest(root, manifest)
-    render_project(root)
-    return {"project": str(root), "moves": log, "aliases": aliases, "gitignore_added": added, **relinked}
+    _save_manifest(state, manifest)
+    render_project(state)
+    return {"project": str(deliver), "state_root": str(state), "moves": log, "aliases": aliases, "gitignore_added": added, **relinked}
 
 
 def project_status(project: Path | str) -> dict[str, Any]:
@@ -1419,7 +1295,8 @@ def gate_stage(project: Path | str, stage: str, *, specialist_checks: bool = Tru
 
 
 def stage_context(project: Path | str, stage: str, skill: str | None = None) -> dict[str, Any]:
-    """Return concrete approved handoff files; never initialize an implicit project."""
+    """Return concrete approved handoff files; never initialize an implicit project. ``state_root`` holds the project's data and process files,
+    ``deliver_root`` is the project directory the results go to (``output_root`` is this stage's docs folder in it)."""
     root = _project_root(project)
     manifest = load_project(root)
     record = _stage_record(manifest, stage)
@@ -1427,11 +1304,13 @@ def stage_context(project: Path | str, stage: str, skill: str | None = None) -> 
         raise ProjectError(f"{skill} 不是 {stage} 的执行者或协作者")
     ordered = [s["id"] for s in manifest["stages"]]
     predecessors = ordered[:ordered.index(stage)]
-    inputs = [{**a, "absolute_path": str(root / a["path"])} for a in _load_artifacts(root) if a["stage"] in predecessors]
-    result = {**stage_route(root, stage), "project_root": str(root), "mode": "project", "inputs": inputs, "crawl": manifest["crawl"], "blockers": gate_stage(root, stage), "output_root": str(root / record["docs_dir"])}
+    deliver = deliver_root(root)
+    inputs = [{**a, "absolute_path": str(locate(root, a["path"]))} for a in _load_artifacts(root) if a["stage"] in predecessors]
+    session = session_dir(root)
+    result = {**stage_route(root, stage), "state_root": str(root), "deliver_root": str(deliver), "session": str(session) if session else None, "mode": "project", "inputs": inputs,
+              "crawl": manifest["crawl"], "blockers": gate_stage(root, stage), "output_root": str(deliver / record["docs_dir"])}
     if schema_at_least(manifest, "1.1"):
         import client_flow
         result["client"] = client_flow.client_context(root, stage)
         result["client_dir"] = record.get("client_dir")
     return result
-

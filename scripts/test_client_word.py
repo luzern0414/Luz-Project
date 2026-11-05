@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from client_fixture import new_project
 import client_data as cd
 import client_fixture as fx
 import client_flow as cf
@@ -98,7 +99,7 @@ class QuoteAndRules(unittest.TestCase):
 class WordBuild(unittest.TestCase):
     def test_the_word_document_and_its_pdf_are_built_together(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
+            root = new_project("文档构建", tmp)
             spec = cr.expand_auto(word_proposal(), fx.features(), "japanese-sushi")
             docx, pdf = cr.build_docx(root, "proposal", spec)
             self.assertTrue(docx.is_file() and pdf.is_file())
@@ -109,6 +110,16 @@ class WordBuild(unittest.TestCase):
             self.assertIn("一、项目背景", text)
             self.assertIn("目录", text)
             self.assertGreaterEqual(links, 4, "each contents entry jumps to its heading")
+            sheets = sorted(pdf.parent.glob("proposal-pages-*.png"))
+            self.assertTrue(sheets and all(p.stat().st_size > 2000 for p in sheets), "overview images of the pages are written next to the PDF for the page-by-page reading")
+
+    def test_the_architecture_atlas_gets_its_overview_images_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = new_project("文档构建", tmp)
+            spec = cr.expand_auto({**fx.architecture(), "orientation": "landscape"}, fx.features(), "japanese-sushi")
+            pdf, _html = cr.build_showcase(root, "architecture", spec)
+            sheets = sorted(pdf.parent.glob("architecture-pages-*.png"))
+            self.assertTrue(sheets and all(p.stat().st_size > 2000 for p in sheets), "the atlas is read page by page like the Word documents")
 
 
 if __name__ == "__main__":

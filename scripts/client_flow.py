@@ -1,8 +1,8 @@
 """Client-facing workflow of a Luz project: proposal, intake form, change ledger, acceptance checklist, manual, trace.
 
-Every function takes the project root. Canonical data is JSON under ``data/``; the PDF/XLSX files in ``docs/`` are
-rendered from it through Luz-Design (client_render.py), registered through project_core and refused as approval
-evidence when their sources changed after they were built.
+Every function takes the project (its state root or its project directory). Canonical data is JSON under the state root's ``data/``;
+the PDF/XLSX files in the project directory's ``docs/`` are rendered from it through Luz-Design (client_render.py), registered through
+project_core and refused as approval evidence when their sources changed after they were built.
 """
 
 from __future__ import annotations
@@ -19,6 +19,11 @@ import client_data as cd
 import client_render as cr
 from project_core import (
     ProjectError,
+    UPLOADS_DIR,
+    REVIEW_DIR,
+    deliver_root,
+    locate,
+    state_name,
     _invalidate_downstream,
     _load_artifacts,
     _read_json,
@@ -44,21 +49,22 @@ FILES = {
     "intake-form": (CLIENT_DIR, "05-业务逻辑确认表.xlsx", "client-intake"),
     "intake-response": (CLIENT_DIR, "05-业务逻辑确认表-回填.xlsx", "client-intake"),
     "change-ledger": (CLIENT_DIR, "06-需求变更台账.xlsx", None),
-    "user-manual-pdf": (FINAL_DIR, "使用说明.pdf", "handover"),
-    "acceptance-checklist": (FINAL_DIR, "验收清单.xlsx", "handover"),
-    "change-ledger-snapshot": (FINAL_DIR, "需求变更台账-交付快照.xlsx", "handover"),
+    "user-manual-pdf": (FINAL_DIR, "01-使用说明.pdf", "handover"),
+    "acceptance-checklist": (FINAL_DIR, "02-验收清单.xlsx", "handover"),
+    "change-ledger-snapshot": (FINAL_DIR, "03-需求变更台账-交付快照.xlsx", "handover"),
 }
 PENDING_WORDS = {"待定", "待确认", "待客户确认", "不确定"}
+NEEDS_EDIT = {"需修改", "需要修改"}              # the function rows offer 需要修改, the project questions 需修改: both mean the client wrote a new logic
 
 
 def _target(root: Path, kind: str) -> Path:
     folder, name, _ = FILES[kind]
-    path = root / folder / name
+    path = deliver_root(root) / folder / name
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def _publish(root: Path, kind: str, built: Path, sources: list[Path], key: str, stage: str | None) -> Path:
+def _publish(root: Path, kind: str, built: Path, sources: list[Path | str], key: str, stage: str | None) -> Path:
     """Copy a checked staging file into docs/, record what it was built from and register it for its stage."""
     target = _target(root, kind)
     shutil.copyfile(built, target)
@@ -143,15 +149,15 @@ def requirements_draft(root: Path) -> list[Path]:
 
 def requirements_errors(root: Path) -> list[str]:
     """What stops the requirements stage and every stage after it: no requirements document, a draft, or a stale PDF.
-    The own document of the client counts when requirements.json registers it (under raw/uploads); otherwise we write one."""
+    The own document of the client counts when requirements.json registers it (under uploads/ of the state root); otherwise we write one."""
     spec = cd.load(root, "client", "requirements.json")
     if spec is None:
         return ["没有需求文档：客户没有需求文档时先写 data/client/requirements.json 并生成 01-需求说明书.pdf（project.py client requirements-draft，填写后 project.py client requirements）；客户有自己的需求文档时在 requirements.json 的 client_document 里登记它"]
     own = cd.requirements_client_document(spec)
     if own:
-        if not own.replace(chr(92), "/").startswith("raw/uploads/"):
-            return [f"客户自己的需求文档放在 raw/uploads/，现在登记的是 {own}"]
-        if not (root / own).is_file():
+        if not own.replace(chr(92), "/").startswith((f"{UPLOADS_DIR}/", f"raw/{UPLOADS_DIR}/")):
+            return [f"客户自己的需求文档放在状态根的 {UPLOADS_DIR}/，现在登记的是 {own}"]
+        if not locate(root, own).is_file():
             return [f"requirements.json 登记的客户需求文档不存在: {own}"]
         return []
     errors = cd.validate_requirements(spec, cd.documents_config(root).get("theme"))
@@ -173,11 +179,11 @@ def build_requirements(root: Path, *, force: bool = False) -> list[Path]:
     errors = cd.validate_requirements(spec, theme)
     if errors:
         raise ProjectError("需求资料未通过: " + "; ".join(errors[:8]))
-    sources = [cd.data_path(root, "client", "requirements.json")]
+    sources: list[Path | str] = [cd.data_path(root, "client", "requirements.json")]
     features: dict[str, Any] = {"modules": [], "features": []}
     if any(b.get("type") == "auto" for sec in spec["sections"] for b in sec["blocks"]):
-        features = cd.load_features(root)
-        sources.append(cd.data_path(root, "client", "features.json"))
+        features = _scoped(root, cd.load_features(root))             # the needs the client still wants: what was declined in the confirmation form is not a need
+        sources += [cd.data_path(root, "client", "features.json"), "data/client/intake.json#feature_choices"]
     target = _target(root, "requirements-pdf")
     if _fresh(root, "requirements", [target], force):
         return [target]
@@ -257,12 +263,16 @@ def build_proposal(root: Path, *, force: bool = False) -> list[Path]:
     if errors:
         raise ProjectError("方案资料未通过: " + "; ".join(errors[:8]))
     sources = [cd.data_path(root, "client", n) for n in ("features.json", "proposal.json", "architecture.json")]
-    quote = cd.load_quote(root)
+    quote = cd.load_quote(root) if cd.amounts_enabled(root) else None          # amounts: false in config/documents.json: no quote sheet, quote.json is not read
     if quote:
         errors = cd.validate_quote(features, quote)
         if errors:
             raise ProjectError("报价资料未通过: " + "; ".join(errors))
         sources.append(cd.data_path(root, "client", "quote.json"))
+    elif not cd.amounts_enabled(root):
+        hours = cd.validate_hours(features)
+        if hours:
+            raise ProjectError("功能清单不含金额，但每个功能仍须有工时（人天）: " + "; ".join(hours))
     word = proposal.get("format", "word") == "word"            # the proposal is typeset as a Word document and delivered as the PDF exported from it
     kinds = ["proposal-pdf", "architecture-pdf", "feature-list-xlsx"]
     outputs = [_target(root, k) for k in kinds]
@@ -276,7 +286,8 @@ def build_proposal(root: Path, *, force: bool = False) -> list[Path]:
     else:
         built["proposal-pdf"], _display = cr.build_showcase(root, "proposal", proposal_spec)
     built["architecture-pdf"], _display = cr.build_showcase(root, "architecture", cr.expand_auto({**architecture, "orientation": "landscape"}, features, theme))
-    built["feature-list-xlsx"] = cr.build_xlsx(root, "feature-list", cr.feature_list_xlsx_spec(features, project_name, theme, quote))
+    built["feature-list-xlsx"] = cr.build_xlsx(root, "feature-list", cr.feature_list_xlsx_spec(features, project_name, theme, quote, version=cd.document_version(root), day=today_cn(),
+                                                                                              hours_column=not cd.amounts_enabled(root)))
     paths = []
     for kind in kinds:
         target = _target(root, kind)
@@ -414,9 +425,9 @@ def _list_formula(options: list[str]) -> bool:
     return bool(options) and len('"' + ",".join(options) + '"') <= 255 and not any("," in o for o in options)
 
 
-def _subtitle(project: dict[str, Any]) -> str:
-    """The grey line under a client sheet's title: who it is for, the version and the date (as in a quote)."""
-    return f"{project['name']}　·　V1.0　·　{now_iso()[:10]}"
+def _subtitle(root: Path, project: dict[str, Any]) -> str:
+    """The grey line under a client sheet's title: who it is for, the version (that of the proposal cover) and the Beijing date."""
+    return f"{project['name']}　·　{cd.document_version(root)}　·　{today_cn()}"
 
 
 def build_intake_form(root: Path, *, force: bool = False, include_all: bool = False) -> Path:
@@ -451,7 +462,7 @@ def build_intake_form(root: Path, *, force: bool = False, include_all: bool = Fa
             groups = [{"name": "分类", "merge": True}, {"name": "子类", "merge": True}]
             columns = groups + ([{"name": "业务逻辑"}, {"name": "拟定逻辑", "type": "longtext"}, {"name": "说明与理由", "type": "longtext"}, {"name": "审核结果"}, {"name": "修改后的逻辑", "type": "longtext"}] if logic else
                                 [{"name": "需要提供的内容"}, {"name": "示例", "type": "longtext"}, {"name": "为什么需要", "type": "longtext"}, {"name": "客户填写", "type": "longtext"}, {"name": "必填"}])
-            sheets.append({"sheet": name, "title": f"{project['name']} {'业务逻辑确认表' if logic else '需要提供的资料'}", "subtitle": _subtitle(project), "columns": columns, "rows": rows})
+            sheets.append({"sheet": name, "title": f"{project['name']} {'业务逻辑确认表' if logic else '需要提供的资料'}", "subtitle": _subtitle(root, project), "columns": columns, "rows": rows})
     spec = {"title": title, "theme": theme, "sheets": sheets}
     built = cr.build_xlsx(root, "intake-form", spec, pick_column=["审核结果", "修改后的逻辑", "客户填写"], row_lists=lists)
     published = _publish(root, "intake-form", built, sources, "intake-form", "client-intake")
@@ -513,7 +524,7 @@ def import_intake(root: Path, xlsx: Path) -> dict[str, Any]:
             choices[q["feature_id"]] = "不需要"
         elif answer in PENDING_WORDS:
             choices[q["feature_id"]] = "待定"
-        elif answer == "需修改":                         # the function stays; the logic the client wrote is a pending change
+        elif answer in NEEDS_EDIT:                       # the function stays; the logic the client wrote is a pending change
             choices[q["feature_id"]] = "需要"
     intake.update({"answers": answers, "logic_edits": edits, "feature_choices": choices, "imported_at": now_iso(), "response_sha256": sha256_file(xlsx)})
     target = _target(root, "intake-response")
@@ -554,7 +565,7 @@ def log_rule_edits(root: Path, intake: dict[str, Any]) -> None:
     for q in intake.get("questions", []):
         key = _qkey(q["category"], q["item"])
         text = intake.get("logic_edits", {}).get(key)
-        if intake.get("answers", {}).get(key) != "需修改" or not text:
+        if intake.get("answers", {}).get(key) not in NEEDS_EDIT or not text:
             continue
         title = f"客户要求修改业务逻辑：{q['item']}"
         if title not in logged:
@@ -581,7 +592,7 @@ def intake_status(root: Path) -> dict[str, Any]:
     for q in intake.get("questions", []):
         key = _qkey(q["category"], q["item"])
         value = answers.get(key, "")
-        if value == "需修改" and not intake.get("logic_edits", {}).get(key):
+        if value in NEEDS_EDIT and not intake.get("logic_edits", {}).get(key):
             value = ""                                   # asked for a change but did not write the new logic
         if not value or value in PENDING_WORDS:
             if key in deferred:
@@ -613,6 +624,7 @@ def _next_change_id(ledger: dict[str, Any]) -> str:
 
 
 NL = chr(10)
+FN_ID = re.compile(r"FN-\d+")                          # the function ids stay in the data files; the client reads the function names
 CN_TZ = timezone(timedelta(hours=8))                    # the ledger's dates are Beijing dates; confirmed_at is stored in UTC
 LEGACY_LOG_LINE = re.compile(r"^\[\d{4}-\d{2}-\d{2}\]\s")   # older versions appended "[date] note" lines to detail; they are process logs, not client text
 
@@ -663,20 +675,23 @@ def client_requester(entry: dict[str, Any]) -> str:
     return "客户" if entry.get("auto", "") and requester == "客户（业务逻辑确认表）" else requester
 
 
-def client_text_issues(entry: dict[str, Any]) -> list[str]:
-    """What must not reach the client in a visible entry: internal numbers (approvals, baseline items) and the names of other client files."""
+def client_text_issues(entry: dict[str, Any], root: Path | None = None) -> list[str]:
+    """What must not reach the client in a visible entry: internal numbers (approvals, baseline items), the names of other client files and,
+    when the project keeps prices out of the client documents (``amounts: false``), prices."""
     text = NL.join([client_title(entry), client_detail(entry), entry.get("impact", "") or "", client_requester(entry)])
     problems = []
     if cd.INTERNAL_TOKENS.search(text):
         problems.append("内部编号 " + "、".join(sorted(set(cd.INTERNAL_TOKENS.findall(text)))[:4]))
     if cd.OTHER_FILES.search(text):
         problems.append("其他文件的名称（《…》）")
+    if root is not None and not cd.amounts_enabled(root) and cd.money_issues(text):
+        problems.append("金额 " + "、".join(cd.money_issues(text)[:4]) + "（本项目的客户文件不出现金额，工时用人天）")
     return problems
 
 
-def _require_client_text(entry: dict[str, Any]) -> None:
+def _require_client_text(entry: dict[str, Any], root: Path | None = None) -> None:
     if is_client_visible(entry):
-        problems = client_text_issues(entry)
+        problems = client_text_issues(entry, root)
         if problems:
             raise ProjectError(f"{entry['id']} 会出现在交给客户的台账里，不能含{'；'.join(problems)}：改写成客户的话，过程与出处写进 --note，或标 --client-visible 否（内部变更不进客户台账）")
 
@@ -709,7 +724,7 @@ def add_change(root: Path, *, type: str, category: str, title: str, detail: str,
         entry["client_visible"] = bool(client_visible)
     _append_note(entry, note.strip())
     if not auto:                                              # auto entries quote what the client wrote in the form; hand-written ones are checked
-        _require_client_text(entry)
+        _require_client_text(entry, root)
     ledger["changes"].append(entry)
     if status == "已确认":
         _apply_confirmed(root, entry, reopen)
@@ -730,6 +745,18 @@ def _apply_confirmed(root: Path, entry: dict[str, Any], reopen: bool) -> None:
         first = min(hit, key=order.index)
         set_stage_status(root, first, "pending-review")
         entry["reopened"] = [s for s in order[order.index(first):] if s in entry["affects"] or s == first]
+
+
+def _reopen_added(root: Path, entry: dict[str, Any], added: list[str]) -> None:
+    """A confirmed change that later names one more stage reopens that stage too, when it is approved (the earliest of them; the hash chain voids what follows)."""
+    manifest = load_project(root)
+    order = [s["id"] for s in manifest["stages"]]
+    hit = [s for s in added if _stage_record(manifest, s).get("status") in {"approved", "completed"} or _stage_record(manifest, s).get("approval_id")]
+    if not hit:
+        return
+    first = min(hit, key=order.index)
+    set_stage_status(root, first, "pending-review")
+    entry["reopened"] = list(dict.fromkeys(entry.get("reopened", []) + [s for s in order[order.index(first):] if s in entry["affects"] or s == first]))
 
 
 def apply_feature_ops(root: Path, entry: dict[str, Any]) -> None:
@@ -758,9 +785,10 @@ def apply_feature_ops(root: Path, entry: dict[str, Any]) -> None:
 
 
 def update_change(root: Path, change_id: str, *, status: str | None = None, confirmed_by: str | None = None, note: str = "", reopen: bool = True,
-                  client_visible: bool | str | None = None, detail: str | None = None, impact: str | None = None) -> dict[str, Any]:
+                  client_visible: bool | str | None = None, detail: str | None = None, impact: str | None = None, affects: list[str] | None = None) -> dict[str, Any]:
     """Move a change to a new status and/or edit it. ``note`` is the process log (never shown to the client); ``client_visible`` True/False
-    sets the flag, "default" clears it; ``detail`` replaces the client-facing logic (the old text is kept in the note)."""
+    sets the flag, "default" clears it; ``detail`` replaces the client-facing logic (the old text is kept in the note); ``affects`` replaces the
+    list of stages the change touches (a confirmed change reopens the approved stages it newly names, unless ``reopen`` is False)."""
     ledger = _ledger(root)
     entry = next((c for c in ledger["changes"] if c["id"] == change_id), None)
     if not entry:
@@ -769,8 +797,20 @@ def update_change(root: Path, change_id: str, *, status: str | None = None, conf
         raise ProjectError(f"状态无效: {status}")
     if status == "已确认" and entry["status"] != "已确认" and not confirmed_by:
         raise ProjectError("确认变更需要 --confirmed-by")
-    if status is None and not any(v not in (None, "") for v in (note, client_visible, detail, impact, confirmed_by)):
-        raise ProjectError("change update 需要 --status，或 --client-visible / --detail / --impact / --confirmed-by / --note 之一")
+    if status is None and not any(v not in (None, "", []) for v in (note, client_visible, detail, impact, confirmed_by, affects)):
+        raise ProjectError("change update 需要 --status，或 --client-visible / --detail / --impact / --confirmed-by / --affects / --note 之一")
+    added_stages: list[str] = []
+    if affects:
+        from project_core import _stage_defs
+        known = _stage_defs()
+        for stage_id in affects:
+            if stage_id not in known:
+                raise ProjectError(f"未知阶段: {stage_id}")
+        affects = list(dict.fromkeys(affects))
+        added_stages = [stage_id for stage_id in affects if stage_id not in entry["affects"]]
+        if affects != entry["affects"]:
+            _append_note(entry, "影响阶段由 " + ("、".join(entry["affects"]) or "无") + " 改为 " + "、".join(affects))
+            entry["affects"] = affects
     if detail is not None:
         if not detail.strip():
             raise ProjectError("--detail 不能为空")
@@ -784,7 +824,7 @@ def update_change(root: Path, change_id: str, *, status: str | None = None, conf
     elif client_visible is not None:
         entry["client_visible"] = bool(client_visible)
     if detail is not None or impact is not None or client_visible is True:
-        _require_client_text(entry)
+        _require_client_text(entry, root)
     was = entry["status"]
     if status is not None:
         entry["status"] = status
@@ -792,8 +832,11 @@ def update_change(root: Path, change_id: str, *, status: str | None = None, conf
     if status == "已确认" and was != "已确认":
         entry.update({"confirmed_by": confirmed_by, "confirmed_at": now_iso()})
         _apply_confirmed(root, entry, reopen)
-    elif confirmed_by and entry["status"] in {"已确认", "已实施"} and not entry.get("confirmed_by"):
-        entry["confirmed_by"] = confirmed_by                  # fill in who confirmed an entry that was recorded without it
+    else:
+        if confirmed_by and entry["status"] in {"已确认", "已实施"} and not entry.get("confirmed_by"):
+            entry["confirmed_by"] = confirmed_by              # fill in who confirmed an entry that was recorded without it
+        if added_stages and reopen and entry["status"] == "已确认":
+            _reopen_added(root, entry, added_stages)
     cd.save(root, ledger, "changes.json")
     render_ledger(root)
     return entry
@@ -812,7 +855,7 @@ def ledger_rows(root: Path) -> list[list[Any]]:
             continue
         confirmed = cn_date(c.get("confirmed_at"))
         rows.append([c["id"], date.fromisoformat(c["date"]), c["type"], c["category"], client_title(c), client_detail(c), c["source"], client_requester(c),
-                     "、".join(f"{r} {names[r]}" if r in names else r for r in c["refs"]) or "—", "、".join(project_stage_names.get(a, a) for a in c["affects"]) or "—",
+                     "、".join(names.get(r, r) for r in c["refs"] if r in names or not FN_ID.fullmatch(r)) or "—", "、".join(project_stage_names.get(a, a) for a in c["affects"]) or "—",
                      c["impact"] or "—", c["status"], c.get("confirmed_by") or "—", confirmed or "—"])
     return rows
 
@@ -822,8 +865,46 @@ def ledger_warnings(root: Path) -> list[str]:
     out = []
     for c in _ledger(root)["changes"]:
         if is_client_visible(c):
-            out += [f"{c['id']} 含{p}" for p in client_text_issues(c)]
+            out += [f"{c['id']} 含{p}" for p in client_text_issues(c, root)]
     return out
+
+
+REVIEW_PAGES = ("03-方案评审.html", "04-业务逻辑确认评审.html")        # in the state root's reviews folder
+
+
+def amount_errors(root: Path) -> list[str]:
+    """``amounts: false`` in config/documents.json: no price in anything the client reads or the review pages of the client stages — the client data files,
+    the ledger entries the client sees, 04-功能清单 (no 报价, 单价, 金额, 小计, 合计) and the two review pages. Nothing is checked when prices are allowed."""
+    if cd.amounts_enabled(root):
+        return []
+    errors: list[str] = []
+    for name in ("requirements.json", "proposal.json", "architecture.json", "intake-extra.json", "manual.json"):
+        data = cd.load(root, "client", name)
+        found = cd.money_issues(json.dumps(data, ensure_ascii=False)) if data else []
+        if found:
+            errors.append(f"data/client/{name} 出现金额（本项目的客户文件不出现金额）: {'、'.join(found[:4])}")
+    errors += [f"变更台账（客户可见）{w}" for w in ledger_warnings(root) if "金额" in w]
+    sheet = deliver_root(root) / CLIENT_DIR / FILES["feature-list-xlsx"][1]
+    if sheet.is_file():
+        from openpyxl import load_workbook
+
+        words = set()
+        for ws in load_workbook(sheet, data_only=True).worksheets:
+            for row in ws.iter_rows(values_only=True):
+                for cell in row:
+                    if isinstance(cell, str):
+                        words |= set(cd.money_issues(cell, strict=True))
+        if words or len(load_workbook(sheet).worksheets) > 1:
+            errors.append(f"{FILES['feature-list-xlsx'][1]} 不应有报价页或金额字样（{'、'.join(sorted(words)[:4]) or '多个工作表'}）")
+    stages = {s["id"]: s.get("status") for s in load_project(root).get("stages", [])}
+    for name, stage in zip(REVIEW_PAGES, ("proposal", "client-intake")):
+        rel = f"{state_name(root, REVIEW_DIR)}/{name}"
+        page = locate(root, rel)
+        if page.is_file() and stages.get(stage) != "superseded":            # a page of a stage that is being redone is replaced, not held to the new rule
+            found = cd.money_issues(re.sub(r"<[^>]+>", " ", page.read_text(encoding="utf-8", errors="replace")))
+            if found:
+                errors.append(f"{rel} 出现金额: {'、'.join(found[:4])}")
+    return errors
 
 
 def render_ledger(root: Path) -> Path | None:
@@ -836,7 +917,7 @@ def render_ledger(root: Path) -> Path | None:
     if not ledger["changes"]:
         return None
     project = load_project(root)
-    spec = {"title": f"{project['name']} 需求变更台账", "theme": theme, "sheet": "变更台账", "subtitle": _subtitle(project),
+    spec = {"title": f"{project['name']} 需求变更台账", "theme": theme, "sheet": "变更台账", "subtitle": _subtitle(root, project),
             "columns": [{"name": "变更编号"}, {"name": "提出日期", "type": "date"}, {"name": "变更类型"}, {"name": "分类"}, {"name": "变更标题", "type": "longtext"}, {"name": "逻辑与补充细节", "type": "longtext"}, {"name": "来源"}, {"name": "提出人"}, {"name": "关联功能", "type": "longtext"}, {"name": "涉及阶段", "type": "longtext"}, {"name": "影响说明", "type": "longtext"}, {"name": "状态"}, {"name": "确认人"}, {"name": "确认日期", "type": "date"}],
             "rows": ledger_rows(root)}
     built = cr.build_xlsx(root, "change-ledger", spec)
@@ -942,7 +1023,7 @@ def build_acceptance_xlsx(root: Path) -> Path:
     ordered = sorted(checklist["items"], key=lambda i: (surface_rank.get(i["surface"], 99), module_rank.get(i["module"], 99), i["id"]))   # big group first
     rows = [[cd.SURFACES.get(i["surface"], i["surface"]), modules.get(i["module"], i["module"]), i["id"], f"{i['feature_id']} {i['feature_name']}", i["steps"], i["expected"],
              evidence_summary(i, ops, names), label[i["status"]], i.get("signed_by") or "", i.get("signed_at") or "", i.get("note") or ""] for i in ordered]
-    spec = {"title": f"{project['name']} 验收清单", "theme": cd.project_theme(root), "sheet": "验收清单", "subtitle": _subtitle(project),
+    spec = {"title": f"{project['name']} 验收清单", "theme": cd.project_theme(root), "sheet": "验收清单", "subtitle": _subtitle(root, project),
             "columns": [{"name": "使用端", "merge": True}, {"name": "功能模块", "merge": True}, {"name": "验收项编号"}, {"name": "功能"}, {"name": "验收步骤", "type": "longtext"}, {"name": "预期结果", "type": "longtext"},
                         {"name": "测试证据", "type": "longtext"}, {"name": "验收结果"}, {"name": "客户签字"}, {"name": "签字日期"}, {"name": "备注", "type": "longtext"}],
             "rows": rows}
@@ -1124,20 +1205,7 @@ TRACKED = {
 def tracked_digest(root: Path, rel: str) -> str | None:
     """Hash of a tracked source. ``file#a,b`` is the hash of only sections a and b of a JSON file (the others may change without disturbing the approval);
     a plain path is the hash of the whole file. None when the file (or a section holder) is not there."""
-    name, _, sections = rel.partition("#")
-    path = root / name
-    if not path.is_file():
-        return None
-    if not sections:
-        return sha256_file(path)
-    try:
-        data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except ValueError:
-        return None
-    if not isinstance(data, dict):
-        return None
-    payload = {key: data.get(key) for key in sections.split(",")}
-    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    return cd.source_digest(root, rel)
 
 
 def tracked_hashes(root: Path, stage: str) -> dict[str, str]:
@@ -1156,12 +1224,58 @@ def _registered(root: Path, stage: str, kind: str) -> dict[str, Any] | None:
     return next((a for a in _load_artifacts(root) if a["stage"] == stage and a["kind"] == kind), None)
 
 
+#: What the architecture stage hands to the front end design of a project that has screens (references/dev-documents.md, "随附产物"): the interface
+#: function description (page and data), and the entrance tables. Registered as artifacts of the stage, so their hashes are bound by the approval.
+ARCHITECTURE_FRONTEND_KINDS = (
+    ("frontend-spec", "界面功能说明的数据（frontend-spec.json）"),
+    ("frontend-spec-page", "界面功能说明（人读的 HTML）"),
+    ("entrances", "入口表（entrances*.json，每个使用端或角色一份）"),
+)
+
+
+def architecture_frontend_errors(root: Path) -> list[str]:
+    """A project with screens must hand the front end design its 界面功能说明 and entrance tables from the architecture stage: registered as artifacts of the
+    stage (so the approval binds their hashes), readable, and the entrance tables together answer for every function that is still part of the project
+    (a row with its ``fn``, or a ``no_entrance`` line that says why it has none)."""
+    import dev_documents
+
+    try:
+        features = cd.load_features(root)
+    except ProjectError:
+        return []                                                       # offline rehearsal without a function list: nothing to hand over
+    active = cd.active_features(features)
+    if not any(f.get("surface") in dev_documents.UI_SURFACES for f in active):
+        return []
+    arts = [a for a in _load_artifacts(root) if a.get("stage") == "architecture"]
+    errors = [f"有界面的项目，架构阶段要交{label}并登记（project.py artifact <项目> architecture <文件> --kind {kind}），见 references/dev-documents.md"
+              for kind, label in ARCHITECTURE_FRONTEND_KINDS if not any(a.get("kind") == kind for a in arts)]
+    answered: set[str] = set()
+    for art in (a for a in arts if a.get("kind") in {"frontend-spec", "entrances"}):
+        path = locate(root, str(art["path"]))
+        try:
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            errors.append(f"{art['path']} 读不出来（要是 JSON 文件）")
+            continue
+        if art["kind"] == "entrances":
+            rows = (data.get("entrances") if isinstance(data, dict) else None) or []
+            gaps = (data.get("no_entrance") if isinstance(data, dict) else None) or []
+            answered |= {str(r.get("fn")) for r in rows + gaps if isinstance(r, dict)}
+    if any(a.get("kind") == "entrances" for a in arts):
+        missing = [f["id"] for f in active if f["id"] not in answered]
+        if missing:
+            errors.append("入口表没有覆盖这些功能（每个功能要有一行入口，或在 no_entrance 里写明为什么没有）: " + "、".join(missing[:8]))
+    return errors
+
+
 def stage_checks(root: Path, stage: str) -> list[str]:
     """Stage-specific approval conditions for the client-facing stages (and the change-ledger rule for every stage)."""
     errors: list[str] = []
     pending = open_changes(root, stage)
     if pending:
         errors.append("仍有待确认的变更影响本阶段: " + "、".join(c["id"] for c in pending[:6]))
+    if stage == "architecture":
+        errors += architecture_frontend_errors(root)
     if stage == "requirements":
         errors += requirements_errors(root)
     if stage == "proposal":
@@ -1243,7 +1357,7 @@ def deliverable_context(root: Path, stage_record: dict[str, Any]) -> list[dict[s
     arts = _load_artifacts(root)
     out = []
     for d in stage_deliverables(root, defs):
-        path = root / d["path"]
+        path = locate(root, d["path"])
         out.append({**d, "absolute_path": str(path), "exists": path.is_file(), "registered": any(a["stage"] == stage_record["id"] and a["path"] == d["path"] for a in arts)})
     return out
 
@@ -1256,7 +1370,7 @@ SKILL_CARDS = {
     ],
     "proposal": [
         ("luz-system", r"py -X utf8 D:\Codes\Luz-System\scripts\context.py function-list", "客户功能清单：功能粒度、基础/可选、业务逻辑的写法、工时估算"),
-        ("luz-system", r"py -X utf8 D:\Codes\Luz-System\scripts\features_check.py <项目>\data\client", "检查 features.json、intake-extra.json、quote.json 的内容规则（逻辑要有数字或边界、不用技术词、不问通用信息）"),
+        ("luz-system", r"py -X utf8 D:\Codes\Luz-System\scripts\features_check.py <状态根>\data\client", "检查 features.json、intake-extra.json、quote.json 的内容规则（逻辑要有数字或边界、不用技术词、不问通用信息）"),
         ("luz-system", r"py -X utf8 D:\Codes\Luz-System\scripts\context.py client-docs", "方案说明书的内容来源与系统架构图册的画法"),
         ("luz-writing", r"py -X utf8 D:\Codes\Luz-Writing\scripts\06-context.py client-document", "方案说明书正文（先分析需求再给方案，用客户的词，不讲技术细节、不写价格、不提及其他文件）"),
         ("luz-writing", r"py -X utf8 D:\Codes\Luz-Writing\scripts\09-text_check.py <文本或 proposal.json>", "标点、数字、占位、他文件指引、价格、技术词、标题括号的自查"),

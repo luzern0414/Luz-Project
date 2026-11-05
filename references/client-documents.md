@@ -1,19 +1,19 @@
 # 客户文档规范（需求 → 方案 → 逻辑确认 → 变更 → 使用说明与验收）
 
-交给客户的文件固定为：需求说明书、方案说明书、系统架构图、功能清单（含报价）、业务逻辑确认表、需求变更台账；交付阶段再加使用说明和验收清单。**先有需求文档，再有方案**：客户没有需求文档时，先写需求说明书（背景和具体需求写清楚），方案、功能清单等都以它为前提；客户有自己的需求文档时，把它放进 `raw/uploads/` 并在 `data/client/requirements.json` 的 `client_document` 里登记，不再另写。**每份文件把自己的内容写完整，文件里不提及其他文件**（不写“详见《功能清单》”“配套文件”）。事实都在 `data/client/` 的数据文件里，文件是它的派生物，不手改成品。
+交给客户的文件固定为：需求说明书、方案说明书、系统架构图、功能清单（含报价；`config/documents.json` 写 `"amounts": false` 时只留功能与工时，不出现任何金额，见第 6 节）、业务逻辑确认表、需求变更台账；交付阶段再加使用说明和验收清单。**先有需求文档，再有方案**：客户没有需求文档时，先写需求说明书（背景和具体需求写清楚），方案、功能清单等都以它为前提；客户有自己的需求文档时，把它放进状态根的 `uploads/` 并在 `data/client/requirements.json` 的 `client_document` 里登记，不再另写。**每份文件把自己的内容写完整，文件里不提及其他文件**（不写“详见《功能清单》”“配套文件”）。事实都在状态根的 `data/client/` 数据文件里，成品写进项目目录的 `docs/`，是数据的派生物，不手改成品。
 
 ## 1. 每份文件写什么
 
 | 文件 | 回答什么 | 格式 | 内容 |
 |---|---|---|---|
 | 01-需求说明书 | 客户的业务现状是什么、具体要什么 | PDF（用 Word 排版后导出，版式取 Luz-Design 的客户正式文档标准：封面、可点击目录、表题与续表、黑白） | 项目背景（业务现状、按使用方的现状问题表）、建设目标、范围与使用者（本期范围、不在本期范围、使用者与使用端）、需求清单（每条需求：编号、需求、具体要求、业务规则、类型）、业务规则与约束、验收标准、需要客户确认的事项；只写需求，不写解决方案、技术细节和价格 |
-| 02-方案说明书 | 客户要什么、我们怎么解决、交付什么 | PDF（用 Word 排版后导出，Word 源文件留在 `raw/client-docs/`，不交给客户） | 项目背景与需求分析、建设目标、解决方案（系统构成、角色与权限、业务流程、各系统的功能与业务逻辑、统一业务规则）、交付内容 |
+| 02-方案说明书 | 客户要什么、我们怎么解决、交付什么 | PDF（用 Word 排版后导出，Word 源文件留在状态根的 `client-docs/`，不交给客户） | 项目背景与需求分析、建设目标、解决方案（系统构成、角色与权限、业务流程、各系统的功能与业务逻辑、统一业务规则）、交付内容 |
 | 03-系统架构图 | 系统长什么样、怎么运转 | PDF（图加表） | 总体架构（分层图与数据流向）、功能模块与逻辑、模块依赖关系、数据链路与流转、关键流程、状态、数据隔离与权限、部署、各端功能分布 |
-| 04-功能清单 | 具体做哪些功能、多少钱 | Excel，两个工作表 | 功能清单：使用端 → 使用角色 → 功能模块 → 功能、功能说明、类型；报价清单：同一份清单加工时（人天）、报价（元），表下方基础功能小计、可选功能小计、报价合计 |
+| 04-功能清单 | 具体做哪些功能、多少钱（`amounts: false` 时：做哪些功能、各多少人天） | Excel，两个工作表（`amounts: false` 时一个） | 功能清单：使用端 → 使用角色 → 功能模块 → 功能、功能说明、类型；报价清单：同一份清单加工时（人天）、报价（元），表下方基础功能小计、可选功能小计、报价合计。`amounts: false`：只有功能清单一张表，类型后加“工时（人天）”列，没有报价页、单价、金额、小计、合计 |
 | 05-业务逻辑确认表 | 每个功能和业务规则这样定对不对 | Excel，两个工作表 | “业务逻辑确认”：每个功能一行，拟定的业务逻辑逐条写出，客户选确认或需修改并写出修改后的逻辑；其后是待决定的规则（取消规则、爽约处理、积分有效期……）。“需要提供的资料”：只有客户才有的定制信息（小程序 AppID、域名、首批会员名单与套餐……）。每行写说明与理由 |
-| 06-需求变更台账 | 需求和规则改过什么 | Excel | 客户新增需求、修改规则的逐条记录；自动重排 |
-| 使用说明（交付阶段） | 怎么用 | PDF（Word 排版导出） | 角色、每个功能的入口、步骤、规则、状态、常见问题 |
-| 验收清单（交付阶段） | 逐项验收 | Excel | 每个功能至少一项，客户逐项签字 |
+| 06-需求变更台账 | 需求和规则改过什么 | Excel | 客户可见的变更的逐条记录（客户自己提出的需求、规则、范围变更；内部、技术、界面变更不进，见 [change-control.md](change-control.md)）；自动重排，日期按北京时间 |
+| 01-使用说明（交付阶段，在 03-验收交付） | 怎么用 | PDF（Word 排版导出） | 角色、每个功能的入口、步骤、规则、状态、常见问题 |
+| 02-验收清单（交付阶段，在 03-验收交付） | 逐项验收 | Excel | 每个功能至少一项，客户逐项签字 |
 
 功能的稳定编号（FN-001…）只在数据文件、变更台账和验收清单里使用；客户看的功能清单不带编号。
 
@@ -22,32 +22,32 @@
 | 01-需求说明书.pdf | docs/01-需求对接 | requirements | requirements（需求清单可由 features 生成） | `client requirements-draft` / `client requirements` |
 | 02-方案说明书.pdf | docs/01-需求对接 | proposal | features / proposal | `client proposal` |
 | 03-系统架构图.pdf | docs/01-需求对接 | proposal | architecture / features | `client proposal` |
-| 04-功能清单.xlsx | docs/01-需求对接 | proposal | features（含 `hours`）/ quote | `client proposal` |
+| 04-功能清单.xlsx | docs/01-需求对接 | proposal | features（含 `hours`）/ quote（`amounts: false` 时不读） | `client proposal` |
 | 05-业务逻辑确认表.xlsx（及 -回填） | docs/01-需求对接 | client-intake | features + intake-extra | `client intake-form` / `client intake-import` |
 | 06-需求变更台账.xlsx | docs/01-需求对接 | 全程 | data/changes.json | `change add/update` 自动重排 |
-| 需求、调研、方案、客户信息、交付阶段的评审 HTML（01 需求评审、02 调研结论、03 方案评审、04 业务逻辑确认评审、05 交付评审，内部页，给你审批、给开发看） | raw/reviews（不进 docs，不交给客户） | requirements / research / proposal / client-intake / handover | 同阶段数据 | `document` / `render` |
+| 需求、调研、方案、客户信息、交付阶段的评审 HTML（01 需求评审、02 调研结论、03 方案评审、04 业务逻辑确认评审、05 交付评审，内部页，给你审批、给开发看） | 状态根的 reviews（不进项目目录，不交给客户） | requirements / research / proposal / client-intake / handover | 同阶段数据 | `document` / `render` |
 | 开发阶段的 HTML（系统架构、前端界面设计、各前端原型、后端设计规范、实现报告；验收测试、发布、运维评审页由 Luz-Ops 生成，只给开发看） | docs/02-产品开发（平铺，一个序号顺序，不建子目录） | architecture … operations | 同阶段数据 / data/ops | `document` / `render` |
-| 验收测试报告.pdf / 发布说明.pdf / 运维手册.pdf | docs/03-验收交付 | verification / release / operations | data/ops | `ops.py client-doc <项目> test-report｜release-notes｜operations-manual`（Word 排版，只交 PDF） |
-| 用户协议.pdf / 隐私政策.pdf | docs/03-验收交付 | implementation | 功能清单 + 技术方案里的个人信息处理 | Luz-Dev 的 `formal_doc.py build`（Word 排版，只交 PDF），再 `project.py artifact <项目> implementation <PDF> --kind legal-pdf` 登记；无账号、不收集个人信息的产品在实现报告页写明不适用 |
-| 使用说明.pdf | docs/03-验收交付 | handover | manual / features | `client manual` |
-| 验收清单.xlsx | docs/03-验收交付 | handover | data/acceptance/checklist.json | `client acceptance` |
-| 需求变更台账-交付快照.xlsx | docs/03-验收交付 | handover | data/changes.json | `change snapshot` |
+| 04-验收测试报告.pdf / 05-发布说明.pdf / 06-运维手册.pdf | docs/03-验收交付 | verification / release / operations | data/ops | `ops.py client-doc <项目> test-report｜release-notes｜operations-manual`（Word 排版，只交 PDF） |
+| 07-用户协议.pdf / 08-隐私政策.pdf | docs/03-验收交付 | implementation | 功能清单 + 技术方案里的个人信息处理 | Luz-Dev 的 `formal_doc.py build`（Word 排版，只交 PDF），再 `project.py artifact <项目> implementation <PDF> --kind legal-pdf` 登记；无账号、不收集个人信息的产品在实现报告页写明不适用 |
+| 01-使用说明.pdf | docs/03-验收交付 | handover | manual / features | `client manual` |
+| 02-验收清单.xlsx | docs/03-验收交付 | handover | data/acceptance/checklist.json | `client acceptance` |
+| 03-需求变更台账-交付快照.xlsx | docs/03-验收交付 | handover | data/changes.json | `change snapshot` |
 
 交付前对 PDF 跑 `py -X utf8 D:\Codes\Luz-Design\scripts\check_pdf.py <文件> --fonts any`：字体嵌入、文字层、书签、文档标题和语言应零错误（Word 版的标题和语言由构建自动补；WPS 不产生结构标签，只提示，不得声称已满足无障碍标签）。
 
-目录约定由 `validate_project` 检查：**给客户的只有 PDF 和 XLSX**，HTML 只给开发看，只放 02（开发评审页）和 03 的 Ops 证据页；01 目录出现 HTML 是错误。
+目录约定由 `validate_project` 检查（项目目录的部分调用 `check_output_layout.py project`）：**给客户的只有 PDF 和 XLSX**，文件名 `NN-名称`；HTML 只给开发看，只放 02（开发评审页和 Ops 的测试、发布、运维证据页）；01、03 目录出现 HTML 是错误。表中的路径都在项目目录。
 
 ## 2. 从一句需求到交付（顺序固定）
 
 **每一份文档都先走 Crawl，取到足够的信息才能写**：下面每个阶段先 `crawl_preflight.py run`、读正文、`conclude`、`check`，再写数据、再生成文件；构建命令在没有该阶段通过的前置检索时直接拒绝，不会写出任何文件。补充信息里的来源、结论、采用位置、采用决定和未覆盖范围要真的进入文档内容，不是走个形式。
 
-1. **requirements**：**先有需求文档**。客户没有需求文档时，先写 `data/client/requirements.json`（`project.py client requirements-draft` 生成草稿；读 `luz-writing` 的 `client-document` 规则卡和 `luz-design` 的 `docx` 规则卡；项目背景要有按使用方的现状问题表，需求清单写清每条需求的具体要求和业务规则，规范见第 3b 节），填完后 `project.py client requirements` 用 Word 排版导出 `01-需求说明书.pdf`；客户有自己的需求文档时放进 `raw/uploads/` 并在 `requirements.json` 的 `client_document` 里登记。没有需求文档，需求阶段不能批准，方案也生成不了。再把一句话需求补成需求评审页：目标、用户、范围、成功标准、待决项。
+1. **requirements**：**先有需求文档**。客户没有需求文档时，先写 `data/client/requirements.json`（`project.py client requirements-draft` 生成草稿；读 `luz-writing` 的 `client-document` 规则卡和 `luz-design` 的 `docx` 规则卡；项目背景要有按使用方的现状问题表，需求清单写清每条需求的具体要求和业务规则，规范见第 3b 节），填完后 `project.py client requirements` 用 Word 排版导出 `01-需求说明书.pdf`；客户有自己的需求文档时放进状态根的 `uploads/` 并在 `requirements.json` 的 `client_document` 里登记。没有需求文档，需求阶段不能批准，方案也生成不了。再把一句话需求补成需求评审页：目标、用户、范围、成功标准、待决项。
 2. **research**：Crawl 前置检索 + 调研结论页（同类方案书结构、行业规则、平台前置条件）。
 3. **proposal**：
-   - 读 `luz-system` 的 `function-list` 规则卡，写 `data/client/features.json`（模块、功能、基础/可选、规则、使用端、角色、标签、**工时 `hours`**）；写 `quote.json`（`{"unit_price": 500}`，元每人天）；工时是估算，须请用户确认。
+   - 读 `luz-system` 的 `function-list` 规则卡，写 `data/client/features.json`（模块、功能、基础/可选、规则、使用端、角色、标签、**工时 `hours`**）；写 `quote.json`（`{"unit_price": 500}`，元每人天；用户决定客户文件不出现金额时，改在 `config/documents.json` 写 `"amounts": false`，不写 `quote.json`）；工时是估算，须请用户确认。
    - 读 `luz-design` 的 `docx` 规则卡和 `luz-writing` 的 `general` 规则卡写 `proposal.json`（`format: word`）：先分析客户的需求（现状、痛点、各使用方的核心需求），再给出解决方案。`client proposal-draft` 生成含“待补充”的草稿，**草稿不能构建**。
    - `architecture.json` 由 `proposal-draft` 按功能清单先推一版，再改成客户能看懂的节点名和作用。
-   - `client proposal` 经 Design 构建：方案说明书 PDF、系统架构图 PDF、功能清单 Excel（含报价清单）。
+   - `client proposal` 经 Design 构建：方案说明书 PDF、系统架构图 PDF、功能清单 Excel（含报价清单；`amounts: false` 时只有功能清单一张表）。
    - `project.py document <项目> proposal --file …` 生成开发版评审页。
    - 用户把三份文件交给客户确认后，`approve proposal` 记录确认依据。
 4. **client-intake**：`client intake-form` 生成业务逻辑确认表（每个功能一行写出拟定的业务逻辑 + 待决定的规则 + 需要客户提供的资料）→ 客户确认或修改 → `client intake-import <回填.xlsx>`。需要提供的必填项未答、选了“需修改”却没写修改后的逻辑，都不能通过；确实要延后的用 `client intake-defer "分类/业务逻辑" --owner --due --note`。客户放弃基础功能、选择可选功能、修改业务逻辑，都会自动写入变更台账。
@@ -74,14 +74,14 @@
 | `background` | 项目背景 | 业务现状（客户是做什么的、现在怎么做、规模多大）和按使用方的现状问题表：使用方 / 现状问题 / 具体表现 / 带来的后果 |
 | `goals` | 建设目标 | 三到四个可检验的目标，各写衡量方法 |
 | `scope` | 范围与使用者 | 本期范围、不在本期范围、使用者与使用端表 |
-| `requirements` | 需求清单 | 每条需求：编号、需求、具体要求、业务规则、类型。功能清单已有时用 `{"type": "auto", "what": "requirement_list"}` 生成，需求与功能清单不会不一致 |
+| `requirements` | 需求清单 | 每条需求：编号、需求、具体要求、业务规则、类型。功能清单已有时用 `{"type": "auto", "what": "requirement_list"}` 生成，需求与功能清单不会不一致：按模块分表，编号是全文连续的序号（1、2、3……，不出现功能编号 FN-001），只列客户仍然要的功能（在业务逻辑确认里选“不需要”的不列，它要在“不在本期范围”里写明）；功能清单或客户的功能选择变了，需求说明书即“已过期”，重新生成 |
 | `rules` | 业务规则与约束 | 业务规则、时间与金额口径、数据范围、合规与平台约束，写边界和数字 |
 | `acceptance` | 验收标准 | 怎样算做好了：可观察的结果和验收方式 |
 | `open` | 需要客户确认的事项 | 事项 / 为什么需要确认 / 建议的做法 |
 
 - 只写需求，不写解决方案、技术细节和价格；块只用文段、小标题、列点和带表题的表；标题不加括号；不提及其他文件（`《方案说明书》` 等，校验会拦截）。
-- 需求来自客户的原始资料（`raw/uploads/`）、与客户的沟通和对同类系统的调研，调研按 Luz-Crawl 前置检索，写进需求阶段的来源。
-- 客户有自己的需求文档时：文件放 `raw/uploads/`，`requirements.json` 写 `{"client_document": {"file": "raw/uploads/<文件名>", "note": "<说明>"}}`，不再生成需求说明书。两种情况下，需求阶段都要有需求文档才能批准，方案阶段也不能在没有需求文档时生成。
+- 需求来自客户的原始资料（状态根的 `uploads/`）、与客户的沟通和对同类系统的调研，调研按 Luz-Crawl 前置检索，写进需求阶段的来源。
+- 客户有自己的需求文档时：文件放状态根的 `uploads/`，`requirements.json` 写 `{"client_document": {"file": "uploads/<文件名>", "note": "<说明>"}}`，不再生成需求说明书。两种情况下，需求阶段都要有需求文档才能批准，方案阶段也不能在没有需求文档时生成。
 - 需求说明书的来源（`requirements.json` 和用到的 `features.json`）改了，PDF 即“已过期”，重新生成后才能再批准。
 
 ## 4. 方案说明书怎么写
@@ -92,7 +92,7 @@
 - **解决方案要让客户看懂系统**：`solution` 先写一段总体思路，再分小节：系统构成（系统 / 使用者 / 解决什么问题 / 主要功能模块）、角色与权限、业务流程（环节表加一天的运转）、各系统的功能与业务逻辑（每个系统一张表：功能模块 / 主要功能 / 业务逻辑，业务逻辑写边界和数字）、统一业务规则。
 - **块只有这些**：`text` 文段、`sub` 二级标题、`bullets` 列点、`table`（必须有 `caption`，长文本列用 `widths` 给相对宽度）、`matrix`。不用卡片、指标卡、图标。
 - **标题精简**：标题不加括号说明（“一天的运转”，不是“一天的运转（以预约为例）”），说明放进正文或表题。
-- **不提及其他文件**：不写本项目文件的名字（《功能清单》《系统架构图》《业务逻辑确认表》等）、配套文件、见某某表，校验会拦截；法规、标准的名称照 GB/T 15834 用书名号，不受限。**不写价格**：价格只在功能清单的报价清单里；方案里写“第三方费用由客户承担”这类约定即可。
+- **不提及其他文件**：不写本项目文件的名字（《功能清单》《系统架构图》《业务逻辑确认表》等）、配套文件、见某某表，校验会拦截；法规、标准的名称照 GB/T 15834 用书名号，不受限。**不写价格**：价格只在功能清单的报价清单里（`amounts: false` 的项目哪里都没有）；方案里写“第三方费用由客户承担”这类约定即可。
 - **用客户的词**：写“顾客预约时段”，不写“调用预约服务接口”；不出现技术栈、库表、内部编号；每个数字有依据。
 - 完整示例见 `references/examples/proposal.example.json`。
 
@@ -111,10 +111,12 @@
 
 ## 6. 功能清单与报价
 
+**客户文件不出现金额**：用户决定不对客户展示价格时，在 `config/documents.json` 写 `"amounts": false`（默认 true）。之后：`client proposal` 不读 `quote.json`、不生成报价清单，04-功能清单只有“功能清单”一张表，类型之后多一列“工时（人天）”（每个在范围内的功能仍必须有 `hours`），表里没有单价、金额、小计、合计、报价字样；方案、架构图册、需求说明书、确认表的项目专属问题、台账里客户可见的条目、两页评审页（03、04）都不得出现报价、单价、小计、元每人天、合计加金额、`¥`加数字（`project.py check`、`gate`、`approve` 会报；只是顺带提到钱的业务规则，如“100 分抵 1 元”，不算）；`change add` 在可见条目里写了金额会被拒绝。文件版本取方案封面的“版本”（或 `documents.json` 的 `version`），台账、确认表、功能清单的副标题日期都是北京时间。
+
 `data/client/features.json`：`modules[{id,name,summary,icon?}]`，`features[{id: FN-001…, module, name, surface, roles[], tier(基础|可选), summary, rules, hours, tags[], depends_on[], acceptance[]}]`。`hours` 是人天，可到 0.5；`quote.json` 写 `{"unit_price": 500}`。成品 `04-功能清单.xlsx`：
 
 - **功能清单**：使用端 → 使用角色 → 功能模块（三级分组，由大到小，纵向合并）、功能、功能说明、类型；没有编号，也没有业务规则。
-- **报价清单**：同一份清单，加“工时（人天）”“报价（元）”，第 2 行灰色副标题写“金额 = 工时 × 人天单价”；表下方“基础功能小计”“可选功能小计，选用后另计”“报价合计，基础功能 N 人天，单价 M 元每人天”。有 `quote.json` 才生成；每个在范围内的功能都必须有 `hours`。
+- **报价清单**：同一份清单，加“工时（人天）”“报价（元）”，第 2 行灰色副标题写“金额 = 工时 × 人天单价”；表下方“基础功能小计”“可选功能小计，选用后另计”“报价合计，基础功能 N 人天，单价 M 元每人天”。有 `quote.json` 且 `amounts` 不是 false 才生成；每个在范围内的功能都必须有 `hours`。
 
 规则：ID 一经发布永不复用，删除功能用变更把 status 置为 `removed`；`rules` 写边界和数字（“最晚提前 2 小时取消”），不写“支持灵活配置”；`surface`：miniprogram / web-admin / agent / website / mobile-app / api / hardware；`tags` 驱动验收证据，用词表（会员、积分、储值、优惠券、商品、套餐、订单、门店、预约、核销、配送、退款、支付、通知、发票、售后、分销、拉新、抽奖、活动、排队、并发、定时任务、风险预警、规则引擎、绩效核算、单据核算、知识库、流程编排、对接）；智能体平台类功能（排队、定时任务、风险预警、规则配置、知识库、流程编排）按 Luz-System 的 platform-console 规则写成独立功能。
 
@@ -157,8 +159,8 @@ py -X utf8 D:\Codes\Luz-Project\scripts\project.py trace <项目>               
 py -X utf8 D:\Codes\Luz-Project\scripts\project.py check <项目> --strict
 ```
 
-生成后必须逐页看渲染图：方案封面无页码、目录可点击且页码对、续表有“续表 N”；架构图册没有黑线黑框和粗体、标题与表头同一种墨色、表头与列同向；Excel 的标题、表头、分组带、汇总行颜色与第 3 节的版式规范一致。文件被用户在 Excel 或 WPS 里打开时无法覆盖，先请用户关闭。
+生成后必须逐页看渲染图（Word 排版的 PDF 构建时在状态根的 `client-docs/` 写下总览图 `<名>-pages-N.png`，每张六页，不交给客户）：方案封面无页码、目录可点击且页码对、续表有“续表 N”；架构图册没有黑线黑框和粗体、标题与表头同一种墨色、表头与列同向；Excel 的标题、表头、分组带、汇总行颜色与第 3 节的版式规范一致。文件被用户在 Excel 或 WPS 里打开时无法覆盖，先请用户关闭。
 
 ## 表格里的分组列（所有客户 Excel 通用）
 
-连续重复的列（使用端、使用角色、功能模块、分类、子类）都是分组列：**排在名称前面，按大组到小组排，纵向合并，数据按同样顺序排序**；类型、必填、状态这类描述一行属性的列放在后面，不合并。已按此排列：功能清单与报价清单（使用端 → 使用角色 → 功能模块）、验收清单（使用端 → 功能模块）、确认表（分类 → 子类）；变更台账按时间排，没有分组列。新增任何表格都用 Design 的 `group_by`，不手工排列；`check_document` 会拦截顺序错误。表格下方的汇总行用 `footer`，标签写“合计”“小计”或“总计”。
+连续重复的列（使用端、使用角色、功能模块、分类、子类）都是分组列：**排在名称前面，按大组到小组排，纵向合并，数据按同样顺序排序**；类型、必填、状态这类描述一行属性的列放在后面，不合并。已按此排列：功能清单（及有价时的报价清单）（使用端 → 使用角色 → 功能模块）、验收清单（使用端 → 功能模块）、确认表（分类 → 子类）；变更台账按时间排，没有分组列。新增任何表格都用 Design 的 `group_by`，不手工排列；`check_document` 会拦截顺序错误。表格下方的汇总行用 `footer`，标签写“合计”“小计”或“总计”。

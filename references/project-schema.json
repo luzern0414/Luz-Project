@@ -10,6 +10,8 @@
     "status": {"enum": ["draft", "active", "blocked", "completed", "archived"]},
     "current_stage": {"type": "string"},
     "repository": {"type": ["string", "null"]},
+    "deliver_root": {"type": "string", "description": "项目目录（只放成果）的绝对路径；没有它的是旧布局项目，成果在 project.json 所在的项目根里"},
+    "crawl": {"type": "object", "description": "task_root：skill输出 的 Luz-Crawl 下的 Crawl 任务（绝对路径）；evidence_index：状态根下的前置检索记录目录（00-crawl）"},
     "stages": {"type": "array", "items": {"type": "object"}}
   }
 }
