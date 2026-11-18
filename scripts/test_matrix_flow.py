@@ -12,7 +12,7 @@ sys.path.append(str(Path(__file__).resolve().parents[2] / "Luz-Crawl/scripts"))
 sys.path.append(str(Path(__file__).resolve().parents[2] / "Luz-Ops/scripts"))
 from test_crawl_preflight import complete_fixture
 from client_fixture import new_project
-from crawl_gate import evidence_session
+from project_crawl_gate import evidence_session
 from project_core import ProjectError, approve_stage, create_project, gate_stage, load_matrix, load_project, validate_project
 from stage_documents import write_document
 import dev_documents
@@ -42,7 +42,9 @@ class MatrixFlowTests(unittest.TestCase):
                         write_document(root, stage, spec)
                     self.assertIn("Crawl", str(refused.exception))
                     self.assertTrue(any("Crawl" in e for e in gate_stage(root, stage)))
-                    complete_fixture(evidence_session(root), owner, stage)
+                    client_fixture.crawled(root, stage)
+                    if stage == "design":
+                        dev_fixture.install_source(root, spec)
                     write_document(root, stage, spec)
                     if stage in {"requirements", "proposal", "client-intake", "handover"}:
                         client_fixture.prepare(root, stage)

@@ -23,14 +23,14 @@ class ProjectError(ValueError):
     """Raised for an invalid project operation."""
 
 
-DEFAULT_OUTPUT_ROOT = r"D:\Codes\skill输出\Luz-Project"
+DEFAULT_OUTPUT_ROOT = r"E:\Skill输出\Luz-Project"
 OUTPUT_ROOT_ENV = "LUZ_PROJECT_OUTPUT"
 SESSION_NAME = re.compile(r"^\d{3}-[^\\/:*?\"<>|]+$")
 
 # What belongs to the project directory. Everything else a path can name is tool state and lives in the state root.
 DELIVER_DIRS = ("docs", "src", "test", "assets", "infra", "scripts")
 # Below data/ and config/ only these names are tool state; business data (schema, seeds, fixtures ...) and the product's own config are results.
-STATE_DATA = ("client", "stages", "ops", "acceptance", "artifacts.json", "changes.json", "baseline.json", "project.json", "sessions.json")
+STATE_DATA = ("client", "stages", "ops", "acceptance", "artifacts.json", "changes.json", "baseline.json", "project.json", "sessions.json", "steps.json", "review-notes.json")
 STATE_CONFIG = ("paths.json", "documents.json", "keys.example.json")
 
 

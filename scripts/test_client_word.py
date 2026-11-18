@@ -65,26 +65,51 @@ class WordProposalRules(unittest.TestCase):
 
 class QuoteAndRules(unittest.TestCase):
     def features(self):
-        data = fx.features()
-        for i, f in enumerate(data["features"]):
-            f["hours"] = 2 if f["tier"] == "基础" else 1
-        return data
+        return fx.with_hours(fx.features())
 
-    def test_feature_list_has_no_code_or_rules_and_the_quote_sheet_totals(self):
+    def estimate(self, quote: bool = True) -> dict:
+        block = {"workdays": True, "quote": quote, "requested_by": fx.REQUESTED_BY, "request_note": fx.REQUEST_NOTE}
+        if quote:
+            block.update({"provided_by": fx.QUOTE_BY, "evidence": fx.QUOTE_EVIDENCE})
+        return block
+
+    def human_quote(self) -> dict:
+        return {"unit_price": 800, "provided_by": fx.QUOTE_BY, "provided_at": "2026-11-05", "request_note": fx.REQUEST_NOTE, "evidence": fx.QUOTE_EVIDENCE}
+
+    def test_feature_list_lists_functions_only_by_default(self):
+        spec = cr.feature_list_xlsx_spec(fx.features(), "示例", "japanese-sushi")
+        self.assertEqual([c["name"] for c in spec["columns"]], ["使用端", "使用角色", "功能模块", "功能", "功能说明", "类型"])
+        self.assertNotIn("sheets", spec)
+        self.assertNotIn("footer", spec)
+        self.assertNotIn("estimate", spec)
+
+    def test_feature_list_has_no_code_or_rules_and_the_quote_sheet_totals_are_formulas_of_the_persons_numbers(self):
         data = self.features()
-        spec = cr.feature_list_xlsx_spec(data, "示例", "japanese-sushi", {"unit_price": 500})
+        spec = cr.feature_list_xlsx_spec(data, "示例", "japanese-sushi", self.human_quote(), estimate=self.estimate())
         listing, pricing = spec["sheets"]
-        self.assertEqual([c["name"] for c in listing["columns"]], ["使用端", "使用角色", "功能模块", "功能", "功能说明", "类型"])
-        self.assertEqual([c["name"] for c in pricing["columns"]][-2:], ["工时（人天）", "报价（元）"])
-        basic = sum(f["hours"] for f in cd.active_features(data) if f["tier"] == "基础")
-        self.assertEqual(pricing["footer"][0]["values"], {"工时（人天）": basic, "报价（元）": basic * 500})
-        self.assertEqual(pricing["footer"][-1]["values"], {"报价（元）": basic * 500})
+        self.assertEqual([c["name"] for c in listing["columns"]], ["使用端", "使用角色", "功能模块", "功能", "功能说明", "类型", "工时（人天）"])
+        self.assertEqual([c["name"] for c in pricing["columns"]][-3:], ["工时（人天）", "单价（元每人天）", "报价（元）"])
+        self.assertTrue(all(r[-2] == 800 and str(r[-1]).startswith("=") for r in pricing["rows"]), "the unit price is the person's; the amount is a formula, not a typed number")
+        self.assertTrue(all(isinstance(v, str) and v.startswith("=") for item in pricing["footer"] for v in item["values"].values()), "every total is a formula")
         self.assertTrue(all(len(r) == len(pricing["columns"]) for r in pricing["rows"]))
+        self.assertEqual(spec["estimate"]["provided_by"], fx.QUOTE_BY)
 
-    def test_every_function_needs_hours_for_a_quote(self):
+    def test_a_quote_cannot_reach_the_sheet_without_its_switch_or_without_workdays(self):
+        data = self.features()
+        with self.assertRaises(ValueError):
+            cr.feature_list_xlsx_spec(data, "示例", "japanese-sushi", self.human_quote())
+        with self.assertRaises(ValueError):
+            cr.feature_list_xlsx_spec(data, "示例", "japanese-sushi", self.human_quote(), estimate={**self.estimate(), "workdays": False})
+        with self.assertRaises(ValueError):
+            cr.feature_list_xlsx_spec(data, "示例", "japanese-sushi", None, estimate=self.estimate())
+
+    def test_every_function_needs_hours_and_its_basis_when_workdays_is_on(self):
         data = fx.features()
-        self.assertIn("工时", "；".join(cd.validate_quote(data, {"unit_price": 500})))
-        self.assertEqual(cd.validate_quote(self.features(), {"unit_price": 500}), [])
+        self.assertIn("hours", "；".join(cd.validate_hours(data)))
+        self.assertEqual(cd.validate_hours(self.features()), [])
+        data = self.features()
+        data["features"][0]["hours_basis"] = "3"
+        self.assertIn("hours_basis", "；".join(cd.validate_hours(data)))
 
     def test_the_rule_form_has_one_row_per_function_with_numbered_rules_and_a_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -100,6 +125,7 @@ class WordBuild(unittest.TestCase):
     def test_the_word_document_and_its_pdf_are_built_together(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = new_project("文档构建", tmp)
+            fx.crawled(root, "proposal")
             spec = cr.expand_auto(word_proposal(), fx.features(), "japanese-sushi")
             docx, pdf = cr.build_docx(root, "proposal", spec)
             self.assertTrue(docx.is_file() and pdf.is_file())
@@ -116,6 +142,7 @@ class WordBuild(unittest.TestCase):
     def test_the_architecture_atlas_gets_its_overview_images_too(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = new_project("文档构建", tmp)
+            fx.crawled(root, "proposal")
             spec = cr.expand_auto({**fx.architecture(), "orientation": "landscape"}, fx.features(), "japanese-sushi")
             pdf, _html = cr.build_showcase(root, "architecture", spec)
             sheets = sorted(pdf.parent.glob("architecture-pages-*.png"))

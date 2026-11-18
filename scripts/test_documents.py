@@ -250,13 +250,23 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual([t["title"] for t in dd.expected_tabs("design", None)], ["前端规范", "小程序", "管理后台", "检查与差异"])
         with tempfile.TemporaryDirectory() as tmp:
             root = new_project("界面", tmp)
+            import client_data as cd
+            features = fx.features()
+            features["features"] = [row for row in features["features"] if row["surface"] in {"miniprogram", "web-admin"}]
+            cd.save(root, features, "client", "features.json")
+            dev_fixture.approved_frontend_handover(root)
             fx.crawled(root, "design")
             spec = dev_fixture.sample_spec("design", root)
             self.assertEqual(dd.validate("design", spec, root), [])
+            source = dev_fixture.install_source(root, spec)
             page = write_document(root, "design", spec).read_text(encoding="utf-8")
             self.assertEqual(page.count("<iframe"), 2)                       # 小程序与后台各一个
             self.assertEqual(page.count("data-src="), 2)                     # 切到那个标签页才加载，隐藏时宽度为零的页面不会画错
-            self.assertIn('data-src="03-proto1.html"', page)                 # 相对文档所在目录，文件夹整体搬走也能打开
+            from project_ui_source import source_contract, entry_href
+            from html import escape
+            href = entry_href(source_contract(root, source), locate(root, "docs/02-产品开发"))
+            self.assertIn('data-src="' + escape(href, quote=True) + '"', page)
+            self.assertNotIn('data-src="03-proto1.html"', page)             # iframe opens the intact source, not the link document
             self.assertIn("在新窗口打开", page)
             self.assertIn("重新载入", page)
             self.assertLess(page.index(">前端规范<"), page.index(">小程序<"))
@@ -284,73 +294,44 @@ class DocumentTests(unittest.TestCase):
             spec = dev_fixture.sample_spec("design", root)
             self.assertEqual(dd.validate("design", spec, root), [])
 
-    def test_a_prototype_that_is_a_stub_or_a_picture_is_refused(self):
+    def test_a_prototype_shape_requires_the_complete_source_reference(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             spec = dev_fixture.sample_spec("design", root)
             block = find_block(spec, "prototype")
-            file = root / block["file"]
-            good = file.read_text(encoding="utf-8")
+            good = copy.deepcopy(block)
             cases = {
-                "只有框架没有内容": lambda: file.write_text("<title>x</title>", encoding="utf-8"),
-                "减少动态效果": lambda: file.write_text(good.replace("prefers-reduced-motion", "x"), encoding="utf-8"),
-                "没有对话框": lambda: file.write_text(good.replace("showModal", "x"), encoding="utf-8"),
-                "场景配置面板": lambda: file.write_text(good.replace("UI.demo(", "x("), encoding="utf-8"),
+                "session、package、entry": lambda: block.pop("source"),
                 "不写 try": lambda: block.update({"try": ["点一", "点二", "点三"]}),         # 页签里只显示原型本身
                 "不写 caption": lambda: block.update({"caption": "图题"}),
-                "文件不存在": lambda: file.unlink(),
+                "html 文件": lambda: block.update({"file": "prototype.png"}),
+                "kind 只能是": lambda: block.update({"kind": "invented"}),
+                "要写标题": lambda: block.update({"title": ""}),
             }
             for needle, mutate in cases.items():
-                file.write_text(good, encoding="utf-8")
-                block.pop("try", None)
-                block.pop("caption", None)
+                block.clear()
+                block.update(copy.deepcopy(good))
                 mutate()
                 errors = dd.validate("design", spec, root)
                 self.assertTrue(any(needle in e for e in errors), (needle, errors))
-            file.write_text(good, encoding="utf-8")
+            block.clear()
+            block.update(good)
             self.assertEqual(dd.validate("design", spec, root), [])
-            file.write_text(good.replace("showModal", "role: 'dialog'").replace("UI.demo(", "K.panel("), encoding="utf-8")     # 上一代原型的写法同样被接受
-            self.assertEqual(dd.validate("design", spec, root), [])
+            self.assertFalse((root / block["file"]).exists(), "shape editing does not fabricate an output file")
 
-    def test_a_prototype_must_name_its_component_library_and_really_use_it(self):
+    def test_component_markers_cannot_admit_a_fabricated_source(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
+            root = new_project("不能用组件标记冒充来源", tmp)
+            fx.crawled(root, "design")
             spec = dev_fixture.sample_spec("design", root)
             block = find_block(spec, "prototype")
-            file = root / block["file"]
-            good = file.read_text(encoding="utf-8")
-            self.assertEqual(block["library"], "vant")
-            cases = {
-                "要写 library": lambda: block.pop("library"),
-                "不在组件库注册表里": lambda: block.update({"library": "my-own-kit"}),         # not in the registry
-                "换一个适合这一端的库": lambda: block.update({"library": "element-plus"}),    # a web admin library on a phone prototype
-                "种 Vant 的组件": lambda: file.write_text(good.replace("van-", "xx-"), encoding="utf-8"),   # the library's style sheet is not the library
-            }
-            for needle, mutate in cases.items():
-                block["library"] = "vant"
-                file.write_text(good, encoding="utf-8")
-                mutate()
-                errors = dd.validate("design", spec, root)
-                self.assertTrue(any(needle in e for e in errors), (needle, errors))
-            block["library"] = "vant"
-            file.write_text(good, encoding="utf-8")
+            target = locate(root, block["file"])
+            target.write_text("<!doctype html><title>TEST ONLY</title><div class='van-card el-button'></div>", encoding="utf-8")
             self.assertEqual(dd.validate("design", spec, root), [])
-            block["kind"] = "wide"                                                         # the same file declared as a web admin prototype
-            self.assertTrue(any("换一个适合这一端的库" in e for e in dd.validate("design", spec, root)))
-
-    def test_every_library_of_the_registry_is_complete_and_its_components_are_counted_by_prefix(self):
-        libs = dd.component_libraries()
-        self.assertGreaterEqual(len(libs), 8)
-        for key, lib in libs.items():
-            for field in ("name", "stack", "surfaces", "prefix", "theme", "license", "docs", "fit"):
-                self.assertTrue(lib.get(field), (key, field))
-            self.assertTrue(set(lib["surfaces"]) <= {"admin", "website", "h5", "miniapp"}, key)
-            # a library that marks its components with an attribute (luz-kit: data-cid) names root classes such as mpcard, with no hyphen
-            self.assertTrue(lib.get("attr") or all(pre.endswith("-") for pre in lib["prefix"]), key)
-        self.assertTrue(any("miniapp" in lib["surfaces"] for lib in libs.values()))
-        self.assertTrue(any("admin" in lib["surfaces"] for lib in libs.values()))
-        found = dd.library_components("<div class='el-card__body el-button--primary'><t-button/><el-x></el-x> my-el-foo el-input__inner", ["el-"])
-        self.assertEqual(found, {"el-card", "el-button", "el-x", "el-input"})            # modifiers are cut, a name that merely contains the prefix is not counted
+            with self.assertRaisesRegex(ProjectError, "完整 UI 来源|MANIFEST"):
+                write_document(root, "design", spec)
+            self.assertFalse(locate(root, "docs/02-产品开发/02-前端界面设计.html").exists())
+            self.assertFalse((root / "data/stages/design.json").exists())
 
     def test_the_old_review_page_is_replaced_by_the_numbered_document(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -362,7 +343,7 @@ class DocumentTests(unittest.TestCase):
             old.write_text("<html>旧页面</html>", encoding="utf-8")
             register_artifact(root, "requirements", old, "html", [])
             spec = {"title": "需求对接", "conclusion": "客户要一个预约系统，范围与目标已写清楚。", "sections": [{"title": "目标", "content": "预约、排课汇总、扫码核销。"}],
-                    "sources": [{"id": "SRC-001", "url": "https://example.org/a", "finding": "示例", "applies_to": "目标"}]}
+                    "sources": copy.deepcopy(dev_fixture.SOURCES[:1])}
             path = write_document(root, "requirements", spec)
             self.assertEqual(path.parent.as_posix().endswith("raw/reviews"), True)
             self.assertEqual(path.name, "01-需求评审.html")
@@ -378,7 +359,7 @@ class DocumentTests(unittest.TestCase):
                       {"type": "table", "caption": "同类产品对比", "columns": ["产品", "记录内容"], "rows": [["甲", "时间、联系人、沟通内容"], ["乙", "时间、结果、备注"]]},
                       {"type": "bullets", "items": ["只看官方帮助页", "不看第三方转述"]}]
             spec = {"title": "调研结论", "conclusion": "同类产品的做法一致，可以照此设计。", "sections": [{"title": "同类产品", "blocks": blocks}, {"title": "其他", "content": "没有其他。"}],
-                    "sources": [{"id": "SRC-001", "url": "https://example.org/a", "finding": "示例", "applies_to": "同类产品"}]}
+                    "sources": copy.deepcopy(dev_fixture.SOURCES[:1])}
             page = write_document(root, "research", spec).read_text(encoding="utf-8")
             self.assertIn("表 1　同类产品对比", page)
             self.assertIn("表 2　检索来源与采用位置", page)
@@ -461,7 +442,7 @@ class FrontendTabsTests(unittest.TestCase):
                 "缺少可交互原型": lambda spec: blocks(spec).clear(),
                 "不写 caption": lambda spec: blocks(spec)[0].update({"caption": "图 1　后台"}),
                 "不写 try": lambda spec: blocks(spec)[0].update({"try": ["点一", "点二", "点三"]}),
-                "不写 source": lambda spec: blocks(spec)[0].update({"source": "https://example.org"}),
+                "session、package、entry": lambda spec: blocks(spec)[0].update({"source": "https://example.org"}),
                 "layout 必须是 frontend": lambda spec: tab(spec).update({"layout": "sections"}),
             }
             for needle, mutate in cases.items():
@@ -531,7 +512,11 @@ class FrontendTabsTests(unittest.TestCase):
             spec["sources"] = spec["sources"][:1]
             self.assertTrue(any("来源与依据至少 2 条" in e for e in dd.validate("design", spec, root)))
             spec = dev_fixture.sample_spec("design", root)
-            page = dd.render_body(spec, root)
+            # This unit checks section order only. The complete source gate
+            # remains real in write_document and the routing integration tests.
+            from unittest.mock import patch
+            with patch("project_ui_source.source_contract", return_value={"entry": root / "TEST-ONLY/index.html", "fragment": ""}):
+                page = dd.render_body(spec, root)
             self.assertGreater(page.index("来源与依据"), page.rindex('role="tabpanel"'))
 
 

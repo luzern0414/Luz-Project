@@ -1,0 +1,2188 @@
+{
+  "schema": "luz-quality-rules/1",
+  "version": "2026-11-07",
+  "status": "active-policy-requires-project-verification",
+  "terms": {
+    "UX": "User Experience",
+    "DX": "Developer Experience",
+    "AX": "Agent Experience；不是accessibility"
+  },
+  "interpretation": "没有统一AX国际评分。本库区分正式规范、厂商实践和Luz本地策略；规则覆盖不代表产品验收通过。",
+  "sources": {
+    "gov-needs": {
+      "archive_id": 4704,
+      "publisher": "GOV.UK",
+      "title": "Learning about users and their needs - Service Manual - GOV.UK",
+      "url": "https://www.gov.uk/service-manual/user-research/start-by-learning-user-needs",
+      "sha256": "b5328fee4a949b717939663d1bd454db78f108d82449573abf03a381cb8a4d8f",
+      "section": "Validating user needs; Linking user needs to user stories",
+      "capture_status": "captured"
+    },
+    "gov-reuse": {
+      "archive_id": 4703,
+      "publisher": "GOV.UK",
+      "title": "Contribution criteria – GOV.UK Design System",
+      "url": "https://design-system.service.gov.uk/community/contribution-criteria",
+      "sha256": "89266cd795afd8266daf8aa02884d30070c24593d9511028b1be12bdc72d4e82",
+      "section": "Contribution criteria",
+      "capture_status": "captured"
+    },
+    "linear": {
+      "archive_id": 4701,
+      "publisher": "Linear",
+      "title": "How we redesigned the Linear UI (part Ⅱ) – Linear",
+      "url": "https://linear.app/now/how-we-redesigned-the-linear-ui",
+      "sha256": "bde6dfd07abff26c700569ec5a8d0988759124ea8e3a5c15a9ab5d1e15968da6",
+      "section": "How we redesigned the Linear UI (part II)",
+      "capture_status": "captured"
+    },
+    "apple-writing": {
+      "archive_id": 4702,
+      "publisher": "Apple",
+      "title": "Writing | Apple Developer Documentation",
+      "url": "https://developer.apple.com/design/human-interface-guidelines/writing",
+      "sha256": "08e3e814f8e6f72b302f86e9c7766501f00e136eaac89f255c2e708f0297b515",
+      "section": "Best practices",
+      "capture_status": "captured"
+    },
+    "wai-labels": {
+      "archive_id": 4706,
+      "publisher": "W3C",
+      "title": "Labeling Controls | Web Accessibility Initiative (WAI) | W3C",
+      "url": "https://www.w3.org/WAI/tutorials/forms/labels",
+      "sha256": "6c800fe4e0742ecf7b5b22928fa404844737df15ef2770e3a176e4ca997ba01a",
+      "section": "Labeling controls",
+      "capture_status": "captured"
+    },
+    "wai-aria": {
+      "archive_id": 4694,
+      "publisher": "W3C",
+      "title": "Read Me First | APG | WAI | W3C",
+      "url": "https://www.w3.org/WAI/ARIA/apg/practices/read-me-first",
+      "sha256": "479bd94f32fee6bb618da20967d31c0cbe7c82d04d395cfecf864c19d5fef714",
+      "section": "Principle 1: A role is a promise",
+      "capture_status": "captured"
+    },
+    "wcag-target": {
+      "archive_id": 4721,
+      "publisher": "W3C",
+      "title": "Understanding Success Criterion 2.5.8: Target Size (Minimum) | WAI | W3C",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html",
+      "sha256": "af776d65d1dff25e5f3b3a5365f230e1a6291b26bc8c8d35f0e3015d921b9088",
+      "section": "Success Criterion 2.5.8; Exceptions; Target size",
+      "capture_status": "captured"
+    },
+    "wcag-focus": {
+      "archive_id": 4720,
+      "publisher": "W3C",
+      "title": "Understanding Success Criterion 2.4.11: Focus Not Obscured (Minimum) | WAI | W3C",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html",
+      "sha256": "0a40faf69072c39a963817536cca69f8bdbbe1eb26dfe66f227fb8eea840f571",
+      "section": "Success Criterion 2.4.11; Notes",
+      "capture_status": "captured"
+    },
+    "carbon-colors": {
+      "archive_id": 4736,
+      "publisher": "IBM Carbon",
+      "title": "Color palettes | Carbon Design System",
+      "url": "https://www.carbondesignsystem.com/building-blocks/data-visualization/color-palettes",
+      "sha256": "bd46d9754f2fff12b2913b43ad2b21a4c4cb559cba0b7813c6f9038fad5a3663",
+      "section": "Categorical / Sequential / Diverging palettes",
+      "capture_status": "captured"
+    },
+    "carbon-legends": {
+      "archive_id": 4737,
+      "publisher": "IBM Carbon",
+      "title": "Legends | Carbon Design System",
+      "url": "https://www.carbondesignsystem.com/data-visualization/legends",
+      "sha256": "ad2be886a76215bf1f1e3a70dd03f8d4d9b382fa72f709a13b42539ebfe35cfa",
+      "section": "Usage; Legend overflow; Hidden legends",
+      "capture_status": "captured"
+    },
+    "shadcn-theming": {
+      "archive_id": 4708,
+      "publisher": "shadcn",
+      "title": "Theming - shadcn/ui",
+      "url": "https://ui.shadcn.com/docs/theming",
+      "sha256": "72d6618e631ea0fdad4fce2f3b3cf057ae2e5f365060b1f2c4615b3fb8e93e03",
+      "section": "CSS Variables",
+      "capture_status": "captured"
+    },
+    "radix-composition": {
+      "archive_id": 4710,
+      "publisher": "Radix",
+      "title": "Composition – Radix Primitives",
+      "url": "https://www.radix-ui.com/primitives/docs/guides/composition",
+      "sha256": "1bb66c6ae2838872204f77a1901b1400bf7fff88eeafd1bdffbc9fef1f3e5816",
+      "section": "Composition",
+      "capture_status": "captured"
+    },
+    "playwright": {
+      "archive_id": 4712,
+      "publisher": "Microsoft Playwright",
+      "title": "Best Practices | Playwright",
+      "url": "https://playwright.dev/docs/best-practices",
+      "sha256": "1725f6ebc69ad2d83ae4b76bf1b1026ce52acb2a6ac410f4e0c44abd395daed9",
+      "section": "Best Practices",
+      "capture_status": "captured"
+    },
+    "locators": {
+      "archive_id": 4696,
+      "publisher": "Microsoft Playwright",
+      "title": "Locators | Playwright",
+      "url": "https://playwright.dev/docs/locators",
+      "sha256": "f19537a2ed6e5f926b5f7fa3ee0f371e573f94d6ea41d5141a803c55369053bd",
+      "section": "Locating elements; Strictness",
+      "capture_status": "captured"
+    },
+    "storybook-a11y": {
+      "archive_id": 4713,
+      "publisher": "Storybook",
+      "title": "Accessibility tests | Storybook docs",
+      "url": "https://storybook.js.org/docs/writing-tests/accessibility-testing",
+      "sha256": "f22edf27b38c9d0b33f9bed0dda3cdb342f8eccd548e7f40523cdfe5392e4f4d",
+      "section": "Accessibility tests",
+      "capture_status": "captured"
+    },
+    "storybook-visual": {
+      "archive_id": 4714,
+      "publisher": "Storybook",
+      "title": "Visual tests | Storybook docs",
+      "url": "https://storybook.js.org/docs/writing-tests/visual-testing",
+      "sha256": "78d8af6b34a81898140708545eb1c70b64b23ef7bf1cfe8b0e5468277f789a54",
+      "section": "Visual tests",
+      "capture_status": "captured"
+    },
+    "agent-tools": {
+      "archive_id": 4700,
+      "publisher": "Anthropic",
+      "title": "Writing effective tools for AI agents \\ Anthropic",
+      "url": "https://www.anthropic.com/research/writing-tools-for-agents",
+      "sha256": "957d58fc687a120b5298b4d6a427f29f394f6f282632a80fb87537be057de664",
+      "section": "Generating evaluation tasks; Optimizing tool performance",
+      "capture_status": "captured"
+    },
+    "skill-format": {
+      "archive_id": 4718,
+      "publisher": "Agent Skills",
+      "title": "Specification - Agent Skills",
+      "url": "https://agentskills.io/specification",
+      "sha256": "7b4913651aa5239cf43d4f3bdce05546862af1d796915d5210c9fa6061c91725",
+      "section": "Specification; Progressive disclosure",
+      "capture_status": "captured"
+    },
+    "google-review": {
+      "archive_id": 4746,
+      "publisher": "Google",
+      "title": "Introduction {#intro} | eng-practices",
+      "url": "https://google.github.io/eng-practices/review",
+      "sha256": "eee2181fa7da319f59910fedf6b65a26781d3366ffff9d84151266b79511c98c",
+      "section": "Code Review",
+      "capture_status": "captured"
+    },
+    "wcag-contrast": {
+      "archive_id": 4756,
+      "publisher": "W3C",
+      "title": "Understanding Success Criterion 1.4.3: Contrast (Minimum) | WAI | W3C",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html",
+      "sha256": "bb93ee096527387550fba3014f219e0a6ea0e1bf75b729e35020a076a1c0d261",
+      "section": "Success Criterion 1.4.3; Intent; Large text; Notes",
+      "capture_status": "captured"
+    },
+    "small-cls": {
+      "archive_id": 4760,
+      "publisher": "Google",
+      "title": "Small CLs | eng-practices",
+      "url": "https://google.github.io/eng-practices/review/developer/small-cls.html",
+      "sha256": "7620f71c1d044d3e70c5a8b8c83b375d96182be0ecaf2b8b996a1de6c82ca512",
+      "section": "What is small?; Write small CLs",
+      "capture_status": "captured"
+    },
+    "dora-metrics": {
+      "archive_id": 4761,
+      "publisher": "DORA",
+      "title": "DORA | DORA’s software delivery performance metrics",
+      "url": "https://dora.dev/guides/dora-metrics",
+      "sha256": "fa8d615c9b9332ec531dc894cc369156f020956a63766e785558ee7341f8a5a4",
+      "section": "The five metrics; How to use these metrics",
+      "capture_status": "captured"
+    },
+    "mcp-hints": {
+      "archive_id": 4749,
+      "publisher": "Model Context Protocol",
+      "title": "Tool Annotations as Risk Vocabulary: What Hints Can and Can't Do | Model Context Protocol Blog",
+      "url": "https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations",
+      "sha256": "a392544bbd5c12867bac509c4ee9057ef8847850a760765cec28326c848b3889",
+      "section": "Tool annotations as risk vocabulary",
+      "capture_status": "captured"
+    },
+    "dora-frameworks": {
+      "archive_id": 4762,
+      "publisher": "DORA",
+      "title": "DORA | Choosing measurement frameworks to fit your organizational goals",
+      "url": "https://dora.dev/insights/measurement-frameworks",
+      "sha256": "c2036420fca76fae2b6395a0da1f664fe7fc31e9b588d30997238c052e9b21bf",
+      "section": "Selecting measurement frameworks",
+      "capture_status": "captured"
+    },
+    "mcp-tools-current": {
+      "archive_id": 4763,
+      "publisher": "Model Context Protocol",
+      "title": "Tools - Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/specification/latest/server/tools",
+      "sha256": "307ab1ea253ce3d0b42220a754741b5075fc8dfc4535203cb5492f6c2d84cef9",
+      "section": "2026-07-28 Tools; Tool definition; Error handling",
+      "capture_status": "captured"
+    },
+    "wcag-reflow": {
+      "archive_id": 4766,
+      "publisher": "W3C",
+      "title": "Understanding Success Criterion 1.4.10: Reflow | WAI | W3C",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/reflow.html",
+      "sha256": "8cd71ce0ba719e6894e28d0a8e1fd77b0d74adcf9ce15642fa6238ddac8f891d",
+      "section": "Success Criterion 1.4.10; Intent; Exceptions",
+      "capture_status": "captured"
+    },
+    "wcag-nontext": {
+      "archive_id": 4767,
+      "publisher": "W3C",
+      "title": "Understanding Success Criterion 1.4.11: Non-text Contrast | WAI | W3C",
+      "url": "https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html",
+      "sha256": "e9bcdbc19898b701d6cca0f6562520f256b1f1a4241f5039b6770a70edba8982",
+      "section": "Success Criterion 1.4.11; User Interface Components; Graphical Objects",
+      "capture_status": "captured"
+    },
+    "google-cwv": {
+      "archive_id": 4776,
+      "publisher": "Google",
+      "title": "Core Web Vitals report - Search Console Help",
+      "url": "https://support.google.com/webmasters/answer/9205520?hl=en",
+      "sha256": "d67fe78b3b125a3bdd4f0fe511f44539351d6f20dfdd3e16be0c10ffc275be22",
+      "section": "Status definitions; Report data sources; URL groups; No data available",
+      "capture_status": "captured"
+    },
+    "hax-guidelines": {
+      "archive_id": 4774,
+      "publisher": "Microsoft HAX Toolkit",
+      "title": "HAX Design Library - Microsoft HAX Toolkit",
+      "url": "https://www.microsoft.com/en-us/haxtoolkit/library",
+      "sha256": "ee4a58231a54f19e4536147efc4386a9d370ddd2cbf9b8aa8d7cf48a5b8df53b",
+      "section": "18 guideline descriptions and stated research/application limits",
+      "capture_status": "captured",
+      "quote_evidence": "See the bound research review; quotes are not repeated in this catalog fragment.",
+      "independent_publisher_group": "Microsoft",
+      "framework_family": "Microsoft Guidelines for Human-AI Interaction, 2019"
+    },
+    "hax-research-scope": {
+      "archive_id": 4775,
+      "publisher": "Microsoft Research; Saleema Amershi, Mihaela Vorvoreanu and Eric Horvitz",
+      "title": "Guidelines for human-AI interaction design - Microsoft Research",
+      "url": "https://www.microsoft.com/en-us/research/blog/guidelines-for-human-ai-interaction-design",
+      "sha256": "1232b5fd9f7423c481bc209edb7bacec7d89147fa0d75a937a06a274dd435f38",
+      "section": "18 guideline descriptions and stated research/application limits",
+      "capture_status": "captured",
+      "quote_evidence": "See the bound research review; quotes are not repeated in this catalog fragment.",
+      "independent_publisher_group": "Microsoft",
+      "framework_family": "Microsoft Guidelines for Human-AI Interaction, 2019"
+    }
+  },
+  "rules": [
+    {
+      "id": "SYS-01",
+      "axes": [
+        "UX",
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-system",
+      "stages": [
+        "requirements",
+        "architecture"
+      ],
+      "title": "需求有事实来源",
+      "applies_when": "每项业务需求",
+      "basis": "local-derived",
+      "requirement": "每项需求记录用户、触发、任务、成功结果、依据；关键未知事实为 0 才允许依赖它实施。",
+      "metric": {
+        "target": "每项需求记录用户、触发、任务、成功结果、依据；关键未知事实为 0 才允许依赖它实施。",
+        "unit": "项/关键缺口"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "对照用户材料和研究原文逐项核实；外部案例只能支持方法或候选。",
+      "required_evidence": "需求表、依据定位、未知项及处理记录",
+      "source_ids": [
+        "gov-needs"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "SYS-02",
+      "axes": [
+        "UX",
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-system",
+      "stages": [
+        "architecture"
+      ],
+      "title": "功能闭环追踪",
+      "applies_when": "所有已确认在范围内功能",
+      "basis": "local-derived",
+      "requirement": "功能到页面/非UI归属、动作、数据、权限、用例映射覆盖率 100%；孤立与未知引用 0。",
+      "metric": {
+        "target": "功能到页面/非UI归属、动作、数据、权限、用例映射覆盖率 100%；孤立与未知引用 0。",
+        "unit": "覆盖项/总项；条"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "运行 ui_requirements 校验，再语义核对每条映射是否真实承担功能。",
+      "required_evidence": "有效功能清单、ui-requirements、检查输出",
+      "source_ids": [
+        "gov-needs"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "SYS-03",
+      "axes": [
+        "UX",
+        "AX"
+      ],
+      "owner": "luz-system",
+      "stages": [
+        "architecture",
+        "design"
+      ],
+      "title": "八类状态有结论",
+      "applies_when": "每个组件与动作",
+      "basis": "local",
+      "requirement": "default/loading/empty/success/error/disabled/permission_denied/offline 共 8 类状态逐项定义或明确不适用。",
+      "metric": {
+        "target": "default/loading/empty/success/error/disabled/permission_denied/offline 共 8 类状态逐项定义或明确不适用。",
+        "unit": "已定义或解释数/8"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "分别设置可复现条件；不适用项写业务原因，不能只留空或全选通过。",
+      "required_evidence": "状态表、预期结果和恢复路径",
+      "source_ids": [
+        "apple-writing"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "SYS-04",
+      "axes": [
+        "UX",
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-project",
+      "stages": [
+        "architecture",
+        "design",
+        "technical-plan"
+      ],
+      "title": "每个关键决定说明三轴影响",
+      "applies_when": "架构/组件/交互的重要取舍",
+      "basis": "local",
+      "requirement": "UX、DX、AX 逐轴记录预期收益/中性/退步/不适用及依据，宣称改善的轴有可比基线；不得用综合分掩盖退步。",
+      "metric": {
+        "target": "UX、DX、AX 逐轴记录预期收益/中性/退步/不适用及依据，宣称改善的轴有可比基线；不得用综合分掩盖退步。",
+        "unit": "3 轴记录/决定"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "比较改动前后任务、维护与智能体结果；中性不冒称改善，缺基线标待验证；实质回退先改方案或取得用户针对具体取舍的确认。",
+      "required_evidence": "决策记录；宣称改善的轴提供可比基线，其余轴提供理由/证据；当前运行和整体审阅",
+      "source_ids": [
+        "gov-needs",
+        "agent-tools"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "SYS-05",
+      "axes": [
+        "UX",
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-system",
+      "stages": [
+        "requirements",
+        "architecture"
+      ],
+      "title": "先定义度量口径",
+      "applies_when": "任务成功率、耗时、错误率等项目目标",
+      "basis": "local",
+      "requirement": "采样前固定任务、分母、成功条件、设备/人群、周期、阈值与负责人；未定阈值不能事后宣布达标。",
+      "metric": {
+        "target": "采样前固定任务、分母、成功条件、设备/人群、周期、阈值与负责人；未定阈值不能事后宣布达标。",
+        "unit": "完整测量定义/指标"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "审查采样计划；分别报告成功数/总数、时间分布和失败原因，不只给均值。",
+      "required_evidence": "测量计划、原始结果、偏差说明",
+      "source_ids": [
+        "gov-needs",
+        "agent-tools"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "REUSE-01",
+      "axes": [
+        "UX",
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design"
+      ],
+      "title": "先有统一框架",
+      "applies_when": "默认组件复用UI",
+      "basis": "local-derived",
+      "requirement": "所有目标页面先映射统一导航、区域、响应式与共享令牌；缺失框架来源的页面 0。",
+      "metric": {
+        "target": "所有目标页面先映射统一导航、区域、响应式与共享令牌；缺失框架来源的页面 0。",
+        "unit": "页面/框架映射"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "先审框架与代表性完整任务，再填其他组件；与真实源文件对照。",
+      "required_evidence": "框架计划、真实来源、页面矩阵",
+      "source_ids": [
+        "linear",
+        "gov-reuse"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "REUSE-02",
+      "axes": [
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design"
+      ],
+      "title": "本地组件先查",
+      "applies_when": "每项组件能力",
+      "basis": "local",
+      "requirement": "每项先记录本地源码检索、状态覆盖、采用或淘汰原因；不能以图库编号完成选型。",
+      "metric": {
+        "target": "每项先记录本地源码检索、状态覆盖、采用或淘汰原因；不能以图库编号完成选型。",
+        "unit": "本地调查覆盖率100%"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "打开组件源码与示例，对照能力/依赖/许可，记录实际使用位置。",
+      "required_evidence": "候选表、文件哈希、版本、许可",
+      "source_ids": [
+        "gov-reuse",
+        "radix-composition"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "REUSE-03",
+      "axes": [
+        "UX",
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-crawl",
+      "stages": [
+        "design"
+      ],
+      "title": "网络补齐有证据",
+      "applies_when": "每个本地组件缺口",
+      "basis": "local",
+      "requirement": "本地不适用后搜索官方组件正文及原始代码；采用组件的链接、版本、许可、真实文件和映射齐全率100%。",
+      "metric": {
+        "target": "本地不适用后搜索官方组件正文及原始代码；采用组件的链接、版本、许可、真实文件和映射齐全率100%。",
+        "unit": "完整项/采用项"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "打开官方正文，核对实际获取的源码及许可；目录链接只标候选。",
+      "required_evidence": "检索/淘汰记录、源码归档、取得记录",
+      "source_ids": [
+        "gov-reuse"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "REUSE-04",
+      "axes": [
+        "UX",
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-project",
+      "stages": [
+        "design"
+      ],
+      "title": "新手写组件事前人批",
+      "applies_when": "本地及网上均无适用来源的新组件",
+      "basis": "user-policy",
+      "requirement": "实现前必须取得绑定申请内容、组件、行为、文件和范围的明确人工批准；未授权实现数0。",
+      "metric": {
+        "target": "实现前必须取得绑定申请内容、组件、行为、文件和范围的明确人工批准；未授权实现数0。",
+        "unit": "未授权项"
+      },
+      "exceptions": "正常配置、装配、类型适配、数据绑定不增加审批；范围变化重新确认。",
+      "verification": "核对真实会话、申请哈希、本地/网络失败理由及验收范围；检查是否把新控件伪称绑定。",
+      "required_evidence": "具体申请、真实批准、当前范围和文件",
+      "source_ids": [],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "REUSE-05",
+      "axes": [
+        "UX",
+        "DX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design"
+      ],
+      "title": "允许的适配统一",
+      "applies_when": "组件复用模式",
+      "basis": "user-policy",
+      "requirement": "文字、颜色令牌、图表/配置数据可适配；每项记录前后值与使用位置，禁止改数据含义。",
+      "metric": {
+        "target": "文字、颜色令牌、图表/配置数据可适配；每项记录前后值与使用位置，禁止改数据含义。",
+        "unit": "适配记录覆盖率100%"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "确定性重建对照产物；核对单位、图例、语义颜色与各页面一致。",
+      "required_evidence": "适配表、完整包与重建结果",
+      "source_ids": [
+        "shadcn-theming",
+        "carbon-colors"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "REUSE-06",
+      "axes": [
+        "UX",
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design"
+      ],
+      "title": "严格复刻保留原合同",
+      "applies_when": "显式 source-locked 模式",
+      "basis": "user-policy",
+      "requirement": "整页原件、固定入口和仅允许文字补丁；组件模式不作为变更原件的通行证。",
+      "metric": {
+        "target": "整页原件、固定入口和仅允许文字补丁；组件模式不作为变更原件的通行证。",
+        "unit": "越界修改0"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "执行 source_ui 原有 build/audit/check；功能缺口按模式变更或来源重选处理。",
+      "required_evidence": "原件、补丁、确定性对比和当前批准",
+      "source_ids": [],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "REUSE-07",
+      "axes": [
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "implementation"
+      ],
+      "title": "真实复用量透明",
+      "applies_when": "组件交接与维护",
+      "basis": "local",
+      "requirement": "固定独立组件分母，以原样复用/配置适配/业务绑定/获批手写作多标签统计；可能重叠，不将比例相加或宣称100%复用配额。",
+      "metric": {
+        "target": "固定独立组件分母，以原样复用/配置适配/业务绑定/获批手写作多标签统计；可能重叠，不将比例相加或宣称100%复用配额。",
+        "unit": "各标签组件数/独立组件总数"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "抽查来源到交付文件；同一组件多次挂载不虚增独立组件数，报告重叠组件和标签理由。",
+      "required_evidence": "组件清单、使用位置、分类理由、分母与重叠项",
+      "source_ids": [
+        "gov-reuse"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-01",
+      "axes": [
+        "UX",
+        "AX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design"
+      ],
+      "title": "每页任务明确",
+      "applies_when": "所有页面",
+      "basis": "local-derived",
+      "requirement": "每页能明确回答当前任务和主要结果；无依据仪表盘、标语、重复说明与次要标签 0 项。",
+      "metric": {
+        "target": "每页能明确回答当前任务和主要结果；无依据仪表盘、标语、重复说明与次要标签 0 项。",
+        "unit": "逐页审阅项"
+      },
+      "exceptions": "必要标签、单位、状态、错误恢复、权限和后果说明必须保留。",
+      "verification": "逐项做删除测试；若靠长说明才懂，先改布局/命名/任务顺序。",
+      "required_evidence": "整页截图、主要任务与删除/保留理由",
+      "source_ids": [
+        "linear",
+        "apple-writing"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-02",
+      "axes": [
+        "UX",
+        "AX"
+      ],
+      "owner": "luz-writing",
+      "stages": [
+        "design",
+        "implementation"
+      ],
+      "title": "动作命名一致",
+      "applies_when": "跨页面同一功能",
+      "basis": "local-derived",
+      "requirement": "同一动作和对象采用同一术语；模糊且不表达结果的动作标签 0 个。",
+      "metric": {
+        "target": "同一动作和对象采用同一术语；模糊且不表达结果的动作标签 0 个。",
+        "unit": "歧义/不一致项"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "审查文案键和真实界面；按钮表达动作，链接表达目的地，多步完成状态明确。",
+      "required_evidence": "术语表、文案键、完整任务截图",
+      "source_ids": [
+        "apple-writing"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-03",
+      "axes": [
+        "UX",
+        "AX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "表单与图标有名称",
+      "applies_when": "交互控件",
+      "basis": "local-derived",
+      "requirement": "所有输入有清晰标签和程序化名称；必需格式/单位可见；图标按钮有可访问名称。",
+      "metric": {
+        "target": "所有输入有清晰标签和程序化名称；必需格式/单位可见；图标按钮有可访问名称。",
+        "unit": "缺失名称/标签0"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "检查label关联、可访问树及实际读屏；placeholder仅补充，不代替必要标签。",
+      "required_evidence": "控件清单、可访问树、手工检查",
+      "source_ids": [
+        "wai-labels",
+        "apple-writing"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-04",
+      "axes": [
+        "UX",
+        "AX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "角色承诺对应行为",
+      "applies_when": "原生及复用交互组件",
+      "basis": "local-derived",
+      "requirement": "不能仅加 role 就宣布可操作；目标键盘/触屏/辅助技术组合的所需行为全部实际验证。",
+      "metric": {
+        "target": "不能仅加 role 就宣布可操作；目标键盘/触屏/辅助技术组合的所需行为全部实际验证。",
+        "unit": "已验证行为/适用行为"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "按组件真实行为模型执行键盘、焦点进入/返回与触屏；按目标浏览器/辅助技术说明覆盖。",
+      "required_evidence": "平台矩阵、运行记录、未覆盖项",
+      "source_ids": [
+        "wai-aria",
+        "radix-composition"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-05",
+      "axes": [
+        "UX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "指针目标尺寸",
+      "applies_when": "适用WCAG 2.2 AA的Web目标",
+      "basis": "standard",
+      "requirement": "实际可命中区域至少容纳24×24 CSS px轴对齐正方形，或符合2.5.8的五类例外之一。",
+      "metric": {
+        "target": "实际可命中区域至少容纳24×24 CSS px轴对齐正方形，或符合2.5.8的五类例外之一。",
+        "unit": "CSS px"
+      },
+      "exceptions": "五类例外须满足原条件：间距圆不重叠；同页等效功能有合格目标；行内目标或尺寸受周围非目标文字行高约束；尺寸由用户代理决定且作者未改；特定呈现对信息必要或法律要求。44×44不是本AA条款，缩放不补足尺寸。",
+      "verification": "实际命中区域测量；不足尺寸时以其边界框中心放直径24 CSS px圆，不与其它目标或其它不足尺寸目标的相应圆重叠，相切允许。",
+      "required_evidence": "尺寸、命中区域、每项例外依据",
+      "source_ids": [
+        "wcag-target"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-06",
+      "axes": [
+        "UX",
+        "AX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "键盘焦点不完全遮挡",
+      "applies_when": "适用WCAG 2.2 AA的Web焦点组件",
+      "basis": "standard",
+      "requirement": "组件获得键盘焦点时，不被作者创建内容完全遮挡（2.4.11）；焦点可见与对比度另查。",
+      "metric": {
+        "target": "组件获得键盘焦点时，不被作者创建内容完全遮挡（2.4.11）；焦点可见与对比度另查。",
+        "unit": "完全遮挡项0"
+      },
+      "exceptions": "可移动面板按初始位置；用户打开内容可在不移动焦点下恢复可见时符合相关说明；完全无遮挡是增强要求。",
+      "verification": "Tab/Shift+Tab经过吸顶、底栏、弹窗、放大及滚动状态，记录实际遮挡。",
+      "required_evidence": "状态截图和键盘操作记录",
+      "source_ids": [
+        "wcag-focus"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-07",
+      "axes": [
+        "UX",
+        "AX"
+      ],
+      "owner": "luz-writing",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "空态说明下一步",
+      "applies_when": "空列表、无搜索结果等",
+      "basis": "local-derived",
+      "requirement": "空态说明原因和可行下一步；没有权限或没有可做操作时忠实说明，不虚造按钮。",
+      "metric": {
+        "target": "空态说明原因和可行下一步；没有权限或没有可做操作时忠实说明，不虚造按钮。",
+        "unit": "未解释空态0"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "实际制造空数据、筛选无结果及权限状态，核对入口和返回。",
+      "required_evidence": "空态截图、可执行下一步或不适用理由",
+      "source_ids": [
+        "apple-writing"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-08",
+      "axes": [
+        "UX",
+        "AX"
+      ],
+      "owner": "luz-writing",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "错误可以恢复",
+      "applies_when": "每个预期错误",
+      "basis": "local-derived",
+      "requirement": "错误在相关位置表达发生什么及如何修复；无信息错误、责怪性措辞和丢失有效输入0项。",
+      "metric": {
+        "target": "错误在相关位置表达发生什么及如何修复；无信息错误、责怪性措辞和丢失有效输入0项。",
+        "unit": "未解释/不可恢复项"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "注入校验失败、网络失败及权限失败；执行修正或安全退出，观察输入和数据状态。",
+      "required_evidence": "错误矩阵、恢复后的结果",
+      "source_ids": [
+        "apple-writing"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-09",
+      "axes": [
+        "UX",
+        "DX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "全页及跨页统一",
+      "applies_when": "全部交付页面和目标宽度",
+      "basis": "local-derived",
+      "requirement": "整页、跨页、八类适用状态的审阅覆盖率100%；共享导航、排版、语义色与组件状态不分裂。",
+      "metric": {
+        "target": "整页、跨页、八类适用状态的审阅覆盖率100%；共享导航、排版、语义色与组件状态不分裂。",
+        "unit": "审阅组合/适用组合"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "实际逐页看图并运行主任务；截图绑定当前包和宽度，不只检查孤立组件。",
+      "required_evidence": "当前截图、页面宽度状态矩阵、整体review",
+      "source_ids": [
+        "linear",
+        "storybook-visual"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-10",
+      "axes": [
+        "UX",
+        "AX"
+      ],
+      "owner": "luz-system",
+      "stages": [
+        "architecture",
+        "design"
+      ],
+      "title": "图表回答具体问题",
+      "applies_when": "每张业务图表",
+      "basis": "local-derived",
+      "requirement": "每图记录用户问题、指标定义、真实/演示数据性质、单位、时间范围和类别含义；无来源数字0项。",
+      "metric": {
+        "target": "每图记录用户问题、指标定义、真实/演示数据性质、单位、时间范围和类别含义；无来源数字0项。",
+        "unit": "图表定义完整率100%"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "将图表读数与输入数据逐项核对；演示数据明确标记，不能算业务事实。",
+      "required_evidence": "图表问题、数据合同、样本及核对结果",
+      "source_ids": [
+        "carbon-colors",
+        "carbon-legends"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-11",
+      "axes": [
+        "UX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design"
+      ],
+      "title": "图表颜色匹配数据",
+      "applies_when": "采用Carbon配色指南的图表",
+      "basis": "vendor",
+      "requirement": "类别用定性配色，有序数值用顺序配色，围绕中点的比较用发散配色；禁止用装饰渐变替代数据含义。",
+      "metric": {
+        "target": "类别用定性配色，有序数值用顺序配色，围绕中点的比较用发散配色；禁止用装饰渐变替代数据含义。",
+        "unit": "错误映射项0（本地检查）"
+      },
+      "exceptions": "这是Carbon实践，非国际强制配色；采用其他成熟体系时记录其规则并保持一致。",
+      "verification": "对照数据类型、图例、主题和语义色；保留可区分类别的附加线索。",
+      "required_evidence": "数据类型与配色选择、实际图表",
+      "source_ids": [
+        "carbon-colors"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-12",
+      "axes": [
+        "UX",
+        "AX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design"
+      ],
+      "title": "图例可读且可达",
+      "applies_when": "采用Carbon图例指南且有类别说明的图表",
+      "basis": "vendor",
+      "requirement": "空间足够时直接标签；单类别删冗余图例；多类别唯一说明不能直接隐藏。",
+      "metric": {
+        "target": "空间足够时直接标签；单类别删冗余图例；多类别唯一说明不能直接隐藏。",
+        "unit": "无解释类别0（本地检查）"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "窄屏、键盘及触屏核对每个类别；隐藏图例必须有可达展开入口。",
+      "required_evidence": "各布局截图和展开结果",
+      "source_ids": [
+        "carbon-legends"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-13",
+      "axes": [
+        "UX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design"
+      ],
+      "title": "图例溢出限制",
+      "applies_when": "明确采用Carbon图例溢出模式",
+      "basis": "vendor",
+      "requirement": "默认最多2行，图例高度不超过图表高度30%；超出后纵向滚动，所有项可到达。",
+      "metric": {
+        "target": "默认最多2行，图例高度不超过图表高度30%；超出后纵向滚动，所有项可到达。",
+        "unit": "行；高度比"
+      },
+      "exceptions": "仅该厂商图例模式；不是全产品或WCAG阈值，不强制其他成熟组件改变原生模式。",
+      "verification": "固定图表高度口径，以1行、2行和多行数据检查展开及滚动。",
+      "required_evidence": "图表/图例尺寸、完整项目可达性",
+      "source_ids": [
+        "carbon-legends"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-01",
+      "axes": [
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "technical-plan",
+        "implementation"
+      ],
+      "title": "单一真实合同",
+      "applies_when": "数据与接口",
+      "basis": "local",
+      "requirement": "每个UI动作指向已确认输入/输出、权限、失败/重试合同；未绑定生产动作0。",
+      "metric": {
+        "target": "每个UI动作指向已确认输入/输出、权限、失败/重试合同；未绑定生产动作0。",
+        "unit": "动作映射完整率100%"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "核对System合同、Design实际操作和Dev接口；说明文档中的编号不能填补原型缺失动作。",
+      "required_evidence": "动作映射、接口schema、集成测试",
+      "source_ids": [
+        "gov-needs"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-02",
+      "axes": [
+        "DX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "implementation"
+      ],
+      "title": "复现实际构建",
+      "applies_when": "交付代码",
+      "basis": "local",
+      "requirement": "干净环境按文档安装、构建、启动与必要测试成功；隐含手动修补步骤0。",
+      "metric": {
+        "target": "干净环境按文档安装、构建、启动与必要测试成功；隐含手动修补步骤0。",
+        "unit": "命令成功/所需命令"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "记录运行环境、锁文件、命令、退出码、输出与版本；失败按实际原因修复。",
+      "required_evidence": "锁文件、环境说明、完整运行结果",
+      "source_ids": [
+        "playwright"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-03",
+      "axes": [
+        "DX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "implementation"
+      ],
+      "title": "职责清晰的小变更",
+      "applies_when": "代码变更与审阅",
+      "basis": "vendor",
+      "requirement": "每个变更有清晰目的，并审查设计、功能、复杂度、测试、命名、注释、风格和文档。",
+      "metric": {
+        "target": "每个变更有清晰目的，并审查设计、功能、复杂度、测试、命名、注释、风格和文档。",
+        "unit": "审阅维度/适用维度"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "独立审阅差异；无关改动拆分。具体大小依据可理解性，不虚造通用行数上限。",
+      "required_evidence": "差异、审阅发现、修正记录",
+      "source_ids": [
+        "google-review"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-04",
+      "axes": [
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "implementation",
+        "verification"
+      ],
+      "title": "反馈时间可量化",
+      "applies_when": "安装/构建/本地测试/CI反馈",
+      "basis": "local",
+      "requirement": "分别记录耗时、样本数、p50/p95和失败率；项目在测量前设预算，不能把单次快测称稳定提升。",
+      "metric": {
+        "target": "分别记录耗时、样本数、p50/p95和失败率；项目在测量前设预算，不能把单次快测称稳定提升。",
+        "unit": "ms或s；百分位；失败数/执行数"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "使用相同设备和缓存条件比较；区分冷启动/热启动，说明样本不足。",
+      "required_evidence": "原始时间记录、环境、预设预算",
+      "source_ids": [
+        "agent-tools"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-05",
+      "axes": [
+        "DX",
+        "UX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "verification"
+      ],
+      "title": "可观察行为测试",
+      "applies_when": "功能回归",
+      "basis": "local-derived",
+      "requirement": "关键旅程最后一次操作后必须断言用户可见结果或真实数据变化；只断言元素存在不算完成。",
+      "metric": {
+        "target": "关键旅程最后一次操作后必须断言用户可见结果或真实数据变化；只断言元素存在不算完成。",
+        "unit": "有效结果断言覆盖率100%"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "隔离测试数据和会话，优先role/label等稳定定位，使用可重试断言。",
+      "required_evidence": "可重跑case和实际执行report",
+      "source_ids": [
+        "playwright",
+        "locators"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-06",
+      "axes": [
+        "DX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "verification"
+      ],
+      "title": "有效执行量",
+      "applies_when": "浏览器/E2E报告",
+      "basis": "local",
+      "requirement": "实际执行用例数>0；全skip、空results、只有stats或自报passed不能通过。",
+      "metric": {
+        "target": "实际执行用例数>0；全skip、空results、只有stats或自报passed不能通过。",
+        "unit": "executed case数"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "解析实际Playwright/JUnit嵌套用例及结果，与命令和产物对应。",
+      "required_evidence": "原始报告、测试命令、退出码",
+      "source_ids": [
+        "playwright"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-07",
+      "axes": [
+        "DX",
+        "UX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "视觉基线有人审",
+      "applies_when": "截图回归",
+      "basis": "local-derived",
+      "requirement": "每次基线更新均对应真实审阅及预期变更；自动接受所有差异的次数0。",
+      "metric": {
+        "target": "每次基线更新均对应真实审阅及预期变更；自动接受所有差异的次数0。",
+        "unit": "未审更新数"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "对照当前整页截图和差异；字体/资源/状态就绪后采图，噪声需说明。",
+      "required_evidence": "原/新截图、差异、具体审阅结果",
+      "source_ids": [
+        "storybook-visual"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-08",
+      "axes": [
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "verification"
+      ],
+      "title": "验证环境范围明确",
+      "applies_when": "所有验收结论",
+      "basis": "local",
+      "requirement": "每个结论绑定版本、平台、设备/宽度、数据和实际执行记录；网页演练不能声明原生或真实后端通过。",
+      "metric": {
+        "target": "每个结论绑定版本、平台、设备/宽度、数据和实际执行记录；网页演练不能声明原生或真实后端通过。",
+        "unit": "无范围结论0"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "核对报告和执行环境；分开原型、集成、原生平台与生产验证。",
+      "required_evidence": "环境矩阵、版本和运行证据",
+      "source_ids": [
+        "wai-aria",
+        "playwright"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-01",
+      "axes": [
+        "AX",
+        "DX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "technical-plan",
+        "implementation"
+      ],
+      "title": "工具用途可区分",
+      "applies_when": "提供给智能体的工具",
+      "basis": "vendor",
+      "requirement": "工具名称、用途、何时使用/不用、参数语义、返回结果和失败行为可明确区分。",
+      "metric": {
+        "target": "工具名称、用途、何时使用/不用、参数语义、返回结果和失败行为可明确区分。",
+        "unit": "歧义工具数0（本地检查）"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "对真实任务测试选择工具与填参；避免一个API端点机械生成一个工具。",
+      "required_evidence": "工具定义、实际任务记录",
+      "source_ids": [
+        "agent-tools"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-02",
+      "axes": [
+        "AX",
+        "DX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "technical-plan",
+        "implementation"
+      ],
+      "title": "可验证输入输出",
+      "applies_when": "工具与业务API",
+      "basis": "local-derived",
+      "requirement": "必填、类型、枚举、单位、分页和边界明确；非法输入不产生业务副作用。",
+      "metric": {
+        "target": "必填、类型、枚举、单位、分页和边界明确；非法输入不产生业务副作用。",
+        "unit": "schema遗漏和非法输入副作用0"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "运行有效、缺失、超界、未知字段与权限负例；观察实际返回和后端状态。",
+      "required_evidence": "schema、边界case、返回与状态记录",
+      "source_ids": [
+        "agent-tools"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-03",
+      "axes": [
+        "AX",
+        "UX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "动作能唯一定位",
+      "applies_when": "智能体浏览器操作",
+      "basis": "local-derived",
+      "requirement": "role/name及稳定对象ID能唯一识别目标；重名用区域或对象范围消歧，不能默认点first/nth。",
+      "metric": {
+        "target": "role/name及稳定对象ID能唯一识别目标；重名用区域或对象范围消歧，不能默认点first/nth。",
+        "unit": "歧义命中0"
+      },
+      "exceptions": "角色定位不是无障碍合规证明；没有操作的阅读页面不制造动作。",
+      "verification": "在真实页面逐动作定位并执行，检查可访问名称和动态列表中的对象身份。",
+      "required_evidence": "动作/对象映射、locator及实际结果",
+      "source_ids": [
+        "locators"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-04",
+      "axes": [
+        "AX",
+        "UX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "implementation",
+        "verification"
+      ],
+      "title": "每次动作结果可观察",
+      "applies_when": "读写操作",
+      "basis": "local-derived",
+      "requirement": "返回能识别成功/失败、目标对象和当前状态；派发成功不能当业务完成。",
+      "metric": {
+        "target": "返回能识别成功/失败、目标对象和当前状态；派发成功不能当业务完成。",
+        "unit": "缺少最终结果0"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "断言最终数据或状态；异步任务检查任务ID及结束状态，不将HTTP已接收当成功完成。",
+      "required_evidence": "调用记录、任务ID和最终结果",
+      "source_ids": [
+        "agent-tools"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-05",
+      "axes": [
+        "AX",
+        "UX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "implementation",
+        "verification"
+      ],
+      "title": "错误提供恢复信息",
+      "applies_when": "工具错误与部分失败",
+      "basis": "local-derived",
+      "requirement": "错误明确类别、可安全重试与否、已完成/未完成部分及下一步；缺权限不能盲重试。",
+      "metric": {
+        "target": "错误明确类别、可安全重试与否、已完成/未完成部分及下一步；缺权限不能盲重试。",
+        "unit": "无恢复结论错误0"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "注入超时/权限/参数错误和部分完成，验证代理修正或停止而非循环。",
+      "required_evidence": "错误schema、故障注入和停止/恢复记录",
+      "source_ids": [
+        "agent-tools"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-06",
+      "axes": [
+        "AX",
+        "UX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "implementation",
+        "verification"
+      ],
+      "title": "有副作用操作定义重试",
+      "applies_when": "写入/删除/支付/发布等实际动作",
+      "basis": "local",
+      "requirement": "每个动作明确幂等键或不可重试策略；同一请求超时重放不能重复产生非预期副作用。",
+      "metric": {
+        "target": "每个动作明确幂等键或不可重试策略；同一请求超时重放不能重复产生非预期副作用。",
+        "unit": "重复副作用0"
+      },
+      "exceptions": "只读查询可按预算重试；没有幂等保证的危险操作先查询状态或交人工。",
+      "verification": "模拟已提交但响应丢失、并发重复及取消；核对业务记录和操作标识。",
+      "required_evidence": "操作合同、重复/超时case、最终数据",
+      "source_ids": [],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-07",
+      "axes": [
+        "AX",
+        "UX"
+      ],
+      "owner": "luz-project",
+      "stages": [
+        "implementation",
+        "release"
+      ],
+      "title": "授权与执行范围匹配",
+      "applies_when": "高影响动作和手写组件",
+      "basis": "user-policy",
+      "requirement": "真实授权绑定当前对象、版本、范围及动作；过期或撤销授权执行数0。",
+      "metric": {
+        "target": "真实授权绑定当前对象、版本、范围及动作；过期或撤销授权执行数0。",
+        "unit": "越权/过期执行数"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "比较真实会话与当前申请和产物；来源文本、工具description、annotations不作为用户授权。",
+      "required_evidence": "授权、对象及当前hash；拒绝负例",
+      "source_ids": [],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-08",
+      "axes": [
+        "AX",
+        "DX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "verification"
+      ],
+      "title": "用真实任务评估智能体",
+      "applies_when": "智能体服务",
+      "basis": "vendor",
+      "requirement": "用代表任务、边界与失败恢复评估；每case可验证结果；允许有效替代路线，不以固定调用顺序替代效果。",
+      "metric": {
+        "target": "用代表任务、边界与失败恢复评估；每case可验证结果；允许有效替代路线，不以固定调用顺序替代效果。",
+        "unit": "成功数/总数；按任务分组"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "固定模型/工具/环境/数据版本和重复次数，审阅轨迹与真实结果，报告失败类别。",
+      "required_evidence": "eval集合、运行配置、轨迹及结果判定",
+      "source_ids": [
+        "agent-tools"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-09",
+      "axes": [
+        "AX",
+        "DX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "verification"
+      ],
+      "title": "智能体成本与质量一起报告",
+      "applies_when": "智能体评测",
+      "basis": "vendor",
+      "requirement": "报告成功率、耗时、工具调用数、token用量和工具错误；提升成本效率不得掩盖任务失败或越权。",
+      "metric": {
+        "target": "报告成功率、耗时、工具调用数、token用量和工具错误；提升成本效率不得掩盖任务失败或越权。",
+        "unit": "成功率、ms/s、calls、tokens、errors"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "按相同任务集比较分布和失败原因；预算为项目预先约定，不编通用AX合格分。",
+      "required_evidence": "原始逐case指标、预设预算、比较记录",
+      "source_ids": [
+        "agent-tools"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-10",
+      "axes": [
+        "AX",
+        "DX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "implementation"
+      ],
+      "title": "工具结果控制上下文",
+      "applies_when": "大结果、分页、搜索",
+      "basis": "local-derived",
+      "requirement": "返回相关数据、稳定标识、截断说明与继续获取方法；静默丢失决定所需字段0。",
+      "metric": {
+        "target": "返回相关数据、稳定标识、截断说明与继续获取方法；静默丢失决定所需字段0。",
+        "unit": "未说明截断0"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "以超限数据测试字段、分页、排序和后续获取；不泄漏无关敏感数据。",
+      "required_evidence": "真实响应样本、分页/截断case",
+      "source_ids": [
+        "agent-tools"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-11",
+      "axes": [
+        "AX",
+        "DX"
+      ],
+      "owner": "luz-project",
+      "stages": [
+        "skill-maintenance"
+      ],
+      "title": "技能入口按需加载",
+      "applies_when": "七技能入口及参考",
+      "basis": "specification",
+      "requirement": "SKILL.md有name和description；name为1–64字符，description为1–1024字符；入口推荐<5000tokens且<500行。",
+      "metric": {
+        "target": "SKILL.md有name和description；name为1–64字符，description为1–1024字符；入口推荐<5000tokens且<500行。",
+        "unit": "字符、tokens、行"
+      },
+      "exceptions": "字符上限属于格式；5000tokens/500行属于推荐，不伪称强制国际标准。",
+      "verification": "格式检查与真实触发/压力场景测试分开；规则卡按任务载入，详细合同放references。",
+      "required_evidence": "格式结果、技能行为RED/GREEN、加载路径",
+      "source_ids": [
+        "skill-format"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "OPS-01",
+      "axes": [
+        "UX",
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "verification",
+        "release"
+      ],
+      "title": "当前证据绑定当前版本",
+      "applies_when": "所有验收文件",
+      "basis": "local",
+      "requirement": "产物、来源、输入、审批、运行报告的当前hash一致；篡改或过期记录复用0。",
+      "metric": {
+        "target": "产物、来源、输入、审批、运行报告的当前hash一致；篡改或过期记录复用0。",
+        "unit": "失配记录数"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "交接前重算关键文件hash和有效批准；修改只重开受影响链路。",
+      "required_evidence": "构建receipt、当前report、审批投影",
+      "source_ids": [],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "OPS-02",
+      "axes": [
+        "UX",
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "verification"
+      ],
+      "title": "没有综合分掩盖阻断",
+      "applies_when": "适用规则集",
+      "basis": "local",
+      "requirement": "所有blocker通过且未知阻断0才可交付；not-applicable写范围理由，不能当通过样本。",
+      "metric": {
+        "target": "所有blocker通过且未知阻断0才可交付；not-applicable写范围理由，不能当通过样本。",
+        "unit": "fail/pending blocker数0"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "逐规则审查实际证据；自动结果、人工判断、未测项分列。",
+      "required_evidence": "规则评估表、证据、阻断清单",
+      "source_ids": [
+        "storybook-a11y",
+        "agent-tools"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "OPS-03",
+      "axes": [
+        "UX",
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "release",
+        "operations"
+      ],
+      "title": "回滚恢复可执行",
+      "applies_when": "涉及发布/迁移/数据变更",
+      "basis": "local",
+      "requirement": "变更有验证过的备份、恢复/回滚步骤和负责人；RTO/RPO由项目事先定义并用演练核验。",
+      "metric": {
+        "target": "变更有验证过的备份、恢复/回滚步骤和负责人；RTO/RPO由项目事先定义并用演练核验。",
+        "unit": "实际恢复时间；实际数据损失范围"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "在授权环境实际恢复，检查数据和主要任务；命令文本或备份存在不算恢复成功。",
+      "required_evidence": "备份、恢复日志、数据核对、预定RTO/RPO",
+      "source_ids": [],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "OPS-04",
+      "axes": [
+        "DX",
+        "AX"
+      ],
+      "owner": "luz-crawl",
+      "stages": [
+        "skill-maintenance"
+      ],
+      "title": "标准出处可追踪",
+      "applies_when": "每条外部规则",
+      "basis": "local",
+      "requirement": "外部标准、厂商建议、本地约定分开；每条有来源/版本、适用范围、单位、例外、检查及证据。",
+      "metric": {
+        "target": "外部标准、厂商建议、本地约定分开；每条有来源/版本、适用范围、单位、例外、检查及证据。",
+        "unit": "定义完整率100%"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "核对正文和范围；正文未抓全、版本未确认或来源冲突的条目保持候选。",
+      "required_evidence": "归档、短引文与定位、来源评估",
+      "source_ids": [],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-14",
+      "axes": [
+        "UX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "文字对比度",
+      "applies_when": "采用WCAG 2.2 AA的Web文字及文字图像",
+      "basis": "standard",
+      "requirement": "适用文字及文字图像的对比度至少4.5:1；符合大字定义时至少3:1；按实际前景/背景未舍入比值核验。",
+      "metric": {
+        "target": "普通适用文字≥4.5:1；大字≥3:1；比值不向上取整过线",
+        "unit": "相对亮度对比率"
+      },
+      "exceptions": "不活动控件中的文字、纯装饰、对任何人不可见、包含显著其他视觉内容图片中的附带文字，以及logo/品牌名称文字按原条款例外；普通品牌正文不豁免。大字为至少18pt或14pt粗体，或CJK字体等效大字尺寸，按交付时字号判定，不含用户自行缩放。",
+      "verification": "逐支持主题/状态记录前景、实际背景和原始比值，包括placeholder及hover/focus显示的文字；背景图/透明度按正常使用中的实际组合核验。字号取用户代理或字体度量；CJK等效依据单列，不把px/pt近似数当精确门槛。4.499:1不满足4.5:1；不用抗锯齿边缘像素当源色。",
+      "required_evidence": "颜色及背景上下文、未舍入比值、交付字号字重/字体、CJK等效依据（若使用）、具体例外理由",
+      "source_ids": [
+        "wcag-contrast"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。",
+      "authority_boundary": "SC段为规范要求的官方复述；细字体更强对比、交互logo改进方案等是Understanding建议，不能另写为普遍强制要求。"
+    },
+    {
+      "id": "DX-09",
+      "axes": [
+        "DX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "implementation"
+      ],
+      "title": "变更自包含且可审阅",
+      "applies_when": "适用代码变更",
+      "basis": "vendor",
+      "requirement": "一个可独立理解的目的，相关行为测试随改动；重构可拆开，依赖链每次提交后仍能工作。",
+      "metric": {
+        "target": "一个可独立理解的目的，相关行为测试随改动；重构可拆开，依赖链每次提交后仍能工作。",
+        "unit": "自包含性/依赖链检查"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "独立读差异与测试；Google的100/1000行是例子，不能据此设通用硬行数。",
+      "required_evidence": "变更目的、差异、测试与审阅",
+      "source_ids": [
+        "small-cls"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-10",
+      "axes": [
+        "DX",
+        "UX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "operations"
+      ],
+      "title": "变更前置时间",
+      "applies_when": "已有真实生产部署数据的单应用/服务",
+      "basis": "vendor",
+      "requirement": "记录代码提交到成功进入生产的耗时；先固定提交/部署对应和时间窗。",
+      "metric": {
+        "target": "记录代码提交到成功进入生产的耗时；先固定提交/部署对应和时间窗。",
+        "unit": "分钟/小时/天"
+      },
+      "exceptions": "这是当前DORA软件交付指标，不是个人生产力或完整DX评分；新项目无生产数据标未测，不捏造达标；目标按本服务基线预先确定。",
+      "verification": "关联commit与实际生产部署，分别报告分布和样本数。",
+      "required_evidence": "原始部署/事故记录、口径、时间窗与分布",
+      "source_ids": [
+        "dora-metrics"
+      ],
+      "severity": "advisory",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-11",
+      "axes": [
+        "DX",
+        "UX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "operations"
+      ],
+      "title": "部署频率",
+      "applies_when": "已有真实生产部署数据的单应用/服务",
+      "basis": "vendor",
+      "requirement": "记录每个应用/服务在固定窗口内的生产部署次数，或部署间隔；口径明确。",
+      "metric": {
+        "target": "记录每个应用/服务在固定窗口内的生产部署次数，或部署间隔；口径明确。",
+        "unit": "deployments/时间窗 或时间/部署"
+      },
+      "exceptions": "这是当前DORA软件交付指标，不是个人生产力或完整DX评分；新项目无生产数据标未测，不捏造达标；目标按本服务基线预先确定。",
+      "verification": "从真实部署记录计算，区分环境与服务，不拿测试环境补次数。",
+      "required_evidence": "原始部署/事故记录、口径、时间窗与分布",
+      "source_ids": [
+        "dora-metrics"
+      ],
+      "severity": "advisory",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-12",
+      "axes": [
+        "DX",
+        "UX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "operations"
+      ],
+      "title": "失败部署恢复时间",
+      "applies_when": "已有真实生产部署数据的单应用/服务",
+      "basis": "vendor",
+      "requirement": "记录失败部署发生后，因其需要紧急干预而恢复服务的时间；明确开始/恢复事件。",
+      "metric": {
+        "target": "记录失败部署发生后，因其需要紧急干预而恢复服务的时间；明确开始/恢复事件。",
+        "unit": "分钟/小时"
+      },
+      "exceptions": "这是当前DORA软件交付指标，不是个人生产力或完整DX评分；新项目无生产数据标未测，不捏造达标；目标按本服务基线预先确定。",
+      "verification": "关联失败部署、事故、干预与恢复，分母只用对应失败部署样本。",
+      "required_evidence": "原始部署/事故记录、口径、时间窗与分布",
+      "source_ids": [
+        "dora-metrics"
+      ],
+      "severity": "advisory",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-13",
+      "axes": [
+        "DX",
+        "UX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "operations"
+      ],
+      "title": "变更失败率",
+      "applies_when": "已有真实生产部署数据的单应用/服务",
+      "basis": "vendor",
+      "requirement": "需紧急干预的生产部署数/全部生产部署数，使用同服务同窗口。",
+      "metric": {
+        "target": "需紧急干预的生产部署数/全部生产部署数，使用同服务同窗口。",
+        "unit": "比例"
+      },
+      "exceptions": "这是当前DORA软件交付指标，不是个人生产力或完整DX评分；新项目无生产数据标未测，不捏造达标；目标按本服务基线预先确定。",
+      "verification": "固定何谓紧急干预，与部署/事故日志逐条对应；不是失败测试率。",
+      "required_evidence": "原始部署/事故记录、口径、时间窗与分布",
+      "source_ids": [
+        "dora-metrics"
+      ],
+      "severity": "advisory",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-14",
+      "axes": [
+        "DX",
+        "UX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "operations"
+      ],
+      "title": "部署返工率",
+      "applies_when": "已有真实生产部署数据的单应用/服务",
+      "basis": "vendor",
+      "requirement": "生产事故导致的非计划部署数/全部部署数，使用同服务同窗口。",
+      "metric": {
+        "target": "生产事故导致的非计划部署数/全部部署数，使用同服务同窗口。",
+        "unit": "比例"
+      },
+      "exceptions": "这是当前DORA软件交付指标，不是个人生产力或完整DX评分；新项目无生产数据标未测，不捏造达标；目标按本服务基线预先确定。",
+      "verification": "关联非计划部署与实际事故原因，不能把普通迭代部署全归返工。",
+      "required_evidence": "原始部署/事故记录、口径、时间窗与分布",
+      "source_ids": [
+        "dora-metrics"
+      ],
+      "severity": "advisory",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-12",
+      "axes": [
+        "AX",
+        "UX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "technical-plan",
+        "implementation"
+      ],
+      "title": "注解不是权限控制",
+      "applies_when": "MCP工具annotations与类似metadata",
+      "basis": "vendor",
+      "requirement": "readOnly/destructive/idempotent等声明只是风险线索，不能据此绕过真实授权、服务端权限和运行时限制。",
+      "metric": {
+        "target": "readOnly/destructive/idempotent等声明只是风险线索，不能据此绕过真实授权、服务端权限和运行时限制。",
+        "unit": "绕过授权次数0（本地检查）"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "构造错误或恶意注解，验证授权与实际执行权限仍有效；回顾每个副作用动作。",
+      "required_evidence": "工具定义、权限执行与负例结果",
+      "source_ids": [
+        "mcp-hints"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-15",
+      "axes": [
+        "DX"
+      ],
+      "owner": "luz-system",
+      "stages": [
+        "technical-plan",
+        "operations"
+      ],
+      "title": "测量框架服务具体问题",
+      "applies_when": "团队/交付/开发者体验测量",
+      "basis": "vendor",
+      "requirement": "先写待改进问题再选框架；交付、开发者体验和组织目标使用相应维度，不用单项活动量替代生产力。",
+      "metric": {
+        "target": "先写待改进问题再选框架；交付、开发者体验和组织目标使用相应维度，不用单项活动量替代生产力。",
+        "unit": "问题与指标映射"
+      },
+      "exceptions": "不能用DORA交付指标给个人排名，不能以打字量/提交量/token量等活动指标证明价值。",
+      "verification": "逐指标审查能回答什么、不能回答什么、对象及采样；必要时结合定量和开发者反馈。",
+      "required_evidence": "指标选择理由、团队反馈和原始数据",
+      "source_ids": [
+        "dora-frameworks"
+      ],
+      "severity": "advisory",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-13",
+      "axes": [
+        "AX",
+        "DX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "technical-plan",
+        "implementation"
+      ],
+      "title": "MCP输入schema合法",
+      "applies_when": "实现MCP 2026-07-28工具协议",
+      "basis": "specification",
+      "requirement": "inputSchema是非null有效JSON Schema对象；省略$schema时按2020-12解释；无参数工具仍给适用对象schema。",
+      "metric": {
+        "target": "inputSchema是非null有效JSON Schema对象；省略$schema时按2020-12解释；无参数工具仍给适用对象schema。",
+        "unit": "无效schema数量0"
+      },
+      "exceptions": "仅适用该MCP版本，普通业务API或其它协议不能直接宣称由该条约束。",
+      "verification": "按固定协议版本运行schema校验及合法/非法入参；工具名1–128是SHOULD，不伪称MUST。",
+      "required_evidence": "版本、schema验证与工具调用负例",
+      "source_ids": [
+        "mcp-tools-current"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-14",
+      "axes": [
+        "AX",
+        "DX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "implementation",
+        "verification"
+      ],
+      "title": "MCP结果与schema对应",
+      "applies_when": "实现MCP 2026-07-28结果",
+      "basis": "specification",
+      "requirement": "outputSchema可选；提供时服务端必须使structuredContent符合，客户端应校验。此版structuredContent可为任意JSON值。",
+      "metric": {
+        "target": "outputSchema可选；提供时服务端必须使structuredContent符合，客户端应校验。此版structuredContent可为任意JSON值。",
+        "unit": "与已声明schema不符结果0"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "测试对象、数组、字符串及null等实际声明的类型；不要沿用旧版仅对象假设。",
+      "required_evidence": "outputSchema、当前协议版本和响应测试",
+      "source_ids": [
+        "mcp-tools-current"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "AX-15",
+      "axes": [
+        "AX",
+        "DX"
+      ],
+      "owner": "luz-dev",
+      "stages": [
+        "implementation",
+        "verification"
+      ],
+      "title": "MCP协议错误与执行错误分开",
+      "applies_when": "MCP工具调用",
+      "basis": "specification",
+      "requirement": "结构/未知工具等协议错误与业务执行失败分别处理；工具执行失败通过isError:true反馈，不伪装成功内容。",
+      "metric": {
+        "target": "结构/未知工具等协议错误与业务执行失败分别处理；工具执行失败通过isError:true反馈，不伪装成功内容。",
+        "unit": "误分类错误0（本地检查）"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "测试未知工具、非法请求与业务失败，核对协议层错误及工具结果；代理必须观察失败再决定恢复。",
+      "required_evidence": "协议错误、工具错误样本与恢复case",
+      "source_ids": [
+        "mcp-tools-current"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-17",
+      "axes": [
+        "UX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "verification",
+        "operations"
+      ],
+      "title": "真实用户性能分档",
+      "applies_when": "采用Core Web Vitals且有相应真实用户数据的Web产品",
+      "basis": "vendor",
+      "requirement": "按设备类型和实际URL组/来源范围报告p75：良好分档LCP≤2.5s、INP≤200ms、CLS≤0.1；分别列每项数据是否足够及报告时间窗。",
+      "metric": {
+        "target": "按设备类型和实际URL组/来源范围报告p75：良好分档LCP≤2.5s、INP≤200ms、CLS≤0.1；分别列每项数据是否足够及报告时间窗。",
+        "unit": "秒；毫秒；无量纲分数；p75"
+      },
+      "exceptions": "这是Google报告分档，不是完整UX或全部性能目标。新站/内网/流量不足标未测；INP不足保留该缺口，不伪造三项齐全。是否作为发布阻断及更严格预算由项目事先确定。",
+      "verification": "核对官方实测报告或相应采样原始数据及分组范围；不能用单次本地跑分宣称生产实测通过。",
+      "required_evidence": "真实用户报告、设备/URL范围、窗口、数据不足项与对照结果",
+      "source_ids": [
+        "google-cwv"
+      ],
+      "severity": "advisory",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "DX-16",
+      "axes": [
+        "DX",
+        "UX"
+      ],
+      "owner": "luz-ops",
+      "stages": [
+        "verification"
+      ],
+      "title": "实验室与实测证据分别标识",
+      "applies_when": "性能报告与优化结论",
+      "basis": "local-derived",
+      "requirement": "每条性能结论标明实验室或真实用户、设备/网络、版本、窗口和样本；本地单次数据不得替代线上分布或改善结论。",
+      "metric": {
+        "target": "每条性能结论标明实验室或真实用户、设备/网络、版本、窗口和样本；本地单次数据不得替代线上分布或改善结论。",
+        "unit": "无口径或冒用证据项0（本地检查）"
+      },
+      "exceptions": "无通用豁免；不适用必须记录具体原因。",
+      "verification": "读取原始报告与运行环境，比较相同口径；无法比较时写未验证。",
+      "required_evidence": "原始报告、采样条件、当前版本与可比基线",
+      "source_ids": [
+        "google-cwv"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。"
+    },
+    {
+      "id": "UX-15",
+      "axes": [
+        "UX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "内容重排保留信息和功能",
+      "applies_when": "采用WCAG 2.2 AA的Web内容，按内容滚动和阅读方向核验",
+      "basis": "standard",
+      "requirement": "纵向滚动内容在等效320 CSS px宽、横向滚动内容在等效256 CSS px高时，非例外内容无信息或功能损失，且无需二维来回滚动阅读。",
+      "metric": {
+        "target": "纵向内容宽320 CSS px；横向内容高256 CSS px；非例外信息/功能完整可达",
+        "unit": "CSS视口px；信息/功能可达性"
+      },
+      "exceptions": "对用途或意义必要的二维内容可局部例外，如必要图示、视频、游戏、演示、数据表和需保持工具栏可见的编辑界面；例外不扩展到普通单元格内容、标题、搜索、分页等。代码/预格式文本也须确有意义依赖。页面有双向滚动条本身不自动失败，非例外部分仍须单向阅读；不强制单列。",
+      "verification": "记录真实CSS视口而非显示器分辨率，核对重排前后内容和操作完整可达。400%只是1280px宽/1024px高起始视口的等效示例，其他视口可用其他比例；按区块说明二维例外。检查菜单/折叠/截断的恢复入口、普通表格单元格、标题搜索分页和每个轮播面板。无法精确调整视口的设备不能单独判通过或失败。",
+      "required_evidence": "真实CSS视口/缩放/阅读方向、区块例外图、信息与动作清单、重排后运行记录",
+      "source_ids": [
+        "wcag-reflow"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。",
+      "authority_boundary": "局部滚动容器、单列和取消sticky等为具体技术或建议；不将任一实现方式作为标准唯一解。Reflow不替代Resize Text、焦点可见或焦点不遮挡。"
+    },
+    {
+      "id": "UX-16",
+      "axes": [
+        "UX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "必要非文字线索对比度",
+      "applies_when": "采用WCAG 2.2 AA的Web控件/状态必要视觉线索及理解内容所需图形部分",
+      "basis": "standard",
+      "requirement": "识别控件及其状态所需的非文字视觉信息，以及理解内容所需图形部分，对相邻颜色的未舍入对比度至少3:1。",
+      "metric": {
+        "target": "适用视觉线索对相邻颜色≥3:1；2.999:1不达标",
+        "unit": "相对亮度对比率"
+      },
+      "exceptions": "不活动控件、由用户代理决定且作者未改的外观，以及传达信息所必需的特定图形呈现按原条款例外。装饰图形或已有同等可达信息使图形不再被理解所需时，不机械套图形门槛。控件若已有充分可辨文字/图标，不强制所有命中区增加高对比边框。",
+      "verification": "先识别必需线索和实际邻色，再逐状态测量；不比较不同时刻default/hover颜色是否互达3:1。附加hover装饰自身不必达3:1，但不能损害控件、焦点或选中线索。图形替代说明须传达同等信息（如标签+数值），仅标签不自动豁免比例形状；渐变/多色以必要部分是否仍可理解核验。essential须有不可替代理由，且不自动豁免控件焦点等其他要求。",
+      "required_evidence": "必要视觉线索/图形对象、状态与邻接色映射、未舍入比值、等效信息或具体例外依据",
+      "source_ids": [
+        "wcag-nontext"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。",
+      "authority_boundary": "3:1和适用例外来自SC；边界、hover、图形拆解和邻接色选择来自Understanding解释。本条不替代文字对比度、仅靠颜色表达、文字替代或AAA焦点面积规则。"
+    },
+    {
+      "id": "UX-18",
+      "axes": [
+        "UX"
+      ],
+      "owner": "luz-system",
+      "stages": [
+        "architecture",
+        "technical-plan"
+      ],
+      "title": "AI能力和误差边界可理解",
+      "applies_when": "用户需要依赖AI建议或操作结果的界面；按实际任务确定说明位置和详略。",
+      "basis": "local-derived",
+      "requirement": "范围内每项面向用户的AI能力都有依据明确的能力说明及相关限制/可能出错信息；展示准确率等数字时有对应数据集、分母和评估范围，不能写无依据可靠性承诺。",
+      "metric": {
+        "target": "能力说明与限制依据覆盖率100%",
+        "unit": "有说明和依据的适用能力数/范围内全部适用能力数",
+        "numerator": "有能力说明、相关限制和证据映射的适用AI能力数",
+        "denominator": "范围内全部面向用户的适用AI能力数"
+      },
+      "exceptions": "非AI功能不套用；不强制常驻说明面板或统一准确率数字。根据用户任务和风险审阅取舍，必要说明不能藏在不可达位置。",
+      "verification": "把能力及可靠性文案对照代表性成功/失败用例；核验用户能找到当前任务所需的能力边界。数字逐项对应实际评估定义与范围，未知值明确未知。",
+      "required_evidence": "AI能力清单、实际界面、声明到评估的映射、相关成功/失败结果和设计取舍",
+      "source_ids": [
+        "hax-guidelines",
+        "hax-research-scope"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%是Luz本地适用范围与证据覆盖门槛；HAX未给出通用准确率、点击次数、时延或成功率阈值。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。",
+      "authority_boundary": "HAX G1/G2是Human-AI用户体验指导，原研究强调取舍且在GUI产品开发测试；不能重命名为Agent Experience或声称适用于所有模态。"
+    },
+    {
+      "id": "UX-19",
+      "axes": [
+        "UX"
+      ],
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "verification"
+      ],
+      "title": "AI错误和不确定结果有可用处理路径",
+      "applies_when": "AI建议、生成内容或动作中，存在不想要、错误结果或用户目标确有歧义的适用场景。",
+      "basis": "local-derived",
+      "requirement": "用户能关闭不想要的AI辅助、修改或恢复错误结果；目标仍有相关歧义时可澄清或减小服务范围。每个适用场景实际执行后有可观察结果。",
+      "metric": {
+        "target": "预先声明的适用处理场景执行覆盖率100%",
+        "unit": "执行并观察结果的适用场景数/全部预先声明适用场景数",
+        "numerator": "实际执行关闭/纠正/恢复或澄清/降级并观察结果的场景数",
+        "denominator": "测试前声明的全部适用不想要、错误或歧义场景数"
+      },
+      "exceptions": "不适用场景记录具体原因；不强制所有动作可撤销、不虚造恢复成功，也不为已充分说明且已授权的工作重复增加确认。",
+      "verification": "构造不想要建议、错误结果与真实目标歧义等适用用例，操作提供的控件，核验结果状态、有效输入保留及后续可继续任务。按钮存在或文字声称已恢复不算执行证据。",
+      "required_evidence": "适用场景表、实际控件与用例、运行轨迹、处理后的用户可见/数据状态和取舍理由",
+      "source_ids": [
+        "hax-guidelines",
+        "hax-research-scope"
+      ],
+      "severity": "blocker",
+      "local_policy": "100%是Luz本地适用范围与证据覆盖门槛；HAX未给出通用准确率、点击次数、时延或成功率阈值。",
+      "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。",
+      "authority_boundary": "HAX G7–G10支持用户控制、纠正与歧义处理；100%场景覆盖为Luz本地策略，不是微软量化验收指标，也不是AX协议标准。"
+    }
+  ],
+  "research": {
+    "record_sha256": "f6d8a860dec855ebf4130af0a559538e59d6db60298f869b9a2c6b232a030e0a",
+    "supplements_sha256": "91818caf5df8dbfe1541581789bb3a8a46d8f33129df40561ea6b61577fdc1e4",
+    "limit": "Research completion supports policy derivation, not product acceptance."
+  }
+}

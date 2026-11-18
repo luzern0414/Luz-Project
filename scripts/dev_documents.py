@@ -6,7 +6,7 @@ same chapters, the same kinds of tables and figures, and name their sources. A d
     {"title": …, "conclusion": …, "sections": [{"title": …, "blocks": [block, …]}, …], "sources": [{"id", "url", "finding", "applies_to"}]}
 
 Blocks: ``text``, ``sub`` (a sub heading), ``bullets``, ``table`` (caption, columns, rows, widths), ``figure`` (kind layers | steps |
-sequence | grid, caption), ``image`` (file, alt, caption; not in the design document), ``prototype`` (file, title, kind phone | wide, library; an interactive
+sequence | grid, caption), ``image`` (file, alt, caption; not in the design document), ``prototype`` (file, title, kind phone | wide, source; an interactive
 page built into the document as a frame, only in a front end tab), ``code``, ``note``. The page is typeset by Luz-Design (formal reading page).
 
 The design document (前端界面设计) is 前端规范 + one tab per front end or device + 检查与差异. A front end tab is declared by the spec::
@@ -22,7 +22,6 @@ import base64
 import html
 import json
 import math
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -174,7 +173,13 @@ def validate(stage: str, spec: dict[str, Any], root: Path | None = None) -> list
     if figures < std.get("min_figures", 0):
         errors.append(f"全文至少 {std['min_figures']} 张图，现在 {figures} 张")
     sources = spec.get("sources")
-    if not isinstance(sources, list) or len(sources) < 2:
+    local = False
+    if root is not None and sources == []:
+        from project_core import load_project
+        from project_crawl_gate import stage_record, uses_local_evidence
+
+        local = uses_local_evidence(stage_record(root, load_project(root), stage))
+    if (not isinstance(sources, list) or len(sources) < 2) and not local:
         errors.append("来源与依据至少 2 条：每条来自 Luz-Crawl 前置检索，写明来源编号、网址、读到了什么、用在哪里或为什么没用")
     else:
         for s in sources:
@@ -182,6 +187,16 @@ def validate(stage: str, spec: dict[str, Any], root: Path | None = None) -> list
                 errors.append("来源与依据每条都要有 id、url、finding、applies_to")
                 break
     return list(dict.fromkeys(errors))
+
+
+def source_binding_errors(stage: str, spec: dict[str, Any], root: Path) -> list[str]:
+    """Runtime check of persisted document citations; pure shape validation stays usable without a project."""
+    from project_crawl_gate import bind_document_sources
+    try:
+        bind_document_sources(root, stage, spec.get("sources", []), require_hash=True)
+    except (ProjectError, OSError, ValueError, TypeError, AttributeError) as exc:
+        return [str(exc)]
+    return []
 
 
 def _statement_errors(spec: dict[str, Any], root: Path | None) -> list[str]:
@@ -381,7 +396,7 @@ def _frontend_tab_errors(tab: dict[str, Any], root: Path | None, files_seen: dic
     if len(protos) > 1:
         errors.append(f"前端页签「{name}」有 {len(protos)} 个原型：一个页签只放一个，手机页、电脑页、小程序等不同设备端各开一个页签")
     for b in protos:
-        for key in ("caption", "try", "source", "sources"):
+        for key in ("caption", "try", "sources"):
             if key in b:
                 errors.append(f"前端页签「{name}」的原型不写 {key}：页签里只显示原型本身，不放图题、操作说明和来源")
         if frontend_surface(tab) == "miniprogram" and b.get("kind") != "phone":
@@ -499,34 +514,6 @@ def _block_errors(section: str, b: dict[str, Any], root: Path | None) -> list[st
     return out
 
 
-# What a prototype page must carry for the 前端界面设计 standard: a reduced-motion branch, dialogs with a role, a configuration panel. The checks
-# read the built file, so a stub or a static mock-up does not pass.
-PROTOTYPE_MARKERS = {
-    "没有“减少动态效果”分支": ("prefers-reduced-motion",),
-    "没有对话框（原生 dialog 或带 role=dialog 的容器）": ("showModal", "role: 'dialog'"),
-    "没有场景配置面板": ("UI.demo(", "K.panel("),
-}
-PROTOTYPE_MIN_BYTES = 120_000
-PROTOTYPE_MIN_COMPONENTS = 6          # different components of the chosen library that the built file names (references/component-libraries.json)
-SURFACE_OF_KIND = {"phone": {"miniapp", "h5"}, "wide": {"admin", "website"}}
-
-
-def component_libraries() -> dict[str, Any]:
-    """The component library registry of Luz-Design: id -> name, stack, surfaces, class prefixes, theme mechanism, docs."""
-    path = Path(__file__).resolve().parents[2] / "Luz-Design" / "references" / "component-libraries.json"
-    return json.loads(path.read_text(encoding="utf-8"))["libraries"]
-
-
-def library_components(text: str, prefixes: list[str]) -> set[str]:
-    """The distinct components of a library that a built file names: class names (``el-button``) and custom elements (``<t-button>``) with
-    the library's prefix, modifiers (``__``, ``--``) cut off."""
-    found: set[str] = set()
-    for prefix in prefixes:
-        for m in re.finditer(r"(?<![\w-])(" + re.escape(prefix) + r"[a-z0-9]+(?:-[a-z0-9]+)*)", text):
-            found.add(m.group(1))
-    return found
-
-
 def _prototype_errors(where: str, b: dict[str, Any], root: Path | None) -> list[str]:
     out: list[str] = []
     name = str(b.get("title", "")).strip() or "原型"
@@ -534,32 +521,16 @@ def _prototype_errors(where: str, b: dict[str, Any], root: Path | None) -> list[
         out.append(f"{where}的原型要写标题（显示在原型框的顶栏）")
     if b.get("kind", "wide") not in {"phone", "wide"}:
         out.append(f"{where}的原型 kind 只能是 phone 或 wide")
-    libs = component_libraries()
-    lib = libs.get(str(b.get("library", "")))
-    if lib is None and not str(b.get("library", "")).strip():
-        out.append(f"{where}的原型「{name}」要写 library：所用组件库的编号（{'、'.join(libs)}）；控件一律来自这个库的真实组件，不手写自造控件")
-    elif lib is None:
-        out.append(f"{where}的原型「{name}」的 library「{b.get('library')}」不在组件库注册表里（{'、'.join(libs)}）：先在 Luz-Design 的 component-libraries.json 登记，再使用")
-    elif not (set(lib["surfaces"]) & SURFACE_OF_KIND.get(b.get("kind", "wide"), set())):
-        out.append(f"{where}的原型「{name}」是 {b.get('kind', 'wide')} 端，组件库 {lib['name']} 适用于 {'、'.join(lib['surfaces'])}，换一个适合这一端的库")
+    source = b.get("source")
+    if (not isinstance(source, dict) or set(source) != {"session", "package", "entry"}
+            or any(not str(source.get(key, "")).strip() for key in ("session", "package", "entry"))):
+        out.append(f"{where}的原型「{name}」必须提供完整 UI source 的 session、package、entry；发布时逐项核验真实来源与浏览器审计")
     file = b.get("file")
     if not file or not str(file).endswith(".html"):
         return out + [f"{where}的原型「{name}」缺少 html 文件"]
-    if root is not None:
-        path = project_file(root, str(file))
-        if not path.is_file():
-            return out + [f"{where}的原型文件不存在: {file}"]
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if len(text.encode("utf-8")) < PROTOTYPE_MIN_BYTES:
-            out.append(f"{where}的原型「{name}」只有框架没有内容（文件小于 {PROTOTYPE_MIN_BYTES // 1000} KB）")
-        for why, options in PROTOTYPE_MARKERS.items():
-            if not any(o in text for o in options):
-                out.append(f"{where}的原型「{name}」{why}")
-        if lib is not None:
-            used = library_components(text, lib["prefix"])
-            if len(used) < PROTOTYPE_MIN_COMPONENTS:
-                out.append(f"{where}的原型「{name}」里只有 {len(used)} 种 {lib['name']} 的组件（至少 {PROTOTYPE_MIN_COMPONENTS} 种）：按钮、表单、表格、对话框等控件要用库的真实组件，"
-                           "不能只引入样式再手写控件；构建后用 audit_rendered.py --library 在真实浏览器里逐页核对")
+    # Shape validation is also used for offline document editing. Runtime
+    # source reconstruction, project binding and audit checks are enforced by
+    # project_ui_source.prepare/output_errors before writing and approval.
     return out
 
 
@@ -797,7 +768,8 @@ def render_body(spec: dict[str, Any], root: Path, doc_dir: Path | None = None) -
         """The prototype as a frame: the real interface, with a bar that has the title and two buttons (reload, open in a new window). Nothing else."""
         counters["proto"] += 1
         base = Path(doc_dir) if doc_dir else project_file(root, "docs/02-产品开发")
-        src = os.path.relpath(project_file(root, b["file"]), base).replace(os.sep, "/")
+        from project_ui_source import source_contract, entry_href
+        src = entry_href(source_contract(root, b.get("source")), base)
         height = int(b.get("height", 900 if b.get("kind") == "phone" else 860))
         fid = f"proto-{counters['proto']}"
         return (f'<div class="proto" role="group" aria-label="{E(b["title"], quote=True)}"><div class="proto-bar"><strong>{E(b["title"])}</strong><span class="proto-act">'
@@ -875,11 +847,12 @@ def render_body(spec: dict[str, Any], root: Path, doc_dir: Path | None = None) -
         parts.append("<script>document.addEventListener('click',function(e){var b=e.target.closest('[data-reload]');if(!b)return;var f=document.getElementById(b.getAttribute('data-reload'));if(!f)return;var s=f.getAttribute('src')||f.dataset.src;if(s){f.removeAttribute('data-src');f.src=s;}});</script>")
     if has_tabs:
         parts.append(dev_tabs.TAB_JS)
-    parts.append("<h2>来源与依据</h2>")
-    counters["table"] += 1
-    rows = [[str(s["id"]), str(s["url"]), str(s["finding"]), str(s["applies_to"])] for s in spec["sources"]]
-    parts.append(f'<div class="tcap">表 {counters["table"]}　检索来源与采用位置</div>'
-                 + showcase.table_html(["来源", "网址", "读到的内容", "采用位置"], rows, widths=[1.3, 3.2, 4, 3], first_key=False, formal=True))
+    if spec["sources"]:
+        parts.append("<h2>来源与依据</h2>")
+        counters["table"] += 1
+        rows = [[str(s["id"]), str(s["url"]), str(s["finding"]), str(s["applies_to"])] for s in spec["sources"]]
+        parts.append(f'<div class="tcap">表 {counters["table"]}　检索来源与采用位置</div>'
+                     + showcase.table_html(["来源", "网址", "读到的内容", "采用位置"], rows, widths=[1.3, 3.2, 4, 3], first_key=False, formal=True))
     return "".join(parts)
 
 

@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+import estimate_terms as et
 from project_core import ProjectError, _read_json, _write_json, locate, now_iso, relative_to_project, sha256_file
 
 SURFACES = {
@@ -36,11 +37,9 @@ CLIENT_VISIBLE_SOURCES = ("客户",)
 CLIENT_VISIBLE_CATEGORIES = ("需求", "规则", "范围")
 # Numbers and file names that mean nothing to the client: approvals, artifacts, baseline items, the project's own client files.
 INTERNAL_TOKENS = re.compile(r"\b(?:APPROVAL|ART|SRC|STK|FE|BF|CQ|ST|SE|MP)-[A-Z0-9]+(?:-[A-Z0-9]+)*\b")
-ACCEPTANCE_STATUSES = ("pending", "passed", "failed", "waived")
 PLACEHOLDER = re.compile(r"待补充|TODO|TBD|占位符|占位文字|xxx|lorem ipsum", re.I)  # “占位图”等业务词不算占位
 
-# The proposal says why, what and what is delivered; the feature list carries the functions and the price, the architecture
-# book the architecture. One fact lives in one document and the others point to it by name.
+# Customer files each cover their own task and are generated from the same project data.
 PROPOSAL_SECTIONS = (
     ("background", "项目背景与需求分析"),
     ("solution", "解决方案"),
@@ -59,7 +58,7 @@ REQUIREMENT_SECTIONS = (
 )
 WORD_BLOCKS = {"text", "p", "bullets", "checks", "callout", "sub", "table", "matrix"}
 REQUIREMENT_WORD_BLOCKS = WORD_BLOCKS | {"auto"}      # the need list is taken from the feature list: it becomes sub headings and tables before typesetting
-OTHER_FILES = re.compile(r"《(?:需求说明书|方案说明书|系统架构图册?|功能清单|报价清单|业务逻辑确认表|需求变更台账|使用说明书?|验收清单|客户信息收集表|业务规则收集表)》|配套文件|见功能清单|见系统架构图|见业务逻辑确认表")
+OTHER_FILES = et.INTERNAL_DOCUMENT_REFERENCES
 
 # Feature tags that need a dedicated Luz-Ops check next to the generic surface checks.
 TAG_CHECKS = {
@@ -118,21 +117,39 @@ def documents_config(root: Path) -> dict[str, Any]:
     return _read_json(root / "config" / "documents.json", {}) or {}
 
 
-def amounts_enabled(root: Path) -> bool:
-    """``config/documents.json`` ``"amounts": false`` keeps every price out of the client documents: no quote sheet in 04-功能清单 (``quote.json`` is not read),
-    no amounts in the proposal, the architecture book, the change ledger or the review pages. The person-days (``hours``) stay. Default: true."""
-    return documents_config(root).get("amounts", True) is not False
+def estimate_state(root: Path):
+    """The switches of the 预算、人日与报价政策 as they stand (estimate_policy.State): ``workdays`` and ``quote`` are effective only with their evidence; both are off by default."""
+    import estimate_policy as ep
+
+    return ep.read_state(root)
+
+
+def workdays_enabled(root: Path) -> bool:
+    """``config/documents.json`` ``estimate.workdays`` with its evidence: the function list carries 工时（人天）, every function has ``hours`` and ``hours_basis``. Default: off."""
+    return estimate_state(root).workdays
+
+
+def quote_enabled(root: Path) -> bool:
+    """``estimate.quote`` with its evidence (and workdays): the function list carries the 报价清单, every figure from a person's quote (quote.json). Default: off."""
+    return estimate_state(root).quote
 
 
 # What puts the quote in front of the client: the words of a quote, a price per person-day, a total with a sum of money. A rule that merely mentions money
 # ("100 分抵 1 元", "订单金额满 200 元") is business logic and not matched; the feature list is held to the stricter pattern (any sum, 金额, a cell that starts with 合计 or 总计;
 # a description that merely says "演示数量合计" is not a total).
-PRICE = re.compile(r"报价|单价|小计|[¥￥]\s*\d|\d[\d,.]*\s*元\s*(?:每|/|／)\s*人天|(?:总价|合计|总计|基础功能|可选功能)[^。；\n]{0,10}\d[\d,.]*\s*(?:万)?元")
-PRICE_STRICT = re.compile(PRICE.pattern + r"|金额|^\s*(?:合计|总计)|(?<![\d.])\d[\d,]*(?:\.\d+)?\s*(?:万)?元(?![素宵旦])")
+# The words of money come from the shared vocabulary (estimate_terms.MONEY_WORDS). Some are ordinary business words in prose ("订单金额满 200 元", "会员折扣", "预算管理"): in a
+# sentence they count only beside a figure (the pattern below) or, for 金额, in a cell of a spreadsheet (strict); the rest (报价, 单价, 价款, 造价) are money wherever they stand.
+AMBIGUOUS_IN_PROSE = ("金额", "折扣", "预算", "总价", "费用合计")
+PROSE_MONEY = [w for w in et.MONEY_WORDS if w not in AMBIGUOUS_IN_PROSE]
+_ALT = lambda words: "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
+PRICE = re.compile(_ALT(PROSE_MONEY) + r"|小计|[¥￥]\s*\d|\d[\d,.]*\s*元\s*(?:每|/|／)\s*人[天日]|(?:总价|合计|总计|基础功能|可选功能)[^。；\n]{0,10}\d[\d,.]*\s*(?:万)?元")
+PRICE_STRICT = re.compile(PRICE.pattern + r"|金额|^\s*(?:" + _ALT(["合计", "总计"]) + r")|(?<![\d.])\d[\d,]*(?:\.\d+)?\s*(?:万)?元(?![素宵旦])")
 
 
-def money_issues(text: str, strict: bool = False) -> list[str]:
+def money_issues(text: str, strict: bool = False, allow: tuple[str, ...] = ()) -> list[str]:
     """Words and figures that put a price in front of the client (报价, 单价, 小计, 12,750 元每人天, ¥500); ``strict`` also takes 金额, 合计 and any sum in yuan."""
+    for term in sorted((a for a in allow if a), key=len, reverse=True):
+        text = text.replace(term, " ")                                         # a business word the project declared (allow_terms) is out of the text before it is read
     return sorted({m.group(0).strip() for m in (PRICE_STRICT if strict else PRICE).finditer(text)})
 
 
@@ -210,28 +227,16 @@ def validate_features(spec: Any) -> list[str]:
 
 
 def load_quote(root: Path) -> dict[str, Any] | None:
-    """``data/client/quote.json`` {"unit_price": 500}: the price of one person-day; the hours are on each feature (``hours``)."""
+    """``data/client/quote.json``: the unit price of one person-day (``unit_price``, yuan) that a person gave, with who gave it, when, the words that asked for it and the words
+    or file that carry the number. Read only while ``estimate.quote`` is on; written by ``project.py client <项目> quote``, never by an agent's own numbers."""
     return load(root, "client", "quote.json")
 
 
 def validate_hours(features: dict[str, Any]) -> list[str]:
-    """Every function in scope carries its estimate in person-days (``hours``): the feature list shows it with or without a price."""
-    missing = [f["id"] for f in active_features(features) if not isinstance(f.get("hours"), (int, float)) or f["hours"] <= 0]
-    return [f"这些功能没有工时（features.json 的 hours，人天）: {'、'.join(missing[:8])}"] if missing else []
+    """With workdays on every function in scope carries ``hours`` (steps of 0.5) and the ``hours_basis`` it rests on."""
+    import estimate_policy as ep
 
-
-def validate_quote(features: dict[str, Any], quote: Any) -> list[str]:
-    if not isinstance(quote, dict) or not isinstance(quote.get("unit_price"), (int, float)) or quote["unit_price"] <= 0:
-        return ["quote.json 需含大于 0 的 unit_price（元/人天）"]
-    return validate_hours(features)
-
-
-def quote_totals(features: dict[str, Any], quote: dict[str, Any]) -> dict[str, float]:
-    items = active_features(features)
-    price = float(quote["unit_price"])
-    basic = sum(f["hours"] for f in items if f["tier"] == "基础")
-    optional = sum(f["hours"] for f in items if f["tier"] != "基础")
-    return {"unit_price": price, "basic_hours": basic, "optional_hours": optional, "basic_amount": basic * price, "optional_amount": optional * price}
+    return ep.hours_errors(features)
 
 
 def load_features(root: Path, *, validate: bool = True) -> dict[str, Any]:
@@ -411,6 +416,16 @@ def validate_manual(spec: Any, features: dict[str, Any]) -> list[str]:
 
 # --- build ledger (staleness) -----------------------------------------------------------------------------------
 
+def _section(name: str, key: str, data: dict[str, Any]) -> Any:
+    """One section of a JSON source. The ``estimate`` of config/documents.json is read through its normalised form (estimate_policy.normalized_section): the project
+    that has no section yet and the one with the defaults written depend on the same thing, and only a switch that is effectively on carries its evidence."""
+    if name.replace(chr(92), "/").endswith("config/documents.json") and key == "estimate":
+        import estimate_policy as ep
+
+        return ep.normalized_section(data)
+    return data.get(key)
+
+
 def source_digest(root: Path, rel: str) -> str | None:
     """Hash of a source file. ``file#a,b`` is the hash of only sections a and b of a JSON file (the other sections may change without making a
     document built from the file stale); a plain path is the hash of the whole file. None when the file is not there or has no such sections."""
@@ -426,7 +441,7 @@ def source_digest(root: Path, rel: str) -> str | None:
         return None
     if not isinstance(data, dict):
         return None
-    payload = {key: data.get(key) for key in sections.split(",")}
+    payload = {key: _section(name, key, data) for key in sections.split(",")}
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 

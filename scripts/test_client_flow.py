@@ -70,6 +70,9 @@ class ClientFlowTests(unittest.TestCase):
                 cf.build_requirements(root)
             # the finished document is built, registered in the requirements stage and goes stale when its source changes
             cd.save(root, fx.requirements(), "client", "requirements.json")
+            import template_library
+            template_library.select(root, "luz-project", "requirements", "showcase", "docs/01-需求对接/01-需求说明书.pdf")
+            template_library.select(root, "luz-project", "proposal", "showcase", "docs/01-需求对接/02-方案说明书.pdf")
             files = cf.build_requirements(root)
             self.assertEqual([p.name for p in files], ["01-需求说明书.pdf"])
             self.assertTrue(files[0].stat().st_size > 3000)
@@ -87,6 +90,8 @@ class ClientFlowTests(unittest.TestCase):
             fx.crawled(root, "requirements")
             cd.save(root, fx.features(), "client", "features.json")
             cd.save(root, fx.requirements(), "client", "requirements.json")
+            import template_library
+            template_library.select(root, "luz-project", "requirements", "showcase", "docs/01-需求对接/01-需求说明书.pdf")
             cd.save(root, {"feature_choices": {"FN-003": "不需要", "FN-008": "需要", "FN-009": "需要"}, "answers": {}}, "client", "intake.json")
             cf.set_theme(root, "fitness-gym")
             seen: list[dict] = []
@@ -166,7 +171,7 @@ class ClientFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = new_project("示例健身", tmp)
             fx.write_all(root)
-            fx.crawled(root, "proposal", "client-intake", "handover")
+            fx.crawled(root, "requirements", "proposal", "client-intake", "handover")
             # proposal: three PDFs in 01-需求对接, registered, built once and reused while sources are unchanged
             files = cf.build_proposal(root)
             self.assertEqual(sorted(p.name for p in files), sorted(["02-方案说明书.pdf", "03-系统架构图.pdf", "04-功能清单.xlsx"]))
@@ -385,6 +390,7 @@ class ChangeLedgerClientViewTests(unittest.TestCase):
     def _project(self, tmp: str) -> Path:
         root = new_project("台账", tmp)
         fx.write_all(root)
+        fx.crawled(root, "requirements", "handover")
         return root
 
     def _add_mixed(self, root: Path) -> None:
@@ -545,7 +551,7 @@ class ChangeLedgerClientViewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = new_project("确认表", tmp)
             fx.write_all(root)
-            fx.crawled(root, "proposal", "client-intake")
+            fx.crawled(root, "requirements", "proposal", "client-intake")
             cf.build_proposal(root)
             cf.import_intake(root, fill_intake(cf.build_intake_form(root), root))
             auto = [c for c in cf._ledger(root)["changes"] if c.get("auto") == "intake"]
@@ -596,22 +602,20 @@ class ChangeLedgerClientViewTests(unittest.TestCase):
 
 
 class AmountsSwitchTests(unittest.TestCase):
-    """``config/documents.json`` ``"amounts": false``: the client documents carry no price. 04-功能清单 is one sheet with the person-days, quote.json is not read,
-    a visible ledger entry cannot carry a price and the ledger shows function names where it used to show ids (audit 014 rework)."""
+    """预算、人日与报价政策 (``config/documents.json`` ``estimate``, both switches off unless a person asked, with the evidence): the client documents carry no person-days and no
+    money by default; 04-功能清单 is one sheet that lists functions. Person-days come with ``workdays`` (a column and formula totals), the quote sheet with ``quote`` and a quote
+    that a person gave. A visible ledger entry cannot carry what the project did not ask for, and the ledger shows function names where it used to show ids (audit 014 rework).
+    The tests of the old ``amounts`` switch live on here, restated for the estimate switches (test_estimate.py has the rest of the policy)."""
 
-    def _project(self, tmp: str, amounts: bool) -> Path:
+    def _project(self, tmp: str, workdays: bool = False, quote: bool = False) -> Path:
         root = new_project("示例健身", tmp)
         fx.write_all(root)
-        spec = fx.features()
-        for k, f in enumerate(spec["features"]):
-            f["hours"] = 0.5 * (k + 1)
-        cd.save(root, spec, "client", "features.json")
-        cd.save(root, {"unit_price": 500}, "client", "quote.json")
-        config = cd.documents_config(root)
-        if not amounts:
-            config["amounts"] = False
-        (root / "config" / "documents.json").write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
-        fx.crawled(root, "proposal")
+        cd.save(root, fx.with_hours(fx.features()), "client", "features.json")             # hours on the functions are history while workdays is off: they never reach a file
+        if workdays or quote:
+            fx.switch_on(root, workdays=True, quote=quote)
+        if quote:
+            fx.human_quote(root)
+        fx.crawled(root, "requirements", "proposal")
         return root
 
     def _cells(self, path: Path) -> tuple[list[str], list[list]]:
@@ -624,52 +628,62 @@ class AmountsSwitchTests(unittest.TestCase):
 
     def test_with_prices_the_feature_list_still_has_the_quote_sheet(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = self._project(tmp, amounts=True)
-            self.assertTrue(cd.amounts_enabled(root))
+            root = self._project(tmp, quote=True)
+            self.assertTrue(cd.quote_enabled(root) and cd.workdays_enabled(root))
             cf.build_proposal(root)
-            names, _ = self._cells(locate(root, "docs/01-需求对接/04-功能清单.xlsx"))
+            names, rows = self._cells(locate(root, "docs/01-需求对接/04-功能清单.xlsx"))
             self.assertEqual(names, ["功能清单", "报价清单"])
-            self.assertEqual(cf.amount_errors(root), [])                                    # nothing is checked while prices are allowed
+            self.assertIn("工时（人天）", rows[0])
+            self.assertEqual(cf.estimate_errors(root), [])                                  # what the client reads carries only what was asked for
+            self.assertEqual(cf.stage_checks(root, "proposal"), [])
 
     def test_without_prices_the_feature_list_is_one_sheet_with_the_person_days_and_quote_json_is_not_read(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = self._project(tmp, amounts=False)
-            self.assertFalse(cd.amounts_enabled(root))
+            root = self._project(tmp, workdays=True)
+            fx.human_quote(root)                                                            # a quote left on disk while the quote switch is off
+            self.assertFalse(cd.quote_enabled(root))
             cf.build_proposal(root)
             sheet = locate(root, "docs/01-需求对接/04-功能清单.xlsx")
             names, rows = self._cells(sheet)
             self.assertEqual(names, ["功能清单"])
-            self.assertIn("工时（人天）", rows[0])                                          # the estimate stays
+            self.assertIn("工时（人天）", rows[0])
             hours = rows[0].index("工时（人天）")
-            self.assertEqual([r[hours] for r in rows[1:]], [0.5 * (k + 1) for k in range(9)])
-            text = json.dumps(rows, ensure_ascii=False)
-            for word in ("报价", "单价", "金额", "小计", "合计", "元"):
+            self.assertEqual([r[hours] for r in rows[1:10]], [0.5 * (k + 1) for k in range(9)])
+            text = json.dumps(rows[:10], ensure_ascii=False)
+            for word in ("报价", "单价", "金额", "元"):
                 self.assertNotIn(word, text)
             self.assertNotIn("data/client/quote.json", cd.load(root, "client", "build.json")["proposal"]["sources"])
-            self.assertEqual(cf.amount_errors(root), [])
+            self.assertEqual(cf.estimate_errors(root), [])
             self.assertEqual(cf.stage_checks(root, "proposal"), [])
-            (root / "data/client/quote.json").unlink()                                       # nothing needs it any more
+            (root / "data/client/quote.json").unlink()                                       # nothing needs it
             self.assertEqual(cf.stage_checks(root, "proposal"), [])
 
     def test_without_prices_every_function_still_needs_its_hours(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = self._project(tmp, amounts=False)
+            root = self._project(tmp, workdays=True)
             spec = cd.load(root, "client", "features.json")
             del spec["features"][2]["hours"]
             cd.save(root, spec, "client", "features.json")
             with self.assertRaises(ProjectError) as refused:
                 cf.build_proposal(root)
-            self.assertIn("工时", str(refused.exception))
+            self.assertIn("hours", str(refused.exception))
+            spec["features"][2]["hours"] = 1.5
+            del spec["features"][3]["hours_basis"]
+            cd.save(root, spec, "client", "features.json")
+            with self.assertRaises(ProjectError) as refused:
+                cf.build_proposal(root)
+            self.assertIn("hours_basis", str(refused.exception))
 
     def test_a_price_in_a_document_the_client_reads_is_an_error_when_prices_are_off(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = self._project(tmp, amounts=False)
+            root = self._project(tmp)
             cf.build_proposal(root)
             proposal = cd.load(root, "client", "proposal.json")
-            proposal["sections"][0]["blocks"].append({"type": "text", "text": "基础功能合计 12,750 元，单价 500 元每人天。"})
+            proposal["sections"][0]["blocks"].append({"type": "text", "text": "基础功能合计 12,750 元，单价 800 元每人天，共 16 人天。"})
             cd.save(root, proposal, "client", "proposal.json")
-            found = cf.amount_errors(root)
+            found = cf.estimate_errors(root)
             self.assertTrue(any("proposal.json" in e and "12,750 元" in e for e in found), found)
+            self.assertTrue(any("proposal.json" in e and "人天" in e for e in found), found)
             self.assertTrue(any("proposal.json" in e for e in validate_project(root, strict=True)))
             self.assertEqual(cd.money_issues("共 3 元素，价格另议"), [])                      # 元素 is not an amount
 
@@ -678,30 +692,34 @@ class AmountsSwitchTests(unittest.TestCase):
         self.assertEqual(cd.money_issues("合计", strict=True), ["合计"])
         self.assertEqual(cd.money_issues("基础功能合计 12,750 元", strict=False), ["基础功能合计 12,750 元"])
         with tempfile.TemporaryDirectory() as tmp:
-            root = self._project(tmp, amounts=False)
+            root = self._project(tmp)
             page = root / "reviews/04-业务逻辑确认评审.html"
             page.parent.mkdir(parents=True, exist_ok=True)
-            page.write_text("<html><body><p>基础功能小计 12,750 元，单价 500 元每人天</p></body></html>", encoding="utf-8")
-            self.assertTrue(any("04-业务逻辑确认评审.html" in e for e in cf.amount_errors(root)))
+            page.write_text("<html><body><p>基础功能小计 12,750 元，单价 800 元每人天</p></body></html>", encoding="utf-8")
+            self.assertTrue(any("04-业务逻辑确认评审.html" in e for e in cf.estimate_errors(root)))
             manifest = load_project(root)
             for stage in manifest["stages"]:
                 if stage["id"] == "client-intake":
                     stage["status"] = "superseded"
             from project_core import _save_manifest
             _save_manifest(root, manifest)
-            self.assertEqual([e for e in cf.amount_errors(root) if "04-业务逻辑确认评审.html" in e], [])
+            self.assertEqual([e for e in cf.estimate_errors(root) if "04-业务逻辑确认评审.html" in e], [])
 
     def test_the_ledger_refuses_a_price_and_shows_function_names_not_ids(self):
         from openpyxl import load_workbook
 
         with tempfile.TemporaryDirectory() as tmp:
-            root = self._project(tmp, amounts=False)
+            root = self._project(tmp)
             with self.assertRaises(ProjectError) as refused:
                 cf.add_change(root, type="修改", category="规则", title="积分抵扣比例调整", detail="100 分抵 1 元改为 50 分抵 1 元", source="客户", requester="店长",
                               impact="报价增加 750 元", refs=["FN-002"], status="已确认", confirmed_by="店长（微信确认）", reopen=False)
             self.assertIn("金额", str(refused.exception))
+            with self.assertRaises(ProjectError) as refused:                                 # no person-days were asked for: the client does not read them either
+                cf.add_change(root, type="修改", category="规则", title="积分抵扣比例调整", detail="100 分抵 1 元改为 50 分抵 1 元", source="客户", requester="店长",
+                              impact="增加 1.5 人天", refs=["FN-002"], status="已确认", confirmed_by="店长（微信确认）", reopen=False)
+            self.assertIn("人天", str(refused.exception))
             cf.add_change(root, type="修改", category="规则", title="积分抵扣比例调整", detail="100 分抵 1 元改为 50 分抵 1 元", source="客户", requester="店长",
-                          impact="增加 1.5 人天", refs=["FN-002", "FN-004"], status="已确认", confirmed_by="店长（微信确认）", reopen=False)
+                          impact="影响积分结算页", refs=["FN-002", "FN-004"], status="已确认", confirmed_by="店长（微信确认）", reopen=False)
             ws = load_workbook(locate(root, "docs/01-需求对接/06-需求变更台账.xlsx")).active
             header = next(r for r in range(1, 8) if any(c.value == "变更编号" for c in ws[r]))
             names = [c.value for c in ws[header]]
@@ -710,22 +728,16 @@ class AmountsSwitchTests(unittest.TestCase):
             self.assertNotRegex(related, r"FN-\d")
             self.assertEqual(cf.ledger_warnings(root), [])
 
-    def test_every_sheet_carries_the_version_of_the_proposal_cover(self):
+    def test_sheets_carry_no_subtitle_under_the_title(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = self._project(tmp, amounts=False)
-            proposal = cd.load(root, "client", "proposal.json")
-            proposal["hero"]["info"] = [["项目名称", "示例健身"], ["版本", "V1.1"], ["日期", "2026-11-05"]]
-            cd.save(root, proposal, "client", "proposal.json")
-            self.assertEqual(cd.document_version(root), "V1.1")
+            root = self._project(tmp)
             cf.build_proposal(root)
             cf.add_change(root, type="新增", category="需求", title="新增储值", detail="档位 200/500/1000", source="客户", requester="老板")
             for name in ("04-功能清单.xlsx", "06-需求变更台账.xlsx"):
                 from openpyxl import load_workbook
 
                 ws = load_workbook(locate(root, "docs/01-需求对接") / name).active
-                subtitle = next(str(c.value) for row in ws.iter_rows(min_row=1, max_row=3) for c in row if c.value and "·" in str(c.value))
-                self.assertIn("V1.1", subtitle, name)
-                self.assertNotIn("V1.0", subtitle, name)
+                self.assertTrue(all(c.value is None for c in ws[2]), name)             # row 2 is the spacer under the title: no explanatory subtitle (Design make_xlsx)
 
 
 class IntakeEditWordingTests(unittest.TestCase):
@@ -781,21 +793,35 @@ class ArchitectureFrontendTests(unittest.TestCase):
         (folder / "entrances.json").write_text(json.dumps({"entrances": [{"fn": "FN-001"}], "no_entrance": [{"fn": "FN-002", "reason": "页内操作"}]}), encoding="utf-8")
         return root, folder, register_artifact
 
-    def test_nothing_is_asked_of_a_project_without_screens_or_without_a_function_list(self):
+    def test_a_project_without_screens_is_asked_nothing_and_one_without_a_function_list_is_told_so(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(cf.stage_checks(new_project("没有功能清单", tmp), "architecture"), [])
+            # The interface of a component-reuse project (the default) is built from the function list, so its absence is named.
+            errors = cf.stage_checks(new_project("没有功能清单", tmp), "architecture")
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn("data/client/features.json", errors[0])
             root, _, _ = self._project(tmp + "/b", surfaces=("api",))
             self.assertEqual(cf.architecture_frontend_errors(root), [])
 
-    def test_the_three_files_must_be_registered_and_the_entrance_tables_must_cover_every_function_still_in_the_project(self):
+    def test_the_files_and_the_behaviour_contract_must_be_registered_and_the_entrance_tables_must_cover_every_function_still_in_the_project(self):
+        import dev_fixture
+
         with tempfile.TemporaryDirectory() as tmp:
             root, folder, register = self._project(tmp)
             errors = cf.stage_checks(root, "architecture")
             for kind in ("frontend-spec", "frontend-spec-page", "entrances"):
                 self.assertTrue(any(f"--kind {kind}" in e for e in errors), (kind, errors))
+            self.assertTrue(any("luz-ui-requirements/2" in e for e in errors), errors)
             register(root, "architecture", folder / "frontend-spec.json", "frontend-spec")
             register(root, "architecture", folder / "界面功能说明.html", "frontend-spec-page")
             register(root, "architecture", folder / "entrances.json", "entrances")
+            # the three files alone no longer do: a component-reuse project hands over the behaviour contract of its screens
+            self.assertEqual([e for e in cf.stage_checks(root, "architecture") if "luz-ui-requirements/2" not in e], [])
+            self.assertTrue(any("luz-ui-requirements/2" in e for e in cf.stage_checks(root, "architecture")))
+            (folder / "ui-requirements.json").write_text(json.dumps(dev_fixture.ui_requirements(["FN-001", "FN-002", "FN-003"])), encoding="utf-8")
+            register(root, "architecture", folder / "ui-requirements.json", "ui-requirements")
+            self.assertTrue(any("与有效功能范围不一致" in e and "FN-003" in e for e in cf.stage_checks(root, "architecture")), "the contract answers for the functions still in the project, no more")
+            (folder / "ui-requirements.json").write_text(json.dumps(dev_fixture.ui_requirements(["FN-001", "FN-002"])), encoding="utf-8")
+            register(root, "architecture", folder / "ui-requirements.json", "ui-requirements")
             self.assertEqual(cf.stage_checks(root, "architecture"), [], "FN-003 已被拿掉，不要求入口；FN-002 在 no_entrance 里写明了理由")
             (folder / "entrances.json").write_text(json.dumps({"entrances": [{"fn": "FN-001"}], "no_entrance": []}), encoding="utf-8")
             register(root, "architecture", folder / "entrances.json", "entrances")
@@ -806,6 +832,28 @@ class ArchitectureFrontendTests(unittest.TestCase):
             self.assertEqual(cf.stage_checks(root, "architecture"), [])
             (folder / "frontend-spec.json").write_text("{坏的", encoding="utf-8")
             self.assertTrue(any("读不出来" in e for e in cf.stage_checks(root, "architecture")))
+
+    def test_new_projects_require_action_homes_and_existing_contracts_can_be_read(self):
+        import dev_fixture
+        from project_core import _save_manifest, load_project
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root, folder, register = self._project(tmp)
+            register(root, "architecture", folder / "界面功能说明.html", "frontend-spec-page")
+            register(root, "architecture", folder / "entrances.json", "entrances")
+            contract = dev_fixture.ui_requirements(["FN-001", "FN-002"])
+            contract["schema"] = "luz-ui-requirements/1"
+            del contract["action_groups"]
+            del contract["actions"][0]["feature_id"]
+            path = folder / "ui-requirements.json"
+            path.write_text(json.dumps(contract), encoding="utf-8")
+            register(root, "architecture", path, "ui-requirements")
+            self.assertTrue(any("声明动作归属" in error for error in cf.architecture_frontend_errors(root)))
+
+            manifest = load_project(root)
+            del manifest["ui_requirements_version"]
+            _save_manifest(root, manifest)
+            self.assertEqual(cf.architecture_frontend_errors(root), [])
 
 
 if __name__ == "__main__":

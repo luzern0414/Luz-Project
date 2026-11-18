@@ -13,10 +13,11 @@ from test_crawl_preflight import complete_fixture
 
 from client_fixture import new_project
 from legacy_fixture import legacy_project
-from crawl_gate import evidence_session
+from project_crawl_gate import evidence_session
 from project_paths import locate
 from project_core import (  # type: ignore[import-not-found]
     approve_stage,
+    create_project,
     register_artifact,
     render_project,
     validate_project,
@@ -26,11 +27,13 @@ from project_core import (  # type: ignore[import-not-found]
 class ProjectScaffoldTests(unittest.TestCase):
     def test_init_creates_the_session_with_the_state_root_and_the_project_directory_with_results_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            state = new_project("示例项目", tmp, repository="D:/repo/example")
+            state = create_project("示例项目", Path(tmp) / "work" / "014-示例项目", Path(tmp) / "out", repository="D:/repo/example", approval_model="stage")
             session, deliver = state.parent, Path(tmp) / "work" / "014-示例项目"
             self.assertEqual(sorted(p.name for p in session.iterdir()), ["014-示例项目.html", "raw"], "会话根只有 raw 和同名汇总页")
             self.assertEqual(state.name, "raw")
-            self.assertEqual(sorted(p.name for p in state.iterdir()), ["APPROVALS.json", "MANIFEST.json", "config", "data", "project.json"])
+            self.assertEqual(sorted(p.name for p in state.iterdir()), ["00-design", "APPROVALS.json", "MANIFEST.json", "config", "data", "project.json"])
+            from test_project_summary_template import library
+            library().require_selected(session, "luz-project", "internal-summary", session / "014-示例项目.html", "reading-html", phase="post")
             self.assertEqual(sorted(p.name for p in (state / "data").iterdir()), ["artifacts.json", "changes.json", "client", "ops", "project.json", "stages"])
             self.assertEqual(sorted(p.name for p in (state / "config").iterdir()), ["documents.json", "keys.example.json", "paths.json"])
             self.assertEqual(sorted(p.name for p in deliver.iterdir()), [".env.example", ".gitignore", "docs"], "项目目录只有成果，src 等有东西要写时才建")
@@ -261,9 +264,10 @@ class InitContractTests(unittest.TestCase):
 
     def test_init_makes_only_the_first_level_and_the_data_and_config_it_uses(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            state = new_project("目录契约", tmp)
+            state = create_project("目录契约", Path(tmp) / "work" / "014-目录契约", Path(tmp) / "out", approval_model="stage")
             deliver = Path(tmp) / "work" / "014-目录契约"
-            self.assertEqual(sorted(p.name for p in state.iterdir() if p.is_dir()), ["config", "data"], "00-crawl、reviews、uploads 等有东西要写时才建")
+            self.assertEqual(sorted(p.name for p in state.iterdir() if p.is_dir()), ["00-design", "config", "data"], "00-design 保存实际汇总模板快照；00-crawl、reviews、uploads 等有东西要写时才建")
+            self.assertTrue(any(p.is_file() for p in (state / "00-design").rglob("*")), "00-design 不是预建的空目录")
             self.assertEqual(sorted(p.name for p in deliver.iterdir() if p.is_dir()), ["docs"], "src、test、assets、infra、scripts 有东西要写时才建")
             self.assertEqual(sorted(p.name for p in (state / "data").iterdir() if p.is_dir()), ["client", "ops", "stages"])      # the folders the tools write to; acceptance, schema, users ... come with content
             self.assertFalse((state / "data" / "acceptance").exists())
@@ -340,11 +344,17 @@ class DesignDeliverablesTests(unittest.TestCase):
     """The design stage lists one prototype per front end of the project's own design document, named after that front end."""
 
     def design_spec(self, root: Path, frontends, surfaces=None) -> dict:
+        import client_data as cd
         import dev_fixture
-        (root / "data" / "client").mkdir(parents=True, exist_ok=True)
+
         surfaces = surfaces or [surface for _, surface, _ in frontends]
-        feats = [{"id": f"FN-{n + 1:03d}", "module": "M01", "name": f"功能{n + 1}", "surface": surface} for n, surface in enumerate(surfaces)]
-        (root / "data" / "client" / "features.json").write_text(json.dumps({"modules": [{"id": "M01", "name": "登录"}], "features": feats}, ensure_ascii=False), encoding="utf-8")
+        features = [
+            {"id": f"FN-{n + 1:03d}", "module": "M01", "name": f"功能{n + 1}", "surface": surface,
+             "roles": ["员工"], "tier": "基础", "summary": "员工在工作台查看任务", "rules": "员工只看到分配给自己的任务"}
+            for n, surface in enumerate(surfaces)
+        ]
+        cd.save(root, {"schema_version": "1.0", "modules": [{"id": "M01", "name": "工作台", "summary": "员工查看任务"}],
+                       "features": features}, "client", "features.json")
         return dev_fixture.sample_spec("design", root, frontends)
 
     def named_prototypes(self, spec: dict, names: list[str]) -> None:
@@ -433,6 +443,9 @@ class DesignDeliverablesTests(unittest.TestCase):
             project = new_project("登记原型", tmp)
             spec = self.design_spec(project, [("手机页", "web-admin", "phone"), ("管理后台", "web-admin", "wide")])
             fx.crawled(project, "design")
+            import dev_fixture
+            dev_fixture.approved_frontend_handover(project)
+            dev_fixture.install_source(project, spec)
             write_document(project, "design", spec)
             artifacts = json.loads((project / "data/artifacts.json").read_text(encoding="utf-8"))
             design = [a for a in artifacts if a["stage"] == "design"]
@@ -446,6 +459,63 @@ class DesignDeliverablesTests(unittest.TestCase):
             write_document(project, "design", spec)                                                  # writing it again registers nothing twice
             again = json.loads((project / "data/artifacts.json").read_text(encoding="utf-8"))
             self.assertEqual(len(again), len(artifacts))
+            from project_ui_source import output_errors, prototype_blocks
+            relative = "docs/02-产品开发/03-proto1.html"
+            self.assertEqual(output_errors(project, relative), [])
+
+            # Reuse this genuinely audited package. Each mutation must be
+            # rejected by the project handoff gate, then recover by restoring
+            # its exact original bytes; no new passed/audit flags are written.
+            design_path = project / "data/stages/design.json"
+            original_spec = design_path.read_bytes()
+            for mutation in ("unknown entry", "source binding"):
+                changed = json.loads(original_spec)
+                block = next(prototype_blocks(changed))
+                if mutation == "unknown entry":
+                    block["source"]["entry"] = "not-an-audited-entry.html"
+                else:
+                    block["source_binding"]["entry_sha256"] = "0" * 64
+                with self.subTest(mutation=mutation):
+                    try:
+                        design_path.write_text(json.dumps(changed, ensure_ascii=False), encoding="utf-8")
+                        self.assertTrue(output_errors(project, relative))
+                    finally:
+                        design_path.write_bytes(original_spec)
+                    self.assertEqual(output_errors(project, relative), [])
+
+            source = next(prototype_blocks(json.loads(original_spec)))["source"]
+            session, package = Path(source["session"]), Path(source["package"])
+            manifest_path = session / "raw/99-delivery/MANIFEST.json"
+            original_manifest = manifest_path.read_bytes()
+            foreign = json.loads(original_manifest)
+            foreign["project"]["state_root"] = str(project.parent / "different-project")
+            try:
+                manifest_path.write_text(json.dumps(foreign, ensure_ascii=False), encoding="utf-8")
+                self.assertTrue(output_errors(project, relative), "a foreign project link must fail")
+            finally:
+                manifest_path.write_bytes(original_manifest)
+            self.assertEqual(output_errors(project, relative), [])
+
+            registry = project / "data/sessions.json"
+            original_registry = registry.read_bytes()
+            try:
+                registry.write_text('{"sessions":[]}', encoding="utf-8")
+                self.assertTrue(output_errors(project, relative), "an unregistered Design session must fail")
+            finally:
+                registry.write_bytes(original_registry)
+            self.assertEqual(output_errors(project, relative), [])
+
+            for mutation, path in (("entry bytes", package / source["entry"]), ("asset bytes", package / "style.css"),
+                                   ("receipt", package / "luz-frontend.json"), ("review", package / "review.json"),
+                                   ("wrapper", locate(project, relative))):
+                with self.subTest(mutation=mutation):
+                    original = path.read_bytes()
+                    try:
+                        path.write_bytes(original + b"\nTEST ONLY: changed after handoff")
+                        self.assertTrue(output_errors(project, relative))
+                    finally:
+                        path.write_bytes(original)
+                    self.assertEqual(output_errors(project, relative), [])
             self.assertEqual(validate_project(project, strict=True), [])
 
     def test_a_listed_prototype_that_does_not_exist_is_an_error_once_the_design_document_is_registered(self) -> None:
@@ -562,9 +632,14 @@ class ArchitectureBaselineTrackingTests(unittest.TestCase):
 
     def approved_architecture(self, tmp: str) -> Path:
         import dev_fixture
+        from client_fixture import crawled
+        from project_crawl_gate import bind_document_sources
         root = new_project("架构已批", tmp)
         self.write(root, self.statement())
-        (root / "data" / "stages" / "architecture.json").write_text(json.dumps(dev_fixture.sample_spec("architecture", root), ensure_ascii=False), encoding="utf-8")
+        crawled(root, "architecture")
+        spec = dev_fixture.sample_spec("architecture", root)
+        spec["sources"] = bind_document_sources(root, "architecture", spec["sources"])
+        (root / "data" / "stages" / "architecture.json").write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
         manifest = json.loads((root / "project.json").read_text(encoding="utf-8"))
         record = next(s for s in manifest["stages"] if s["id"] == "architecture")
         record["status"] = "approved"                                                              # a stage approved before the baseline was tracked: nothing recorded for it

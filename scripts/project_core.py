@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import quote, unquote, urlsplit
 
+from estimate_policy import default_estimate
+
 from project_paths import (  # noqa: F401  (re-exported: the other skills read these names from here)
     DEFAULT_OUTPUT_ROOT,
     DELIVER_DIRS,
@@ -61,7 +63,6 @@ PATHS = {"src": "src", "frontend": "src/frontend", "backend": "src/backend", "sh
 # Folders of the state root (``raw/<name>`` in a project of the old layout; state_name() gives the right one).
 EVIDENCE_DIR = "00-crawl"       # Crawl preflight records: <caller>-<stage>.json and .html; project.json points at the folder
 UPLOADS_DIR = "uploads"         # the client's original material
-CLIENT_DOCS_DIR = "client-docs" # Word sources, build intermediates and page overview images of the client documents
 # docs/ has exactly three folders and no folder below them, and holds only what is handed over: the PDF and XLSX of the client in 需求对接 and
 # 验收交付, the HTML of the development stages in 产品开发. The review pages of the other stages (for your approval and for developers) are internal:
 # they live in the state root's reviews/.
@@ -206,10 +207,37 @@ def _slug(name: str) -> str:
     return value or "project"
 
 
+_MATRIX_CACHE: dict[str, Any] = {}
+
+
+def client_document_files() -> dict[str, tuple[str, str, str | None]]:
+    """The relative output paths and stages of Project's client document writers."""
+    files = {}
+    for stage in _load_matrix()["stages"]:
+        if stage["id"] not in {"requirements", "proposal", "client-intake", "handover"}:
+            continue
+        for document in stage["documents"]:
+            folder, name = document["path"].rsplit("/", 1)
+            kind = document["kind"] if document["id"] == "user-manual" else document["id"]
+            files[kind] = (folder, name, None if document.get("living") else stage["id"])
+    return files
+
+
 def _load_matrix() -> dict[str, Any]:
+    """The development matrix, read again only when the file changed (it is asked for hundreds of times by one command). Callers read it and do not change it;
+    ``load_matrix`` hands out a copy."""
+    try:
+        stat = MATRIX_FILE.stat()
+        key = (str(MATRIX_FILE), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        key = None
+    if key is not None and _MATRIX_CACHE.get("key") == key:
+        return _MATRIX_CACHE["value"]
     matrix = _read_json(MATRIX_FILE)
     if not isinstance(matrix, dict) or not isinstance(matrix.get("stages"), list):
         raise ProjectError(f"开发矩阵无效: {MATRIX_FILE}")
+    if key is not None:
+        _MATRIX_CACHE.update({"key": key, "value": matrix})
     return matrix
 
 
@@ -246,18 +274,6 @@ def _save_manifest(project: Path, manifest: dict[str, Any]) -> None:
     # data/project.json is intentionally a mirror so data exports can be moved
     # independently while retaining the project identity.
     _write_json(project / "data" / "project.json", manifest)
-
-
-def _next_number(parent: Path) -> int:
-    numbers = []
-    if parent.is_dir():
-        for child in parent.iterdir():
-            if not child.is_dir():
-                continue
-            match = re.match(r"^(\d{3,})-", child.name)
-            if match:
-                numbers.append(int(match.group(1)))
-    return max(numbers, default=0) + 1
 
 
 def _design_prototypes(root: Path | None) -> list[dict[str, Any]]:
@@ -357,9 +373,9 @@ def _project_dir(path: Path | str) -> Path:
     return folder.resolve()
 
 
-def _new_manifest(name: str, project_dir: Path, stages: list[dict[str, Any]], repository: str | None) -> dict[str, Any]:
+def _new_manifest(name: str, project_dir: Path, stages: list[dict[str, Any]], repository: str | None, approval_model: str = "document") -> dict[str, Any]:
     number = _number_of(project_dir)
-    return {
+    manifest = {
         "schema_version": SCHEMA_VERSION,
         "project_id": f"PROJECT-{number:03d}",
         "name": str(name).strip(),
@@ -384,6 +400,10 @@ def _new_manifest(name: str, project_dir: Path, stages: list[dict[str, Any]], re
             "production_data_in_project": False,
         },
     }
+    if approval_model == "document":
+        # The user approves the files of docs/ one at a time; "mode": "blanket" is for the user to set explicitly (references/project-mode.md), never a default.
+        manifest["approval_policy"] = {"model": "document", "mode": "user"}
+    return manifest
 
 
 def _write_state_files(state: Path, manifest: dict[str, Any]) -> None:
@@ -398,18 +418,22 @@ def _write_state_files(state: Path, manifest: dict[str, Any]) -> None:
         (state / "data" / "artifacts.json", []),
         (state / "data" / "ops" / "checks.json", []),
         (state / "data" / "changes.json", {"schema_version": "1.0", "changes": []}),
-        (state / "config" / "documents.json", {"theme": None, "note": "客户文档主题：按本项目行业和受众选择（Luz-Design 的主题表），运行 project.py client theme 设置"}),
+        (state / "config" / "documents.json", {"theme": None, "estimate": default_estimate(),
+                                               "note": "theme：客户文档主题，按本项目行业和受众选择（Luz-Design 的主题表），运行 project.py client theme 设置；"
+                                                       "estimate：人日与报价开关，默认都不写，用户明确要求才打开，运行 project.py client estimate 带上谁要求、何时、原话"}),
         (state / "config" / "keys.example.json", {"api_key_env": "", "secret_ref": ""}),
     ):
         if not path.exists():
             _write_json(path, payload)
 
 
-def create_project(name: str, project_dir: Path | str, output: Path | str, repository: str | None = None) -> Path:
+def create_project(name: str, project_dir: Path | str, output: Path | str, repository: str | None = None, approval_model: str = "document", *, ui_mode: str = "component-reuse") -> Path:
     """Create a project: its Luz-Project session ``<output>/<项目目录名>`` (a ``raw`` folder, the state root, and the summary page) and its
     project directory, which gets the three document folders only. Returns the state root."""
     if not str(name).strip():
         raise ProjectError("项目名称不能为空")
+    if ui_mode not in {"component-reuse", "source-locked"}:
+        raise ProjectError("ui_mode 只能是 component-reuse 或 source-locked")
     deliver = _project_dir(project_dir)
     if (deliver / "project.json").is_file():
         raise ProjectError(f"{deliver} 是旧布局的项目（有 project.json）：用 project.py migrate 迁移，不要再 init")
@@ -421,7 +445,10 @@ def create_project(name: str, project_dir: Path | str, output: Path | str, repos
     for relative in DELIVER_MADE:
         (deliver / relative).mkdir(parents=True, exist_ok=True)
     stages = [_empty_stage(item, current=(index == 0), root=state) for index, item in enumerate(_load_matrix()["stages"])]
-    manifest = _new_manifest(name, deliver, stages, repository)
+    manifest = _new_manifest(name, deliver, stages, repository, approval_model)
+    manifest["ui_mode"] = ui_mode
+    if ui_mode == "component-reuse":
+        manifest["ui_requirements_version"] = 2
     _write_state_files(state, manifest)
     _write_json(state / "config" / "paths.json", dict(PATHS))
     _write_initial_file(deliver / ".gitignore", "\n".join(GITIGNORE_LINES) + "\n")
@@ -511,12 +538,25 @@ def evidence_dir(project: Path | str, manifest: dict[str, Any] | None = None) ->
     return index if index and not index.lower().endswith(".json") else state_name(project, EVIDENCE_DIR)
 
 
-def require_crawl(project: Path | str, stage: str) -> None:
+def require_crawl(project: Path | str, stage: str, *, for_draft: bool = False) -> None:
     """A document of a stage is generated only after that stage's Crawl preflight is complete: real search and body reading,
-    then the supplement (sources, conclusions, where each is used, adoption decision, uncovered scope) and ``check``."""
+    then the supplement (sources, conclusions, where each is used, adoption decision, uncovered scope) and ``check``.
+
+    ``for_draft`` is reserved for process-JSON scaffolds: these need preparation
+    but are themselves inputs to the specialist step. Formal file writers
+    always use the default gate, including completed specialist output.
+    """
     root = _project_root(project)
     manifest = load_project(root)
-    from crawl_gate import crawl_errors
+    if (manifest.get("approval_policy") or {}).get("model") == "document":
+        # Draft data precede specialist completion. Formal files require that
+        # completion as well as the prepare steps; neither route skips Crawl.
+        import flow_steps
+        errors = flow_steps.preparation_errors(root, stage) if for_draft else flow_steps.generation_errors(root, stage)
+        if errors:
+            raise ProjectError(f"生成 {stage} 阶段的文件前，前面的内部步骤必须先完成（缺哪一步见 project.py checklist <项目> {stage}；含 Luz-Crawl 前置检索 run → 读正文 → conclude → check）: " + "; ".join(errors))
+        return
+    from project_crawl_gate import crawl_errors
     errors = crawl_errors(root, stage, caller=_stage_record(manifest, stage)["owner"])
     if errors:
         raise ProjectError(f"生成 {stage} 阶段的文档前必须先用 Luz-Crawl 取得足够的信息（run → 读正文 → conclude → check）: " + "; ".join(errors))
@@ -598,6 +638,15 @@ def register_artifact(
             record["version"] = int(record.get("version", 1)) + 1
         record.update({"kind": str(kind), "source_ids": source_list, "sha256": digest, "updated_at": now_iso()})
     _save_artifacts(root, artifacts)
+    if (manifest.get("approval_policy") or {}).get("model") == "document":
+        # what an approval rests on is hashes: a changed file voids its own record and, through ``upstream``, the records after it (approval_docs.py)
+        if stage_record.get("status") == "pending":
+            stage_record["status"] = "pending-review"
+            manifest["status"] = "active"
+        stage_record["updated_at"] = now_iso()
+        import approval_docs
+        approval_docs.refresh(root, manifest)         # saves the manifest
+        return dict(record)
     if changed and (stage_record.get("status") in {"approved", "completed"} or stage_record.get("approval_id")):
         _invalidate_downstream(manifest, stage)
     elif stage_record.get("status") == "pending":
@@ -643,10 +692,39 @@ def _load_approvals(project: Path) -> dict[str, Any]:
     return value
 
 
-def approve_stage(project: Path | str, stage: str, note: str, approver: str) -> dict[str, Any]:
+def _register_evidence(root: Path, stage: str) -> None:
+    """Register the evidence record, plus the conclusion and shared task for online research."""
+    manifest = load_project(root)
+    stage_record = _stage_record(manifest, stage)
+    from project_crawl_gate import crawl_errors, stage_record as crawl_record_path
+    research_errors = crawl_errors(root, stage, caller=stage_record["owner"])
+    if research_errors:
+        raise ProjectError("; ".join(research_errors))
+    preflight = crawl_record_path(root, manifest, stage)
+    record = _read_json(preflight)
+    if record.get("research_mode") == "local":
+        register_artifact(root, stage, preflight, "research-evidence")
+        return
+    conclusion = preflight.with_suffix(".html")
+    if not conclusion.is_file():
+        raise ProjectError("缺少前置检索结论 HTML，请先 conclude")
+    task_root = str(Path(record["task_root"]).resolve())
+    bound_task = manifest["crawl"].get("task_root")
+    if bound_task and str(Path(bound_task).resolve()) != task_root:
+        raise ProjectError("同一项目必须复用绑定的 Crawl 任务，不能换成另一项需求的记录")
+    manifest["crawl"]["task_root"] = task_root
+    _save_manifest(root, manifest)
+    for path in (preflight, conclusion):
+        register_artifact(root, stage, path, "research-evidence")
+
+
+def approve_stage(project: Path | str, stage: str, note: str = "", approver: str = "") -> dict[str, Any]:
     root = _project_root(project)
     manifest = load_project(root)
     stage_record = _stage_record(manifest, stage)
+    if (manifest.get("approval_policy") or {}).get("model") == "document":
+        import approval_docs
+        return approval_docs.approve_stage_level(root, stage, note, approver)
     if not str(note).strip() or not str(approver).strip():
         raise ProjectError("审批说明和审批人不能为空")
     stage_ids = [str(item["id"]) for item in _load_matrix()["stages"]]
@@ -655,22 +733,7 @@ def approve_stage(project: Path | str, stage: str, note: str, approver: str) -> 
     incomplete = [item_id for item_id in stage_ids[:current_index] if prior.get(item_id, {}).get("status") not in {"approved", "completed"}]
     if incomplete:
         raise ProjectError(f"阶段 {stage} 的前置审批尚未完成: {', '.join(incomplete)}")
-    from crawl_gate import crawl_errors
-    research_errors = crawl_errors(root, stage, caller=stage_record["owner"])
-    if research_errors:
-        raise ProjectError("; ".join(research_errors))
-    preflight = locate(root, f'{evidence_dir(root, manifest)}/{stage_record["owner"]}-{stage}.json')
-    record = _read_json(preflight)
-    task_root = str(Path(record["task_root"]).resolve())
-    bound_task = manifest["crawl"].get("task_root")
-    if bound_task and str(Path(bound_task).resolve()) != task_root:
-        raise ProjectError("同一项目必须复用绑定的 Crawl 任务，不能换成另一项需求的记录")
-    manifest["crawl"]["task_root"] = task_root
-    _save_manifest(root, manifest)
-    for path in (preflight, preflight.with_suffix(".html")):
-        if not path.is_file():
-            raise ProjectError("缺少前置检索结论 HTML，请先 conclude")
-        register_artifact(root, stage, path, "research-evidence")
+    _register_evidence(root, stage)
     manifest = load_project(root)
     stage_record = _stage_record(manifest, stage)
     errors = gate_stage(root, stage)
@@ -685,7 +748,7 @@ def approve_stage(project: Path | str, stage: str, note: str, approver: str) -> 
     import dev_documents
     if dev_documents.has_standard(stage):
         spec = _read_json(root / "data" / "stages" / f"{stage}.json", {})
-        errors = dev_documents.validate(stage, spec, root)
+        errors = dev_documents.validate(stage, spec, root) + dev_documents.source_binding_errors(stage, spec, root)
         if errors or not any(a.get("kind") in {"architecture-spec", "stage-spec"} for a in current):
             raise ProjectError("这份开发文档没有通过 references/dev-documents.md 的标准，不能审批: " + "; ".join(errors or ["没有登记文档数据"]))
     if schema_at_least(manifest, "1.1"):
@@ -934,7 +997,7 @@ def validate_project(project: Path | str, strict: bool = False) -> list[str]:
                 errors.append(f"缺少目录: {relative}")
         import client_flow
         errors.extend(client_flow.tracked_drift(root, manifest))
-        errors.extend(client_flow.amount_errors(root))
+        errors.extend(client_flow.estimate_errors(root))
     artifacts = []
     try:
         artifacts = _load_artifacts(root)
@@ -963,11 +1026,18 @@ def validate_project(project: Path | str, strict: bool = False) -> list[str]:
         errors.extend(layout_errors(root))
         errors.extend(session_errors(root))
         errors.extend(placement_errors(artifacts, root))
+    expiry_ctx: Any = None                                                  # one approval context for the stages asked about the age of their Crawl record
     for stage in manifest_stages:
         status = str(stage.get("status", "pending"))
         if status not in STAGE_STATUSES:
             errors.append(f"阶段状态无效: {stage.get('id')}={status}")
-        if status in {"approved", "completed"}:
+        if status in {"approved", "completed"} and (manifest.get("approval_policy") or {}).get("model") == "document":
+            from project_crawl_gate import crawl_errors
+            import approval_docs
+            expiry_ctx = expiry_ctx or approval_docs.Ctx(root)
+            errors.extend(crawl_errors(root, str(stage["id"]), caller=stage.get("owner", "luz-project"),
+                                       waive_expiry=approval_docs.crawl_expiry_waived(root, str(stage["id"]), ctx=expiry_ctx)))      # the files' approvals are checked once below (approval_docs.validation_errors); a complete stage's record does not age out
+        elif status in {"approved", "completed"}:
             approval_id = stage.get("approval_id")
             approval = next((a for a in approvals if a.get("id") == approval_id), None)
             if not approval:
@@ -978,14 +1048,17 @@ def validate_project(project: Path | str, strict: bool = False) -> list[str]:
                     errors.append(f"审批未覆盖当前阶段全部产物: {stage.get('id')}")
                 if approval.get("stage") != stage.get("id") or approval.get("project_id") != manifest.get("project_id") or not approval.get("approver") or not approval.get("note"):
                     errors.append(f"审批身份/阶段/依据无效: {stage.get('id')}")
-            from crawl_gate import crawl_errors
-            errors.extend(crawl_errors(root, str(stage["id"]), caller=stage.get("owner", "luz-project")))
+            from project_crawl_gate import crawl_errors
+            errors.extend(crawl_errors(root, str(stage["id"]), caller=stage.get("owner", "luz-project"), waive_expiry=True))      # approved by stage: the record only has to be there, valid, concluded
             for artifact_id, approved_hash in (stage.get("approved_hashes") or {}).items():
                 artifact = artifact_map.get(str(artifact_id))
                 if not artifact:
                     errors.append(f"审批引用的产物不存在: {artifact_id}")
                 elif artifact.get("sha256") != approved_hash:
                     errors.append(f"审批后产物已变化: {artifact.get('path')}")
+    if (manifest.get("approval_policy") or {}).get("model") == "document":
+        import approval_docs
+        errors.extend(approval_docs.validation_errors(root, manifest))
     pages = [*(deliver / "docs").rglob("*.html"), *(root / state_name(root, REVIEW_DIR)).glob("*.html")]
     if is_legacy(root):
         pages.insert(0, root / "README.html")                   # the index page of the old layout
@@ -1021,7 +1094,11 @@ def set_stage_status(project: Path | str, stage: str, status: str) -> dict[str, 
         raise ProjectError("approved/completed 必须通过 approve_stage 记录用户审批，不能手工绕过门禁")
     if status in {"approved", "completed"}:
         raise ProjectError("审批状态只由 approve 命令设置；stage 用于启动、阻断或重新打开阶段")
-    if record.get("approval_id") or record.get("status") in {"approved", "completed"}:
+    voided = 0
+    if (manifest.get("approval_policy") or {}).get("model") == "document" and status != "blocked":
+        import approval_docs
+        voided = approval_docs.void_from(root, stage, f"阶段 {stage} 被重新打开（{status}）：该阶段及其后各阶段的文件批准作废")
+    if record.get("approval_id") or record.get("status") in {"approved", "completed"} or voided:
         _invalidate_downstream(manifest, stage)
     record["status"] = status
     record["updated_at"] = now_iso()
@@ -1046,7 +1123,8 @@ def _bind_architecture_baseline(root: Path, manifest: dict[str, Any]) -> str | N
     import dev_documents
 
     try:
-        errors = dev_documents.validate("architecture", _read_json(root / "data" / "stages" / "architecture.json", {}), root)
+        spec = _read_json(root / "data" / "stages" / "architecture.json", {})
+        errors = dev_documents.validate("architecture", spec, root) + dev_documents.source_binding_errors("architecture", spec, root)
     except Exception as exc:                                                    # a document the current standard cannot even read is not verified
         errors = [f"架构文档无法校验: {exc}"]
     if errors:
@@ -1224,7 +1302,7 @@ def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterab
         if target is not None:
             (deliver / target).mkdir(parents=True, exist_ok=True)
     stages = [_empty_stage(item, current=(index == 0), root=state) for index, item in enumerate(_load_matrix()["stages"])]
-    manifest = _new_manifest((name or deliver.name).strip(), deliver, stages, str(deliver))
+    manifest = _new_manifest((name or deliver.name).strip(), deliver, stages, str(deliver), "document")
     manifest["adopted"] = {"at": now_iso(), "aliases": aliases, "moves": log, "note": "既有仓库就地接入：不预设任何阶段为已批准，历史文档只是输入材料"}
     _write_state_files(state, manifest)
     _write_json(state / "config" / "paths.json", {"docs": "docs", "aliases": aliases})
@@ -1238,13 +1316,55 @@ def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterab
 
 def project_status(project: Path | str) -> dict[str, Any]:
     manifest = load_project(project)
-    return {
+    result = {
         "project_id": manifest.get("project_id"),
         "name": manifest.get("name"),
         "status": manifest.get("status"),
         "current_stage": manifest.get("current_stage"),
+        "approval_policy": manifest.get("approval_policy") or {"model": "stage"},
         "stages": [{"id": s.get("id"), "status": s.get("status"), "approval_id": s.get("approval_id")} for s in manifest.get("stages", [])],
     }
+    if (manifest.get("approval_policy") or {}).get("model") == "document":
+        import approval_docs
+        import flow_steps
+        root = _project_root(project)
+        ctx = approval_docs.Ctx(root)
+        for entry in result["stages"]:
+            sid = entry["id"]
+            docs = approval_docs.stage_documents_state(ctx, sid)
+            entry["documents"] = [{k: d[k] for k in ("document", "state", "label", "mode")} for d in docs]
+            sched = flow_steps.checklist(root, sid, ctx=ctx)
+            entry["internal_gates"] = {"passed": sum(1 for r in sched["steps"] if r["gate"] != "user" and r["status"] == "done"), "total": sum(1 for r in sched["steps"] if r["gate"] != "user"),
+                                       "open": [r["id"] for r in sched["steps"] if r["gate"] != "user" and r["status"] != "done"]}
+            entry["complete"] = approval_docs.stage_complete(ctx, sid)
+            entry["waiting_review"] = [d["document"] for d in docs if d["state"] == "pending-review"]
+        result["next"] = flow_steps.next_report(root).get("document", {}).get("path")
+    return result
+
+
+def _doc_states(project: Path | str, stage: str) -> list[dict[str, Any]]:
+    """The documents of a stage with their approval state (empty for a project that still approves by stage)."""
+    import approval_docs
+
+    root = _project_root(project)
+    if not approval_docs.is_document_model(root):
+        return [{**d, "state": "—"} for d in approval_docs.documents(root, stage)]
+    return [{**d, "state": approval_docs.document_status(approval_docs.Ctx(root), d)["label"]} for d in approval_docs.documents(root, stage)]
+
+
+def skill_folder(skill: str) -> Path:
+    """The folder of a Luz skill next to this one (luz-ops -> Luz-Ops)."""
+    return ROOT.parent / ("Luz-" + skill.split("-", 1)[-1].capitalize())
+
+
+def rule_files(stage: str) -> list[dict[str, Any]]:
+    """The files to read before a stage whose skill has no context.py rule card (Luz-Ops, Luz-Crawl): the matrix lists them (``rule_files``), this gives their paths. A name ending in
+    ``/`` is a folder whose files the stage reads as the work calls for (Luz-Ops' test playbooks). ``exists`` is False for a file that is not there."""
+    out = []
+    for item in _stage_defs()[stage].get("rule_files", []):
+        path = skill_folder(item["skill"]) / item["file"]
+        out.append({"skill": item["skill"], "file": item["file"], "path": str(path), "exists": path.is_dir() if item["file"].endswith("/") else path.is_file(), "for": item["for"]})
+    return out
 
 
 def stage_route(project: Path | str, stage: str | None = None) -> dict[str, Any]:
@@ -1268,7 +1388,13 @@ def stage_route(project: Path | str, stage: str | None = None) -> dict[str, Any]
         "status": record.get("status"),
         "standard": record.get("standard"),
         "rule_cards": record.get("rule_cards", []),
+        "rule_files": rule_files(str(selected)),
         "document": next((str(x["path"]) for x in record.get("deliverables", []) if x.get("format") == "html"), None),
+        "approval_model": (manifest.get("approval_policy") or {}).get("model", "stage"),
+        "documents": [{"path": d["path"], "title": d.get("title"), "skill": d.get("skill"), "state": d["state"]} for d in _doc_states(project, str(selected))],
+        "internal_records": _stage_defs()[str(selected)].get("internal_records", []),
+        "steps": [{"id": x["id"], "gate": x["gate"], "skill": x["skill"], "title": x["title"]} for x in _stage_defs()[str(selected)].get("steps", [])],
+        "action_gates": _stage_defs()[str(selected)].get("action_gates", []),
     }
 
 
@@ -1278,14 +1404,25 @@ def gate_stage(project: Path | str, stage: str, *, specialist_checks: bool = Tru
     manifest = load_project(root)
     _stage_record(manifest, stage)
     errors = validate_project(root, strict=True)
-    from crawl_gate import crawl_errors
+    from project_crawl_gate import crawl_errors
     owner = _stage_record(manifest, stage)["owner"]
-    errors.extend(crawl_errors(root, stage, caller=owner))
+    import approval_docs
+    errors.extend(crawl_errors(root, stage, caller=owner, waive_expiry=approval_docs.crawl_expiry_waived(root, stage)))
     ordered = [s["id"] for s in _load_matrix()["stages"]]
     stages = {s["id"]: s for s in manifest["stages"]}
-    for earlier in ordered[:ordered.index(stage)]:
-        if stages[earlier].get("status") not in {"approved", "completed"}:
-            errors.append(f"前置审批未完成: {earlier}")
+    if (manifest.get("approval_policy") or {}).get("model") == "document":
+        import approval_docs
+        errors.extend(approval_docs.hold_errors(approval_docs.Ctx(root), stage))
+    else:
+        for earlier in ordered[:ordered.index(stage)]:
+            if stages[earlier].get("status") not in {"approved", "completed"}:
+                errors.append(f"前置审批未完成: {earlier}")
+        # The retained stage-level route approves the same formal documents.
+        # Re-registering changed bytes must not replace the writer's actual
+        # Design template post-check (including complete UI source binding).
+        from project_template_gate import output_errors
+        for document in approval_docs.documents(root, stage):
+            errors.extend(output_errors(root, stage, document))
     if specialist_checks and stage in {"verification", "release", "operations"}:
         import sys
         sys.path.insert(0, str(ROOT.parent / "Luz-Ops" / "scripts"))
@@ -1305,9 +1442,28 @@ def stage_context(project: Path | str, stage: str, skill: str | None = None) -> 
     ordered = [s["id"] for s in manifest["stages"]]
     predecessors = ordered[:ordered.index(stage)]
     deliver = deliver_root(root)
-    inputs = [{**a, "absolute_path": str(locate(root, a["path"]))} for a in _load_artifacts(root) if a["stage"] in predecessors]
+    # A stage receives only effective user-approved handoff files.  The old
+    # implementation exposed every registered upstream artifact, including
+    # drafts that a specialist could accidentally treat as facts.
+    import approval_docs
+    approval_ctx = approval_docs.Ctx(root)
+    approved_paths = {
+        doc["path"] for doc in approval_docs.all_documents(root)
+        if approval_docs.document_status(approval_ctx, doc)["state"] == "approved"
+    }
+    inputs, pending_inputs = [], []
+    for artifact in _load_artifacts(root):
+        if artifact.get("stage") not in predecessors:
+            continue
+        path = str(artifact.get("path", ""))
+        target = {**artifact, "absolute_path": str(locate(root, path))}
+        if path in approved_paths:
+            inputs.append(target)
+        else:
+            pending_inputs.append(target)
     session = session_dir(root)
     result = {**stage_route(root, stage), "state_root": str(root), "deliver_root": str(deliver), "session": str(session) if session else None, "mode": "project", "inputs": inputs,
+              "pending_inputs": pending_inputs,
               "crawl": manifest["crawl"], "blockers": gate_stage(root, stage), "output_root": str(deliver / record["docs_dir"])}
     if schema_at_least(manifest, "1.1"):
         import client_flow

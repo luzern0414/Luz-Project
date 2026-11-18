@@ -2,16 +2,66 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Luz Project Manifest",
   "type": "object",
-  "required": ["schema_version", "project_id", "name", "status", "current_stage", "stages"],
+  "required": [
+    "schema_version",
+    "project_id",
+    "name",
+    "status",
+    "current_stage",
+    "stages"
+  ],
   "properties": {
-    "schema_version": {"type": "string"},
-    "project_id": {"type": "string", "pattern": "^PROJECT-[0-9]{3,}$"},
-    "name": {"type": "string", "minLength": 1},
-    "status": {"enum": ["draft", "active", "blocked", "completed", "archived"]},
-    "current_stage": {"type": "string"},
-    "repository": {"type": ["string", "null"]},
-    "deliver_root": {"type": "string", "description": "项目目录（只放成果）的绝对路径；没有它的是旧布局项目，成果在 project.json 所在的项目根里"},
-    "crawl": {"type": "object", "description": "task_root：skill输出 的 Luz-Crawl 下的 Crawl 任务（绝对路径）；evidence_index：状态根下的前置检索记录目录（00-crawl）"},
-    "stages": {"type": "array", "items": {"type": "object"}}
+    "schema_version": {
+      "type": "string"
+    },
+    "project_id": {
+      "type": "string",
+      "pattern": "^PROJECT-[0-9]{3,}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "active",
+        "blocked",
+        "completed",
+        "archived"
+      ]
+    },
+    "current_stage": {
+      "type": "string"
+    },
+    "repository": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ui_requirements_version": {
+      "type": "integer",
+      "const": 2,
+      "description": "新建 component-reuse 项目要求 System 的第 2 版界面合同。已有项目可以继续读取原合同。"
+    },
+    "deliver_root": {
+      "type": "string",
+      "description": "项目目录（只放成果）的绝对路径；没有它的是旧布局项目，成果在 project.json 所在的项目根里"
+    },
+    "crawl": {
+      "type": "object",
+      "description": "task_root：Skill输出 的 Luz-Crawl 下的 Crawl 任务（绝对路径）；evidence_index：状态根下的前置检索记录目录（00-crawl）"
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "approval_policy": {
+      "type": "object",
+      "description": "model：document 表示用户逐个审批 docs 里的文件（没有这个字段的项目仍按阶段审批）；mode：user（默认）或 blanket（只有用户显式设置，才允许在存在待复核的预先授权文件时继续生成新阶段）"
+    }
   }
 }

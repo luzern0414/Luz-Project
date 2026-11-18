@@ -13,13 +13,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Luz-Crawl" / "scripts"))
-from crawl_preflight import conclude
-from test_crawl_preflight import complete_fixture, fixture as crawl_fixture
+from test_crawl_preflight import complete_fixture, conclude, fixture as crawl_fixture
 
 import client_fixture as fx
 import project as cli
 from client_fixture import new_project
-from crawl_gate import evidence_session
+from project_crawl_gate import evidence_session
 from legacy_fixture import legacy_project
 from project_core import (
     ProjectError,
@@ -192,7 +191,7 @@ class MigrateTests(unittest.TestCase):
             self.assertEqual(tree(root), before, "预演不改任何文件")
             self.assertFalse((Path(tmp) / "out").exists(), "预演不建会话")
             moves = "\n".join(result["move"])
-            for expected in ("project.json  →  [状态根] project.json", "raw/reviews  →  [状态根] reviews", "raw/00-crawl  →  [状态根] 00-crawl", "raw/uploads  →  [状态根] uploads",
+            for expected in ("project.json  →  [状态根] project.json", "00-design  →  [状态根] 00-design", "raw/reviews  →  [状态根] reviews", "raw/00-crawl  →  [状态根] 00-crawl", "raw/uploads  →  [状态根] uploads",
                              "raw/architecture-tools  →  [状态根] architecture-tools", "data/client  →  [状态根] data/client", "config/paths.json  →  [状态根] config/paths.json",
                              "README.html  →  [状态根] backup/README.html", "docs/README.md  →  [状态根] backup/docs-README.md",
                              "docs/03-验收交付/使用说明.pdf  →  [项目目录] docs/03-验收交付/01-使用说明.pdf",
@@ -212,11 +211,12 @@ class MigrateTests(unittest.TestCase):
             before = json.loads((root / "data" / "artifacts.json").read_text(encoding="utf-8"))
             hashes = {a["id"]: a["sha256"] for a in before}
             approvals = (root / "APPROVALS.json").read_bytes()
+            templates = tree(root / "00-design")
             result = migrate_project(root, apply=True, output=out)
             state = Path(result["state_root"])
             session = state.parent
             self.assertEqual(sorted(p.name for p in session.iterdir()), ["014-旧项目.html", "raw"])
-            for gone in ("project.json", "MANIFEST.json", "APPROVALS.json", "README.html", "raw", "backup"):
+            for gone in ("project.json", "MANIFEST.json", "APPROVALS.json", "README.html", "raw", "backup", "00-design"):
                 self.assertFalse((root / gone).exists(), gone)
             self.assertFalse((root / "data" / "client").exists() or (root / "data" / "artifacts.json").exists())
             self.assertEqual(sorted(p.name for p in root.iterdir()), [".gitignore", "assets", "config", "data", "docs", "infra", "scripts", "src", "test"])
@@ -236,6 +236,9 @@ class MigrateTests(unittest.TestCase):
             self.assertEqual(manifest["crawl"]["evidence_index"], "00-crawl")
             self.assertEqual(manifest["schema_version"], "1.2")
             self.assertEqual((state / "APPROVALS.json").read_bytes(), approvals, "审批记录原样搬过去")
+            moved_templates = tree(state / "00-design")
+            self.assertTrue(templates)
+            self.assertEqual({name: moved_templates[name] for name in templates}, templates, "迁移保留真实模板记录与快照的每个字节")
             after = json.loads((state / "data" / "artifacts.json").read_text(encoding="utf-8"))
             self.assertEqual({a["id"]: a["sha256"] for a in after}, hashes, "移动不改内容，审批绑定的哈希不变")
             self.assertTrue(all(not a["path"].startswith("raw/") for a in after))
@@ -248,7 +251,14 @@ class MigrateTests(unittest.TestCase):
             self.assertEqual(check_output_layout.check_session(session, False)[0], [])
             self.assertEqual(result["leftovers"], [])
             # The Crawl record that the approval binds names its logs by the absolute paths they had in the old project root: it cannot be rewritten, and
-            # crawl_gate reads the logs from the same place below the new evidence folder (their hashes are still checked).
+            # project_crawl_gate reads the logs from the same place below the new evidence folder (their hashes are still checked).
+            self.assertEqual(validate_project(state, strict=True), [])
+            receipt = Path(result["template_migration"])
+            self.assertTrue(receipt.is_relative_to(state / "00-design" / "migrations"))
+            receipt_bytes = receipt.read_bytes()
+            receipt.unlink()
+            self.assertTrue(any("准确输出位置" in e for e in validate_project(state, strict=True)), "移走受控迁移凭据后不能借原绝对路径通过")
+            receipt.write_bytes(receipt_bytes)
             self.assertEqual(validate_project(state, strict=True), [])
             log = next((state / "00-crawl" / "logs").rglob("doctor.json"))
             log.write_text('{"ready": false}', encoding="utf-8")
@@ -268,6 +278,24 @@ class MigrateTests(unittest.TestCase):
             again = migrate_project(root, output=out)                      # the project directory now stands for the new project: nothing left to move
             self.assertEqual(again["move"], [])
             self.assertIn("两个根已分开", again["layout"])
+
+    def test_invalid_original_template_output_stops_migration_before_any_move(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.approved(tmp)
+            record = root / "00-design" / "luz-project-requirements.json"
+            selected = json.loads(record.read_text(encoding="utf-8"))
+            produced = next(item for item in selected["template_uses"] if item.get("output"))
+            produced["output"]["sha256"] = "0" * 64
+            record.write_text(json.dumps(selected, ensure_ascii=False), encoding="utf-8")
+            before = tree(root)
+            output = Path(tmp) / "out"
+
+            with self.assertRaises(ProjectError) as refused:
+                migrate_project(root, apply=True, output=output)
+
+            self.assertIn("迁移前原模板与产物核验未通过", str(refused.exception))
+            self.assertEqual(tree(root), before)
+            self.assertFalse(output.exists())
 
     def test_the_new_session_must_not_exist_and_the_directory_name_must_carry_a_serial(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -390,7 +418,7 @@ class CommandLineTests(unittest.TestCase):
 class ContextTests(unittest.TestCase):
     def test_the_context_names_both_roots_and_resolves_the_inputs_in_each(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            state = new_project("上下文", tmp)
+            state = new_project("上下文", tmp, model="document")
             deliver = Path(tmp) / "work" / "014-上下文"
             page = state / "reviews" / "01-需求评审.html"
             page.parent.mkdir()
@@ -399,13 +427,18 @@ class ContextTests(unittest.TestCase):
             doc.write_text("pdf", encoding="utf-8")
             register_artifact(state, "requirements", page, "html")
             register_artifact(state, "requirements", doc, "requirements-pdf")
+            import approval_docs as ad
+            ctx = ad.Ctx(state)
+            ad._new_record(ctx, scope="document", stage="requirements", document="docs/01-需求对接/01-需求说明书.pdf",
+                            hash=ctx.hash_of("docs/01-需求对接/01-需求说明书.pdf"), source_hashes={}, upstream={},
+                            mode=ad.USER, approver="测试用户", note="测试用户通过")
             context = stage_context(deliver, "research")
             self.assertEqual(Path(context["state_root"]), state.resolve())
             self.assertEqual(Path(context["deliver_root"]), deliver.resolve())
             self.assertEqual(Path(context["session"]), state.parent.resolve())
             inputs = {i["path"]: Path(i["absolute_path"]) for i in context["inputs"]}
-            self.assertEqual(inputs["reviews/01-需求评审.html"], page)
             self.assertEqual(inputs["docs/01-需求对接/01-需求说明书.pdf"], doc)
+            self.assertEqual({i["path"] for i in context["pending_inputs"]}, {"reviews/01-需求评审.html"})
             self.assertEqual(context["crawl"]["evidence_index"], "00-crawl")
             self.assertEqual(Path(context["output_root"]), deliver.resolve() / "docs" / "01-需求对接")
 

@@ -47,8 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
     init = sub.add_parser("init", help="创建项目：会话（状态根与汇总页）在输出根，项目目录只有成果")
     init.add_argument("name")
     init.add_argument("--project-dir", required=True, help="项目目录 D:/Codes/NNN-项目名（不存在则创建）；会话目录与它同名")
-    init.add_argument("--output-root", help="Luz-Project 的输出根（默认 D:/Codes/skill输出/Luz-Project，或环境变量 LUZ_PROJECT_OUTPUT）")
+    init.add_argument("--output-root", help="Luz-Project 的输出根（默认 E:/Skill输出/Luz-Project，或环境变量 LUZ_PROJECT_OUTPUT）")
     init.add_argument("--repository")
+    init.add_argument("--ui-mode", choices=["component-reuse", "source-locked"], default="component-reuse",
+                      help="新项目 UI 模式，写入 project.json；默认 component-reuse，source-locked 需显式指定")
 
     status = sub.add_parser("status", help="查看项目状态")
     status.add_argument("project")
@@ -71,11 +73,58 @@ def build_parser() -> argparse.ArgumentParser:
     artifact.add_argument("--kind", default="html")
     artifact.add_argument("--source-id", action="append", default=[])
 
-    approve = sub.add_parser("approve", help="记录用户阶段审批")
+    approve = sub.add_parser("approve", help="记录用户审批：用户逐个审批 docs 里的文件（--doc），一次一个，按顺序；没有 docs 文件的阶段内部门通过后自动完成（不带 --doc）")
     approve.add_argument("project")
     approve.add_argument("stage")
-    approve.add_argument("--note", required=True)
-    approve.add_argument("--approver", required=True)
+    approve.add_argument("--doc", help="docs 下的相对路径，如 docs/01-需求对接/01-需求说明书.pdf（用 project.py next 看当前该审哪一个）")
+    approve.add_argument("--note", help="用户的原话（审批依据）")
+    approve.add_argument("--approver", help="实际审批的用户")
+    approve.add_argument("--pre-authorized", action="store_true", help="只在 approval_policy.mode 是用户显式设置的 blanket 时可用：记整体预先授权，备注须以“用户整体预先授权”开头")
+    confirm = sub.add_parser("confirm", help="用户复核一个预先授权的文件（等价于 approve --doc，不用写阶段）")
+    confirm.add_argument("project")
+    confirm.add_argument("--doc", required=True)
+    confirm.add_argument("--note", required=True)
+    confirm.add_argument("--approver", required=True)
+    nxt = sub.add_parser("next", help="当前待审的那一个文件、为什么是它、已通过的内部检查和之后的队列（对用户汇报的唯一来源）")
+    nxt.add_argument("project")
+    nxt.add_argument("--json", action="store_true", dest="as_json")
+    checklist = sub.add_parser("checklist", help="一个阶段的完整路径清单：每一步已完成/未做/被什么阻断，以及现在该执行的命令")
+    checklist.add_argument("project")
+    checklist.add_argument("stage", nargs="?")
+    checklist.add_argument("--json", action="store_true", dest="as_json")
+    step = sub.add_parser("step", help="记录无法由工具看到的内部步骤：rules（读了哪些规则卡、采用什么）、specialist（专家技能产出与自检结论）")
+    step.add_argument("project")
+    step.add_argument("stage")
+    step.add_argument("step", choices=["rules", "specialist"])
+    step.add_argument("--note", required=True)
+    step.add_argument("--by", default="")
+    review = sub.add_parser("review", help="用户对当前文件的修改意见：add 登记原话、done 标记处理完、list 列出（有 open 意见的文件不能批准）")
+    review.add_argument("project")
+    review.add_argument("action", choices=["add", "done", "list"])
+    review.add_argument("--doc")
+    review.add_argument("--text")
+    review.add_argument("--id")
+    review.add_argument("--by", default="")
+    review.add_argument("--resolution", default="")
+    review.add_argument("--unchanged", action="store_true", help="done：文件没有变化也标记处理完（意见撤回或无需修改），须在 --resolution 写明原因")
+    action = sub.add_parser("action", help="动作门：用户明确授权不是文件的对外动作（release 的 production-release、handover 的 final-acceptance）")
+    action.add_argument("project")
+    action.add_argument("stage")
+    action.add_argument("action")
+    action.add_argument("--note", required=True)
+    action.add_argument("--approver", required=True)
+    status_cmd = sub.add_parser("action-status", help="只读：动作门（release 的 production-release、handover 的 final-acceptance）是否已被用户授权、授权是否仍然有效（绑定的文件哈希与现在一致）；退出码 0=已授权，1=未授权")
+    status_cmd.add_argument("project")
+    status_cmd.add_argument("stage")
+    status_cmd.add_argument("action")
+    status_cmd.add_argument("--json", action="store_true", dest="as_json")
+    expiry = sub.add_parser("crawl-expiry-waived", help="只读：该阶段的 Crawl 记录是否不再受七天期限约束（阶段已完成：文件都由用户批准，客户输入和动作门都已通过）；退出码 0=豁免，1=不豁免（阶段在进行或被变更重开）")
+    expiry.add_argument("project")
+    expiry.add_argument("stage")
+    expiry.add_argument("--json", action="store_true", dest="as_json")
+    upgrade = sub.add_parser("approvals-upgrade", help="把旧项目的阶段级批准拆成逐文件记录；默认只预演，加 --apply 才写（写前备份 APPROVALS.json 与 project.json）")
+    upgrade.add_argument("project")
+    upgrade.add_argument("--apply", action="store_true")
 
     render = sub.add_parser("render", help="重新生成会话的汇总页")
     render.add_argument("project")
@@ -130,14 +179,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     client = sub.add_parser("client", help="客户文档：方案 PDF、业务逻辑确认表、验收清单、使用说明（经 Luz-Design 版式与检查）")
     client.add_argument("project")
-    client.add_argument("action", choices=["theme", "requirements-draft", "requirements", "proposal-draft", "proposal", "intake-form", "intake-import", "intake-status", "intake-defer", "acceptance-plan", "acceptance", "acceptance-import", "acceptance-waive", "manual-draft", "manual"])
+    client.add_argument("action", choices=["theme", "requirements-draft", "requirements", "proposal-draft", "proposal", "intake-form", "intake-import", "intake-status", "intake-defer", "intake-proceed", "acceptance-plan", "acceptance", "acceptance-import", "acceptance-waive", "manual-draft", "manual", "estimate", "quote"],
+                        help="estimate：人日与报价开关（默认都不写；打开必须带谁要求、何时、原话）；quote：记录人工提供的报价（数字必须是用户或客户提供的，agent 不得自拟）")
     client.add_argument("value", nargs="?", help="theme 名、导入的 xlsx 路径、defer/waive 的键或编号")
     client.add_argument("--force", action="store_true", help="来源未变化时也重新生成")
     client.add_argument("--all-questions", action="store_true", help="确认表包含问题库的全部问题")
     client.add_argument("--owner")
     client.add_argument("--due")
     client.add_argument("--by")
-    client.add_argument("--note")
+    client.add_argument("--note", help="intake-defer、acceptance-waive 的说明；estimate 关闭开关时写明原因")
+    est = client.add_argument_group("estimate / quote", "预算、人日与报价：默认只给功能清单。用户或客户明确要求写人日或报价才打开开关，数字只来自人工提供的报价单，agent 不得自拟、暂估或套用示例值。")
+    est.add_argument("--workdays", choices=["on", "off"], help="estimate：功能清单是否加工时（人天）列（features.json 每个功能要有 hours 和 hours_basis）")
+    est.add_argument("--quote", choices=["on", "off"], help="estimate：是否加报价清单工作表（需要同时 --workdays on，并等人工报价）")
+    est.add_argument("--requested-by", help="estimate on：谁要求的（具体的人，不能是智能体、技能、工具、系统、示例）")
+    est.add_argument("--requested-at", help="estimate on：何时要求的，YYYY-MM-DD")
+    est.add_argument("--request-note", help="estimate on 或 quote：要求的原话")
+    est.add_argument("--source", choices=["客户", "内部"], default="内部", help="estimate：这次开关变更记入变更台账时的来源（客户提出的才进客户台账）")
+    est.add_argument("--unit-price", type=float, help="quote：人天单价（元每人天），必须是用户或客户提供的数字，配 --evidence 写明原话或出处")
+    est.add_argument("--from-file", help="quote：人工提供的报价单（xlsx、json、csv），从中读人天单价，文件留在 uploads/ 并记哈希")
+    est.add_argument("--provided-by", help="quote：提供这个数字的人（姓名或角色，不能是智能体、技能、工具、系统、示例、暂估）")
+    est.add_argument("--provided-at", help="quote：提供的日期，默认今天")
+    est.add_argument("--evidence", help="quote：提供数字的原话或来源（不能是暂估、示例、默认值）；用 --from-file 时默认是报价单在 uploads/ 的路径")
 
     change = sub.add_parser("change", help="全局需求变更台账（客户新增需求/修改规则/补充细节都先登记）")
     change.add_argument("project")
@@ -167,6 +229,19 @@ def run_client(args: argparse.Namespace) -> object:
 
     root = resolve_state_root(_path(args.project))
     act = args.action
+    if act == "estimate":
+        import client_estimate as ce
+
+        flag = {"on": True, "off": False, None: None}
+        if args.workdays is None and args.quote is None:
+            return ce.status(root)
+        return ce.set_estimate(root, workdays=flag[args.workdays], quote=flag[args.quote], requested_by=args.requested_by or "", requested_at=args.requested_at or "",
+                               request_note=args.request_note or "", note=args.note or "", source=args.source)
+    if act == "quote":
+        import client_estimate as ce
+
+        return ce.write_quote(root, unit_price=args.unit_price, from_file=args.from_file, provided_by=args.provided_by or "", evidence=args.evidence or "",
+                              provided_at=args.provided_at or "", request_note=args.request_note or "", note=args.note or "")
     if act == "theme":
         return cf.set_theme(root, args.value or "")
     if act == "requirements-draft":
@@ -186,6 +261,8 @@ def run_client(args: argparse.Namespace) -> object:
     if act == "intake-defer":
         cf.defer_intake(root, args.value, args.owner or "", args.due or "", args.note or "")
         return cf.intake_status(root)
+    if act == "intake-proceed":
+        return cf.authorize_intake_deferral(root, args.value or "", args.by or "", args.note or "")
     if act == "acceptance-plan":
         cf.generate_acceptance(root)
         return cf.acceptance_status(root)
@@ -238,8 +315,9 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "init":
-            state = create_project(args.name, _path(args.project_dir), _path(args.output_root) if args.output_root else output_root(), args.repository)
-            _print({"project": str(deliver_root(state)), "state_root": str(state), "session": str(state.parent), "summary": str(state.parent / f"{state.parent.name}.html")})
+            state = create_project(args.name, _path(args.project_dir), _path(args.output_root) if args.output_root else output_root(), args.repository, ui_mode=args.ui_mode)
+            _print({"project": str(deliver_root(state)), "state_root": str(state), "session": str(state.parent), "summary": str(state.parent / f"{state.parent.name}.html"),
+                    "next": "project.py next <项目> 看现在该做什么；完整路径见 references/runbook.md"})
         elif args.command == "status":
             _print(project_status(_path(args.project)))
         elif args.command == "route":
@@ -264,13 +342,85 @@ def main(argv: list[str] | None = None) -> int:
             if not path:
                 raise ProjectError("artifact 需要 path 或 --path")
             _print(register_artifact(_path(args.project), args.stage, _path(path), args.kind, args.source_id))
-        elif args.command == "approve":
-            _print(approve_stage(_path(args.project), args.stage, args.note, args.approver))
+        elif args.command in {"approve", "confirm"}:
+            import approval_docs
+            project = _path(args.project)
+            if args.command == "confirm":
+                found = next((d for d in approval_docs.all_documents(resolve_state_root(project)) if d["path"] == approval_docs.rel(args.doc) or d["path"].endswith("/" + approval_docs.rel(args.doc))), None)
+                if found is None:
+                    raise ProjectError(f"不是需要审批的 docs 文件: {args.doc}")
+                _print(approval_docs.approve_document(project, found["stage"], found["path"], args.note, args.approver))
+            elif args.doc:
+                if not (args.note and args.approver):
+                    raise ProjectError("approve --doc 需要 --note（用户原话）和 --approver")
+                _print(approval_docs.approve_document(project, args.stage, args.doc, args.note, args.approver, mode="pre-authorized" if args.pre_authorized else "user"))
+            else:
+                _print(approve_stage(project, args.stage, args.note or "", args.approver or ""))
+        elif args.command == "next":
+            import flow_steps
+            report = flow_steps.next_report(_path(args.project))
+            print(json.dumps(report, ensure_ascii=False, indent=2, default=str) if args.as_json else flow_steps.format_next(report))
+        elif args.command == "checklist":
+            import flow_steps
+            root = resolve_state_root(_path(args.project))
+            stage = args.stage or load_project(root).get("current_stage")
+            if not args.stage:
+                report = flow_steps.next_report(root)
+                stage = report.get("stage") or stage
+            data = flow_steps.checklist(root, stage, project=str(deliver_root(root)))
+            print(json.dumps(data, ensure_ascii=False, indent=2, default=str) if args.as_json else flow_steps.format_checklist(data))
+        elif args.command == "step":
+            import flow_steps
+            _print(flow_steps.record_step(_path(args.project), args.stage, args.step, args.note, args.by))
+        elif args.command == "review":
+            import approval_docs
+            project = _path(args.project)
+            if args.action == "add":
+                if not (args.doc and args.text):
+                    raise ProjectError("review add 需要 --doc 和 --text（用户的原话）")
+                _print(approval_docs.review_add(project, args.doc, args.text, args.by))
+            elif args.action == "done":
+                if not args.id:
+                    raise ProjectError("review done 需要 --id")
+                _print(approval_docs.review_done(project, args.id, args.resolution, unchanged=args.unchanged))
+            else:
+                _print(approval_docs.review_list(project, args.doc))
+        elif args.command == "action":
+            import approval_docs
+            _print(approval_docs.record_action(_path(args.project), args.stage, args.action, args.note, args.approver))
+        elif args.command == "action-status":
+            import approval_docs
+            status = approval_docs.action_status(_path(args.project), args.stage, args.action)
+            if args.as_json:
+                _print(status)
+            elif status["granted"]:
+                print(f"已授权：{args.stage} / {args.action}　授权人：{status['approver']}　时间：{status['time']}　记录：{status['record']}")
+                print(f"用户原话：{status['note']}")
+                print("绑定的文件（现在的哈希与授权时一致）：" + "、".join(status["bound_files"]))
+            else:
+                print(f"未授权：{args.stage} / {args.action}　原因：{status['reason']}")
+            return 0 if status["granted"] else 1
+        elif args.command == "crawl-expiry-waived":
+            import approval_docs
+            waived, reason = approval_docs.crawl_expiry_status(_path(args.project), args.stage)
+            if args.as_json:
+                _print({"stage": args.stage, "waived": waived, "reason": reason})
+            else:
+                print(("豁免" if waived else "不豁免") + f"：{args.stage}　{reason}")
+            return 0 if waived else 1
+        elif args.command == "approvals-upgrade":
+            import approval_docs
+            _print(approval_docs.approvals_upgrade(_path(args.project), apply=args.apply))
         elif args.command == "render":
             _print({"rendered": [str(path) for path in render_project(_path(args.project))]})
         elif args.command == "check":
             errors = validate_project(_path(args.project), args.strict)
             notes = ["项目是旧布局（状态与过程文件还在项目目录里）：运行 project.py migrate <项目> 预演迁移，确认后加 --apply"] if not errors and is_legacy(_path(args.project)) else []
+            from client_data import estimate_state
+            try:
+                notes += estimate_state(resolve_state_root(_path(args.project))).notes
+            except ProjectError:
+                pass
             _print({"ok": not errors, "errors": errors, **({"notes": notes} if notes else {})})
             return 1 if errors else 0
         elif args.command == "adopt":

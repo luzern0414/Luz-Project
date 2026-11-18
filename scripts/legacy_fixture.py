@@ -17,7 +17,7 @@ def legacy_project(name: str, tmp: Path | str) -> Path:
         (root / relative / ".gitkeep").write_text("", encoding="utf-8")
     pc._write_json(root / "project.json", {"schema_version": "1.1"})          # from here on the folder reads as a project of the old layout
     stages = [pc._empty_stage(item, current=(index == 0), root=root) for index, item in enumerate(pc._load_matrix()["stages"])]
-    manifest = pc._new_manifest(name, root, stages, None)
+    manifest = pc._new_manifest(name, root, stages, None, "stage")
     del manifest["deliver_root"]
     manifest["schema_version"] = "1.1"
     manifest["crawl"]["evidence_index"] = "raw/00-crawl"

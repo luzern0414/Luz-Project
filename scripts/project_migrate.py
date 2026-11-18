@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import project_core as pc
+from estimate_policy import default_estimate
 from project_paths import STATE_CONFIG, STATE_DATA, ProjectError, deliver_root, is_legacy
 
 DOCS_INDEX_MARK = "文档导航"          # the first line of the docs/README.md that older versions generated
@@ -81,6 +82,11 @@ def _plan_roots(plan: _Plan, root: Path) -> list[str]:
         for child in sorted(raw.iterdir()):
             if child.name != ".gitkeep":
                 plan.add(child, state / child.name, "state", f"raw/{child.name}", child.name)
+    # Template selections use the project state root directly, including a
+    # retained legacy project whose state and deliver roots still coincide.
+    # Move the real records and snapshots without rewriting their bytes.
+    if (root / "00-design").is_dir():
+        plan.add(root / "00-design", state / "00-design", "state", "00-design", "00-design")
     for name in STATE_CONFIG:
         if (root / "config" / name).is_file():
             plan.add(root / "config" / name, state / "config" / name, "state", f"config/{name}", f"config/{name}")
@@ -238,6 +244,24 @@ def _refresh_manifest(source: Path, state: Path, manifest: dict[str, Any]) -> tu
     return added, notes
 
 
+def _estimate_defaults(path: Path, apply: bool) -> str | None:
+    """A documents config without an ``estimate`` section gets the defaults (person-days and quote both off). The old ``amounts`` switch had no evidence behind it and meant at
+    most "off": it is dropped, and an old ``amounts: true`` is said out loud. Returns the sentence for the migration notes (None when the section is there); writes only when applying."""
+    config = pc._read_json(path, None)
+    if not isinstance(config, dict) or isinstance(config.get("estimate"), dict):
+        return None
+    note = "config/documents.json 补上 estimate 默认值（人日、报价都不写；用户明确要求时用 project.py client <项目> estimate 打开）"
+    if config.get("amounts") is True:
+        note += "；旧的 amounts: true 没有谁要求、何时、什么原话的证据，按关闭处理"
+    elif "amounts" in config:
+        note += "；旧的 amounts 开关去掉（amounts: false 本来就等价于都关）"
+    if apply:
+        config["estimate"] = default_estimate()
+        config.pop("amounts", None)
+        pc._write_json(path, config)
+    return note
+
+
 def migrate_project(project: Path | str, *, apply: bool = False, output: Path | str | None = None) -> dict[str, Any]:
     """Preview (default) or carry out the migration of a project; ``output`` is the Luz-Project output root (default: project_paths.output_root())."""
     root = pc._project_root(project)
@@ -267,6 +291,10 @@ def migrate_project(project: Path | str, *, apply: bool = False, output: Path | 
     missing = [line for line in pc.GITIGNORE_SAFE if line not in ignored]
     if missing:
         notes.append(".gitignore 补上: " + "、".join(missing))
+    estimate_note = _estimate_defaults((root / "raw" / "config" / "documents.json") if legacy and (root / "raw" / "config" / "documents.json").is_file() else
+                                       (root / "config" / "documents.json") if legacy else state / "config" / "documents.json", False)
+    if estimate_note:
+        notes.append(estimate_note)
     if any(m["from"].startswith("docs/") and m["from"].endswith(".html") and m["root"] == "state" for m in plan.moves):
         notes.append("移动过的 HTML 里的相对链接可能失效，对应阶段用 project.py document 重新生成")
     for relative, empty in SKELETONS:
@@ -280,6 +308,15 @@ def migrate_project(project: Path | str, *, apply: bool = False, output: Path | 
     if not apply:
         result["rewrite"] = (["project.json、MANIFEST.json、data/project.json（deliver_root、阶段的交付物路径、crawl.evidence_index）"] if legacy else []) + _preview_registers(root, plan.pairs)
         return result
+
+    migration_library, prepared_templates = None, None
+    if legacy:
+        from project_summary import design_library
+        try:
+            migration_library = design_library()
+            prepared_templates = migration_library.prepare_output_migration(root, state, [(m["src"], m["dst"]) for m in plan.moves])
+        except (ImportError, OSError, ValueError, TypeError, KeyError) as exc:
+            raise ProjectError(f"迁移前原模板与产物核验未通过，未移动任何文件：{exc}") from exc
 
     for move in plan.moves:
         if move["dst"].exists():
@@ -305,13 +342,20 @@ def migrate_project(project: Path | str, *, apply: bool = False, output: Path | 
     if not (state / "data" / "changes.json").is_file():
         pc._write_json(state / "data" / "changes.json", {"schema_version": "1.0", "changes": []})
     if not (state / "config" / "documents.json").is_file():
-        pc._write_json(state / "config" / "documents.json", {"theme": None})
+        pc._write_json(state / "config" / "documents.json", {"theme": None, "estimate": default_estimate()})
+    _estimate_defaults(state / "config" / "documents.json", True)
     manifest = pc._read_json(state / "project.json", {})
     if legacy:
         manifest["deliver_root"] = str(deliver)                                # from here on the project is read as one of the new layout
         pc._save_manifest(state, manifest)
     _refresh_manifest(state, state, manifest)
     pc._save_manifest(state, manifest)
+    if migration_library is not None:
+        try:
+            receipt = migration_library.record_output_migration(prepared_templates)
+            result["template_migration"] = str(receipt) if receipt is not None else None
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            raise ProjectError(f"文件已移动，但同字节模板迁移核验未通过：{exc}") from exc
     pc.ensure_gitignore(deliver, pc.GITIGNORE_SAFE)
     pc.render_project(state)
     result["leftovers"] = pc.layout_errors(state)

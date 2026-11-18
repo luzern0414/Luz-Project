@@ -1,7 +1,7 @@
 """Render substantive stage facts; the project index is never an architecture deliverable."""
 from __future__ import annotations
+import copy
 import html
-import math
 from pathlib import Path
 import dev_documents
 from project_core import ProjectError, _html_page, _load_artifacts, _project_root, _save_artifacts, doc_theme, _write_json, load_project, locate, register_artifact, now_iso, require_crawl, stage_document_path, DOC_DIRS
@@ -68,8 +68,36 @@ def write_document(project, stage, spec):
     if stage not in DOC_DIRS:
         raise ProjectError("未知阶段")
     require_crawl(root, stage)
+    # Every review/developer HTML is a formal deliverable.  The project
+    # renderer may assemble its facts, but the page shell must be selected
+    # from Luz-Design before any bytes are written.
+    relative = stage_document_path(stage, root)
+    path = locate(root, relative)
+    try:
+        from template_library import require_selected, record_output
+    except ImportError:
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Luz-Design" / "scripts"))
+        from template_library import require_selected, record_output
+    try:
+        # _html_page uses the formal showcase shell (showcase.page + the
+        # project's reading-size patch), so the selection must name the
+        # actual renderer rather than an unrelated reading-summary wrapper.
+        require_selected(root, "luz-project", stage, path, "showcase")
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise ProjectError(f"生成 {stage} 文档前必须先选择 Luz-Design showcase 模板并绑定 {relative}: {exc}") from exc
     if not isinstance(spec, dict) or not str(spec.get("title", "")).strip() or not str(spec.get("conclusion", "")).strip():
         raise ProjectError("阶段文档需要实际标题与结论")
+    from project_crawl_gate import bind_document_sources
+    spec = copy.deepcopy(spec)
+    spec["sources"] = bind_document_sources(root, stage, spec.get("sources", []))
+    prepared_prototypes = []
+    if stage == "design":
+        from project_ui_source import prepare
+        try:
+            prepared_prototypes = prepare(root, spec)
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            raise ProjectError(f"设计阶段的完整 UI 来源与模板未通过：{exc}") from exc
     counters = {"table": 0}
     if dev_documents.has_standard(stage):
         errors = dev_documents.validate(stage, spec, root)
@@ -92,12 +120,19 @@ def write_document(project, stage, spec):
         body += "<h2>来源与依据</h2>" + caption + table(sources, [("id", "来源"), ("url", "网址"), ("finding", "补充信息"), ("applies_to", "采用位置")], widths=[1.3, 3.2, 4, 3])
 
     data = root / "data" / "stages" / f"{stage}.json"
-    relative = stage_document_path(stage, root)
-    path = locate(root, relative)
     path.parent.mkdir(parents=True, exist_ok=True)
+    if prepared_prototypes:
+        from project_ui_source import write_links
+        write_links(root, prepared_prototypes)
     _write_json(data, spec)
     page = _html_page(project_id=manifest["project_id"], document_id=f'DOC-{manifest["project_id"]}-{stage}-review', stage=stage, status="pending-review", version=now_iso(), title=spec["title"], body=body, theme=doc_theme(root))
     path.write_text(page, encoding="utf-8")
+    try:
+        record_output(root, "luz-project", stage, path, "showcase", generator="Luz-Project/scripts/stage_documents.py")
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        path.unlink(missing_ok=True)
+        data.unlink(missing_ok=True)
+        raise ProjectError(f"Luz-Design 模板没有真正绑定到 {relative}: {exc}") from exc
     register_artifact(root, stage, data, "architecture-spec" if stage == "architecture" else "stage-spec", [s["id"] for s in sources])
     register_artifact(root, stage, path, "html", [s["id"] for s in sources])
     _retire_old_pages(root, stage, relative)
@@ -115,6 +150,10 @@ def _register_prototypes(root, spec):
         if proto["path"] in seen:
             continue
         seen.add(proto["path"])
+        from project_ui_source import output_errors
+        errors = output_errors(root, proto["path"])
+        if errors:
+            raise ProjectError("; ".join(errors))
         register_artifact(root, "design", locate(root, proto["path"]), "html")
     manifest = load_project(root)
     for record in manifest["stages"]:

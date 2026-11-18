@@ -2,11 +2,15 @@
   {
     "key": "hash-gate",
     "kind": "lesson",
-    "text": "上游产物变化会让下游审批回到待复核。",
+    "text": "用户逐份批准须绑定当前文件与来源哈希；文件批准与客户回填是不同输入，不能把未填的审核或资料格当成真实答复。",
     "why": null,
-    "uses": 1,
+    "uses": 5,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-07",
+    "previous": {
+      "text": "用户逐份批准须绑定当前文件与来源哈希；文件批准与客户回填是不同输入，不能把未填的审核或资料格当成真实答复。",
+      "replaced_at": "2026-11-07"
+    }
   },
   {
     "key": "preflight-crawl-before-stage",
@@ -22,9 +26,13 @@
     "kind": "lesson",
     "text": "客户文档（PDF/Excel）与开发评审页都由 data/ 的 JSON 渲染，来源哈希变化即过期；先改事实再重建，不手改成品。",
     "why": null,
-    "uses": 1,
+    "uses": 5,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-07",
+    "previous": {
+      "text": "客户文档（PDF/Excel）与开发评审页都由 data/ 的 JSON 渲染，来源哈希变化即过期；先改事实再重建，不手改成品。",
+      "replaced_at": "2026-11-07"
+    }
   },
   {
     "key": "change-ledger-first",
@@ -95,11 +103,15 @@
   {
     "key": "client-docs-through-design-showcase",
     "kind": "lesson",
-    "text": "客户方案说明书和使用说明走 Luz-Design 的 docx 规则卡（make_docx_paginated.py，只交付导出的 PDF）；架构图册走 showcase 规则卡的 atlas 样式；Excel 走 xlsx 卡（make_xlsx.py 生成功能清单、报价清单、业务逻辑确认表、台账、验收清单，字体字号与配色见 references/client-documents.md 第 3 节）。Project 只提供事实与检查，不在 Project 里自己排版，也不因为“给客户看”就用展示版引擎。",
+    "text": "客户方案说明书和使用说明走 Luz-Design 的 docx 规则卡（make_docx_paginated.py，只交付导出的 PDF）；架构图册走 showcase 规则卡的 atlas 样式；Excel 走 xlsx 卡（make_xlsx.py 生成功能清单、业务逻辑确认表、台账、验收清单，开了报价才有报价清单，estimate 块带证据才放行工时与金额，字体字号与配色见 references/client-documents.md 第 3 节）。Project 只提供事实与检查，不在 Project 里自己排版，也不因为“给客户看”就用展示版引擎。",
     "why": null,
-    "uses": 2,
+    "uses": 3,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "客户方案说明书和使用说明走 Luz-Design 的 docx 规则卡（make_docx_paginated.py，只交付导出的 PDF）；架构图册走 showcase 规则卡的 atlas 样式；Excel 走 xlsx 卡（make_xlsx.py 生成功能清单、报价清单、业务逻辑确认表、台账、验收清单，字体字号与配色见 references/client-documents.md 第 3 节）。Project 只提供事实与检查，不在 Project 里自己排版，也不因为“给客户看”就用展示版引擎。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "dev-pages-follow-design",
@@ -117,11 +129,15 @@
   {
     "key": "worked-example",
     "kind": "fact",
-    "text": "references/examples 保存了一个完整项目的 Word 方案、架构图册（atlas）、功能清单（含 hours）、报价单价和业务逻辑确认表补充问题（含 why），新项目从它改起，不从空白写。",
+    "text": "references/examples 保存了一个完整项目的 Word 方案、架构图册（atlas）、功能清单（不含工时与金额，开了人日才加 hours 与 hours_basis）和业务逻辑确认表补充问题（含 why），新项目从它改起，不从空白写；技能里不放任何示例单价（报价单只能由 project.py client <项目> quote 记录人工数字）。",
     "why": null,
-    "uses": 2,
+    "uses": 3,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "references/examples 保存了一个完整项目的 Word 方案、架构图册（atlas）、功能清单（含 hours）、报价单价和业务逻辑确认表补充问题（含 why），新项目从它改起，不从空白写。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "client-gets-pdf-only",
@@ -148,11 +164,15 @@
   {
     "key": "feature-list-as-excel",
     "kind": "preference",
-    "text": "功能清单用 Excel 交付，两个工作表：功能清单（使用端→使用角色→功能模块→功能、功能说明、类型，纵向合并）和报价清单（同一份清单加工时人天与报价，表下方基础功能小计、可选功能小计、报价合计）；不显示编号，不写业务规则（业务规则在业务逻辑确认表）。",
-    "why": null,
-    "uses": 2,
+    "text": "功能清单用 Excel 交付，默认一个工作表：功能清单（使用端→使用角色→功能模块→功能、功能说明、类型，纵向合并），没有工时、金额、小计、合计；用户明确要求并有证据时才加：开 workdays 在类型后加“工时（人天）”列，表下方基础功能小计、可选功能小计、工时合计（公式）；开 quote 再加“报价清单”工作表（工时、单价取人工报价单、报价=工时×单价，小计与合计都是公式）。不显示编号，不写业务规则（业务规则在业务逻辑确认表）。",
+    "why": "用户 2026-11-05：「补充，有一些项目是不需要写预算的，只有明确要求写人日和报价，才写，否则只需要给出清单即可，且报价必须人工报价，不允许agent随便填」",
+    "uses": 3,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "功能清单用 Excel 交付，两个工作表：功能清单（使用端→使用角色→功能模块→功能、功能说明、类型，纵向合并）和报价清单（同一份清单加工时人天与报价，表下方基础功能小计、可选功能小计、报价合计）；不显示编号，不写业务规则（业务规则在业务逻辑确认表）。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "intake-two-level-category",
@@ -193,11 +213,15 @@
   {
     "key": "client-doc-division",
     "kind": "preference",
-    "text": "每份客户文件把自己的内容写完整，文件里不提及其他文件（不写“详见《功能清单》”“配套文件”）：方案说明书做需求分析后给出解决方案（系统、角色、业务流程、各系统的功能与业务逻辑、交付内容）；功能清单给具体功能和报价；系统架构图给完整架构、模块逻辑、依赖和数据链路；业务逻辑确认表先给出拟定的逻辑再由客户确认或修改。",
-    "why": "用户：“方案只需给出方案，功能清单给出具体功能和报价，系统架构图给出完整架构，每个文件要清晰，互补而不重复”",
-    "uses": 1,
+    "text": "每份客户文件把自己的内容写完整，文件里不提及其他文件（不写“详见《功能清单》”“配套文件”）：方案说明书做需求分析后给出解决方案（系统、角色、业务流程、各系统的功能与业务逻辑、交付内容）；功能清单给具体功能（用户明确要求时才再加人日和人工报价）；系统架构图给完整架构、模块逻辑、依赖和数据链路；业务逻辑确认表先给出拟定的逻辑再由客户确认或修改。",
+    "why": "用户：“方案只需给出方案，功能清单给出具体功能和报价，系统架构图给出完整架构，每个文件要清晰，互补而不重复”（2026-11-05 补充：报价和人日只在明确要求时才写，见 no-estimate-unless-asked）",
+    "uses": 2,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "每份客户文件把自己的内容写完整，文件里不提及其他文件（不写“详见《功能清单》”“配套文件”）：方案说明书做需求分析后给出解决方案（系统、角色、业务流程、各系统的功能与业务逻辑、交付内容）；功能清单给具体功能和报价；系统架构图给完整架构、模块逻辑、依赖和数据链路；业务逻辑确认表先给出拟定的逻辑再由客户确认或修改。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "proposal-chapters-and-headings",
@@ -211,11 +235,15 @@
   {
     "key": "quote-hours-are-estimates",
     "kind": "lesson",
-    "text": "报价清单的工时是按功能复杂度估的人天，总额对齐方案里已有的预算；写进 features.json 的 hours 和 quote.json 的 unit_price 后须请用户确认，再交给客户。",
-    "why": null,
-    "uses": 1,
+    "text": "开了 workdays 的功能清单，工时是 agent 按功能复杂度、涉及的页面与接口数、同类功能估的人天，每个功能在 features.json 里写 hours（0.5 的倍数）和 hours_basis（估算依据，不能只有数字）；用户批准功能清单之前一律标“拟定”（next、checklist、汇总页出示时写明）。不要把总额去“对齐”已有预算：数字只由 hours 与人工给的单价算出，见 estimate-policy-human-quote。",
+    "why": "用户 2026-11-05：「补充，有一些项目是不需要写预算的，只有明确要求写人日和报价，才写，否则只需要给出清单即可，且报价必须人工报价，不允许agent随便填」",
+    "uses": 2,
     "first_seen": "2026-11-02",
-    "last_confirmed": "2026-11-02"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "报价清单的工时是按功能复杂度估的人天，总额对齐方案里已有的预算；写进 features.json 的 hours 和 quote.json 的 unit_price 后须请用户确认，再交给客户。",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "word-route-needs-wps",
@@ -259,7 +287,8 @@
     "previous": {
       "text": "每个文档的生成必须先走 Luz-Crawl 取得足够的信息才能写入：阶段评审页、方案说明书、系统架构图、功能清单、业务逻辑确认表、使用说明、验收清单（Project），验收测试报告、发布说明、运维手册（Ops），用户协议、隐私政策（Dev）。没有该阶段通过 check 的前置检索时，生成命令直接报错、什么都不写；变更台账、客户回填导入、项目索引页除外。",
       "replaced_at": "2026-11-05"
-    }
+    },
+    "codified": "Luz-Project/references/runbook.md › 4"
   },
   {
     "key": "dev-documents-standard",
@@ -468,11 +497,16 @@
   {
     "key": "intake-text-no-book-marks",
     "kind": "lesson",
-    "text": "业务逻辑确认与功能清单的客户文字检查会把任何书名号当成“提及其他文件”，写法规时不要加书名号，直接写“个人信息保护法”；密钥类资料只问“已通过安全渠道发送 / 尚未发送”，项目专属问题的 example 要写成真实可抄的样子。",
-    "why": "features_check 的 OTHER_FILES 规则匹配所有 2 到 16 字的书名号内容。",
-    "uses": 1,
+    "text": "客户文档完整说明本文件承担的事项。内部文件名有共用检查，正文引用法规或外部资料时可以保留书名号。",
+    "why": "旧的功能清单和写作检查把法规标题判为项目文件引用。已共用正式客户文件名检查并补回归。",
+    "uses": 2,
     "first_seen": "2026-11-03",
-    "last_confirmed": "2026-11-03"
+    "last_confirmed": "2026-11-18",
+    "previous": {
+      "text": "业务逻辑确认与功能清单的客户文字检查会把任何书名号当成“提及其他文件”，写法规时不要加书名号，直接写“个人信息保护法”；密钥类资料只问“已通过安全渠道发送 / 尚未发送”，项目专属问题的 example 要写成真实可抄的样子。",
+      "replaced_at": "2026-11-18"
+    },
+    "codified": "Luz-Design/references/document-evidence.md › 内容与引用"
   },
   {
     "key": "xlsx-rebuild-reopens-approval",
@@ -656,11 +690,15 @@
   {
     "key": "client-docs-no-amounts",
     "kind": "preference",
-    "text": "用户决定客户文件不出现金额时，在 config/documents.json 写 amounts:false：04 功能清单只留“功能清单”一张表并在类型后加工时（人天）列，不读也可以删掉 quote.json；方案、架构图册、需求说明书、确认表项目专属问题、台账里客户可见的条目和 03、04 两页评审页里出现报价、单价、小计、元每人天、合计加金额都会被 check、gate、approve 拦下，评审页讲这件事写“价格页”；只顺带提到钱的业务规则（100 分抵 1 元）不算",
-    "why": "用户 2026-11-04 整体返工的决定；工具开关、检查和回归测试在 Luz-Project 的 client_data.py、client_flow.py",
-    "uses": 1,
+    "text": "客户文件里的人日与金额由 config/documents.json 的 estimate 两个开关决定（旧的 amounts 开关作废：amounts:false 等价于都关，amounts:true 无证据也按关）：默认都关，04 功能清单只有“功能清单”一张表；方案、需求说明书、架构图册、确认表项目专属问题、台账里客户可见的条目和 03、04 两页评审页里出现人天、工时、报价、单价、小计、元每人天、合计加金额，在对应开关没开时都会被 check、gate、approve 拦下，评审页讲这件事写“价格页”；只顺带提到钱的业务规则（100 分抵 1 元）不算。",
+    "why": "用户 2026-11-05：「补充，有一些项目是不需要写预算的，只有明确要求写人日和报价，才写，否则只需要给出清单即可，且报价必须人工报价，不允许agent随便填」",
+    "uses": 2,
     "first_seen": "2026-11-05",
-    "last_confirmed": "2026-11-05"
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "用户决定客户文件不出现金额时，在 config/documents.json 写 amounts:false：04 功能清单只留“功能清单”一张表并在类型后加工时（人天）列，不读也可以删掉 quote.json；方案、架构图册、需求说明书、确认表项目专属问题、台账里客户可见的条目和 03、04 两页评审页里出现报价、单价、小计、元每人天、合计加金额都会被 check、gate、approve 拦下，评审页讲这件事写“价格页”；只顺带提到钱的业务规则（100 分抵 1 元）不算",
+      "replaced_at": "2026-11-05"
+    }
   },
   {
     "key": "intake-changed-logic-reconfirm",
@@ -728,5 +766,703 @@
     "uses": 1,
     "first_seen": "2026-11-05",
     "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "brand-copy-independent-ui",
+    "kind": "lesson",
+    "text": "用户只授权沿用公司介绍并要求重做界面时，既有项目仅提供品牌事实，新平台的布局、样式和交互从本次需求重新推导。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "baseline-ordered-state-ramp-item",
+    "kind": "lesson",
+    "text": "底座里有序进度状态的色阶是 FE-CL-09，强制表态：有同屏多取值的有序集合才用、没有就选“不用”并写理由；它不算 FE-CL-03 的状态色也不是 FE-CL-06 的模块点缀色，石墨主题只用文字色或圆点加文字；项目表态时写取值（集合、取哪几级、令牌来源）和与技能值的差别，并在 FE-CL-01、03、05、06 与可访问性“不只靠颜色”的理由里指向它",
+    "why": "用户 2026-11-05 要求同页不同进度状态按进度递增配色，014 设计阶段第四段补基线并更新 02",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "publication-and-access-separate",
+    "kind": "lesson",
+    "text": "产品宣传的发布状态、产品阶段和访问条件应分别核对；公开登录页只能支持入口受限的观察，不能当作产品能力正文，也不能把需求通过解释为选中了可选后台。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "optional-admin-explicit-exclusion",
+    "kind": "lesson",
+    "text": "用户明确只做公开网站时，将未选用的运营后台记录为范围决定；不要把历史的可选项带入功能、架构或实现。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "client-intake-known-facts-prepopulate",
+    "kind": "lesson",
+    "text": "用户已提供的资料应先填入确认表；新增拟定规则与真实答复分别记录，不让模板默认值代表客户确认。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "approve-docs-files-one-at-a-time",
+    "kind": "preference",
+    "text": "用户只审批 docs 里的文件，一次一个：生成一个，只报这一个（路径、是什么、怎么看，三行以内），用户说通过才记录审批、再生成下一个；有修改意见就登记、改完重新出示。评审页、Crawl 记录与结论、规则卡采用记录、专家技能自检、trace 是内部步骤，一步不省略，也不请用户审、不向用户罗列；当前该审哪个、之后的队列都看 project.py next。",
+    "why": "用户只关心 docs 的产出，但要求路径完整、不能跳步骤、不能偷工减料",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05",
+    "codified": "Luz-Project/references/runbook.md › 0"
+  },
+  {
+    "key": "internal-gates-stay-when-user-reviews-less",
+    "kind": "lesson",
+    "text": "用户少看东西不等于少做事：每个阶段的 steps（上游已通过、规则卡采用记录、Crawl、专家产出、生成、内部记录、trace）是不可跳过的内部门，缺一步时生成命令、approve --doc、下游阶段都拒绝并指出缺哪一步；上游阶段的内部记录事后缺了，即使它的文件已批准，下游也不放行。测试用删掉一项登记应报缺口的反例覆盖。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "blanket-authorization-is-pending-review",
+    "kind": "lesson",
+    "text": "整体预先授权不等于用户逐件审过：升级时按文件拆成 pre-authorized 记录，视为待用户复核，哈希不变所以不使下游作废，但 next 把它们排在最前，存在待复核文件时不得生成新阶段的文件；用户逐个复核后记 mode user。blanket 只有用户显式设置，不是默认路径，备注要如实标明。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "document-approval-binds-file-source-and-upstream-hashes",
+    "kind": "lesson",
+    "text": "文件级批准绑定该文件哈希、来源数据哈希和顺序在前各文件的哈希：改一个已批准文件，它和顺序在它之后的文件批准作废，重批前面的不会让后面的复活。客户的回填（intake.json、签字后的 checklist.json）是迟到的来源，不能绑进被回填文件自己的批准，否则导入回填会让用户刚批的确认表作废；它们在阶段完成时才绑定。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "runbook-is-the-single-manual",
+    "kind": "fact",
+    "text": "references/runbook.md 是执行项目的 agent 的唯一操作手册（铁律、每个文件的循环、十二阶段路径、变更、动作门、旧项目升级、常见错误）；test_runbook.py 把里面每条 project.py 命令在副本项目上 parse 并运行（ProjectError 算通过，参数错和异常不算），并核对它点名的脚本存在、覆盖矩阵里每个阶段和文件。改了命令或矩阵要同步改手册。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "doc-approval-known-intake-transcription",
+    "kind": "lesson",
+    "text": "需求提供人明确认可具体确认表时，可保留原话与文件摘要并机械转录审核格；转录须明示来源，不伪称客户上传或签字，不重复索要已有答案。",
+    "why": "逐文件批准及确认表回填的输入来源应可复核。",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "derived-sheet-policy-repair",
+    "kind": "lesson",
+    "text": "规则更新暴露旧表中的未授权估算时，用同一事实源及正式渲染器修正派生表，逐值核对保留列；按正常文件哈希链处理重审，不虚构估算授权或恢复下游批准。",
+    "why": "派生文件修正与业务范围变更须可区分，已批准事实和未修改文件保持可核验，用户只批准实际看到的版本。",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "estimate-policy-human-quote",
+    "kind": "lesson",
+    "text": "报价的数字只能来自人工：config/documents.json 的 estimate.quote 打开（要同时打开 workdays，且带谁要求、何时、原话三项证据）后，单价由 project.py client <项目> quote 记录，必须带 provided_by（具体的人）和 evidence（原话或 uploads/ 里的来源文件，文件记哈希）；agent、技能、工具、示例、暂估、默认值一律拒绝，技能和模板里没有任何默认单价；没有合格的 quote.json 就是“等待人工报价”：列为用户待办，方案阶段的三个文件都不生成，也不出示。04 里的数字只有两种来源：人给的单价，或功能的 hours；金额、小计、合计全是公式。人日（hours 与 hours_basis）是 agent 的估算，用户批准前标“拟定”。开关或数字在批准后变了，是变更：自动登记台账并作废 02、03、04 的批准。",
+    "why": "用户 2026-11-05：「补充，有一些项目是不需要写预算的，只有明确要求写人日和报价，才写，否则只需要给出清单即可，且报价必须人工报价，不允许agent随便填」",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05",
+    "codified": "Luz-Project/references/runbook.md › 11"
+  },
+  {
+    "key": "no-estimate-unless-asked",
+    "kind": "preference",
+    "text": "默认只给功能清单：客户文件和 docs 里不写人日、工时、预算、单价、金额、合计、报价；用户或客户明确要求才写，并且要把谁要求的、哪天、原话记进 config/documents.json 的 estimate（project.py client <项目> estimate），没有证据开关打不开。“基础/可选”是功能分级，不是价格，保留。",
+    "why": "用户 2026-11-05：「补充，有一些项目是不需要写预算的，只有明确要求写人日和报价，才写，否则只需要给出清单即可，且报价必须人工报价，不允许agent随便填」",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05",
+    "codified": "Luz-Project/references/runbook.md › 11"
+  },
+  {
+    "key": "crawl-age-current-stage-only",
+    "kind": "lesson",
+    "text": "Crawl 记录的七天期限只管正在做的阶段：上游已批准阶段的记录只核对存在、有效（任务标记、日志哈希）、已 conclude，超过七天不挡下游（check、gate 同理），不要为它重跑已批准阶段的调研；变更重开某阶段后，该阶段重新算作进行中，记录超过七天就要重新检索。实现：crawl_gate.crawl_errors(waive_expiry=…)，判据是阶段是否已完成（approval_docs.stage_complete）。",
+    "why": "协调者对前一位子代理遗留问题的决定：否则项目拖过一周就走不下去，还会逼人重跑已批准阶段的调研",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "requirements-rebuild-separates-approval-and-evidence",
+    "kind": "lesson",
+    "text": "重建需求时先归档旧产物与旧审批，以新事实源区分用户明示、实测事实和拟定规则；不得沿用旧批准替代新文件审阅。",
+    "why": "从既有文档重新定义项目时，旧需求与新范围可能冲突，文件审批必须绑定本轮产物。",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "font-check-follows-the-document",
+    "kind": "lesson",
+    "text": "字体检查按文档实际选定规范执行：微软雅黑文档与采用宋体、黑体及 Times New Roman 的正式文档分别检查，禁止混用与导出回退；单字体文档使用默认单字体检查，只有明确采用对应格式时才用 paper 或 official 例外。",
+    "why": "项目引用设计规则卡时同样记录构建器默认与当前字体偏好的差异，不能以放宽检查冒充合规。",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "business-agent-proposes-before-write",
+    "kind": "lesson",
+    "text": "自动转写和纪要属于获授权的分析流程，可在录音结束后直接启动；客户、项目及正式需求的新增修改先展示可编辑结果再确认。不要把所有 Agent 步骤一律做成人工审批。",
+    "why": "区分分析授权与业务写入，按用户明确的自动化时点执行。",
+    "uses": 2,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05",
+    "previous": {
+      "text": "业务 Agent 需求应明确任务对象、资料来源、拟修改字段、确认时点、实际保存结果与失败恢复；确认绑定当前版本和权限，重试先核查结果，不能把生成文本或批准状态当作业务动作已经完成。",
+      "replaced_at": "2026-11-05"
+    }
+  },
+  {
+    "key": "docx-table-keep-together",
+    "kind": "lesson",
+    "text": "Word 短表是否能整表放下取决于实际行高，不能只看行数；导出后核对每个续表片段至少两行。若末段仅一行，将前一行一同移入并重新真实排版，同时把引出表格的文段、表题和起始行保持同页，不删减需求来凑行数。",
+    "why": "项目使用 Design 规则卡时同样保留版式自查经验；自动检查零错误并不能代替实际分页检查。",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "deletion-covers-provider-state",
+    "kind": "lesson",
+    "text": "需求要求删除后不留内容时，删除须覆盖原件、派生草稿、任务写回、日志、缓存和可恢复备份；外部接口及工具逐一核查留存，不用于训练或关闭保存不等于全链路零留存。",
+    "why": "官方数据控制按接口、应用状态、监测和缓存分别说明限制；删除状态必须跟实际清理结果一致。",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "research-update-must-reach-client-docs",
+    "kind": "lesson",
+    "text": "补查结论必须回写正式事实源，并重建、核查所有受影响文件；研究页不能代替文档更新，补查也不能倒填成旧版形成前的依据。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "blank-client-review-before-return",
+    "kind": "lesson",
+    "text": "业务逻辑确认表必须保留空白审核结果；上游功能批准不等于逐项规则回填，模板默认确认不得冒充客户答复。",
+    "why": "DemoKit client-intake 核查发现共享构建默认确认与规则卡冲突，采用本次构建策略清空审核默认值，正式入口与检查保留。",
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "explicit-text-intake-with-materials-deferred",
+    "kind": "lesson",
+    "text": "用户明确确认全部规则并授权资料后补时，可转录文字决定并记录延期责任人与节点；保留原表，不标成手填，不再重复索取同一授权。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-05",
+    "last_confirmed": "2026-11-05"
+  },
+  {
+    "key": "visual-choice-separate-from-architecture-approval",
+    "kind": "lesson",
+    "text": "架构文件批准不自动扩展为视觉风格批准；在既定业务范围内先完成真实调研、布局核对和可比较候选，再按设计技能的明确确认门选择风格与作用范围。",
+    "why": "逐文件批准与设计风格选择是不同对象，不重复索取已确认业务规则或延期资料。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "business-entry-research-gate",
+    "kind": "lesson",
+    "text": "业务 CLI（含汇总页）必须在写入正式内容前核验同需求、对应技能与项目阶段的正文归档、采用结论和报告；纯排版 API 由已通过门禁的上游负责，不递归检索；诊断只写过程目录并明确标记，不能冒充正式交付。",
+    "why": "跨技能审计已覆盖缺证据零写入、项目状态根、引用绑定、汇总入口与下游纯 API 的正负回归。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06",
+    "codified": "Luz-Crawl/references/evidence-policy.md"
+  },
+  {
+    "key": "readonly-agent-scope-before-metrics",
+    "kind": "lesson",
+    "text": "数据库可读不等于指标可用。问数项目先核实租户项目授权、删除状态、金额单位、时间与关联；配置可先保存，业务查询在范围确认前保持关闭。",
+    "why": "连接和少量记录读取不能证明经营指标口径，也不能把全库读取权限当作业务用户授权。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "windows-git-ignore-nul-input",
+    "kind": "lesson",
+    "text": "Windows 下用 Python 验证 Git 忽略规则时，路径清单采用 NUL 分隔的字节输入和输出；text 模式的换行转换可能让回车进入文件名，造成误判。",
+    "why": "Git check-ignore 的路径标准输入不会自动把残留回车当成换行的一部分。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "proactive-platform-requirements-research",
+    "kind": "preference",
+    "text": "建设运营或问数平台时，要主动调研同类产品，并从经营驾驶舱、指标口径、权限、业务流程、缓存与故障降级、运行治理和验收逐项补齐需求；不能只围绕最小问答入口写需求，也不能未经分析排除平台能力。",
+    "why": "用户纠正：需求过于简单，明确要求认真搜索智能体和问数平台，补充驾驶舱、权限控制、流程优化和 Redis 缓存，并沉淀经验。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "platform-research-capability-to-acceptance",
+    "kind": "lesson",
+    "text": "运营问数平台调研要覆盖问数智能体、BI 驾驶舱、流程平台、授权与缓存治理，形成能力对照、业务痛点、采纳取舍、分期需求与可执行验收的映射；来源事实、产品判断和客户数据证据分别记录，不能把一篇 SQL 教程当作完整平台需求。",
+    "why": "用户纠正只做简单问答的需求；SQLBot、WrenAI、Vanna、Metabase、Superset 与 Dify 的正文比较显示，看板复用、语义版本、权限传播、事项闭环和运行恢复需一起考虑，扩展能力按收益及前置条件取舍。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "official-source-lifecycle-edition-validation",
+    "kind": "lesson",
+    "text": "官方来源也要逐项核对占位声明、仓库归档、文档版本、社区与商业版边界和许可；先读正文再决定采用，记录读取日期、采用位置与未覆盖范围，不把 README 的能力介绍或厂商准确率当本项目已验证结果。",
+    "why": "2026-11-06 读取 https://vanna.ai/docs/placeholder/auth 与 https://github.com/vanna-ai/vanna，发现占位认证页及归档标识；https://github.com/Canner/WrenAI 有商业权限与界面边界；Metabase v0.65 缓存及 Superset Next 文档均有版本限制。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "nlq-cache-authorization-freshness-backpressure",
+    "kind": "lesson",
+    "text": "问数缓存先验证当前权限，键身份绑定授权范围与版本、指标和连接版本、规范化参数、绝对期间及结果形态；结果时效与源数据延迟分开显示，撤权使旧结果不可再用；外部只读源无可靠变更事件时用有界时效，故障以限流、排队或暂停保护业务库，结果缓存与持久任务状态分开。",
+    "why": "读取 Redis 客户端缓存及淘汰文档 https://redis.io/docs/latest/develop/clients/client-side-caching/ 和 https://redis.io/docs/latest/develop/reference/eviction/，并对照 Superset 缓存与 OWASP 授权指南；Redis 键跟踪不能发现外部 MySQL 更新，命中缓存不能绕过授权，故障全量回源会放大问数负荷。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "business-schema-before-metric-claims",
+    "kind": "lesson",
+    "text": "问数和驾驶舱指标必须核对字段注释、状态枚举、数据粒度、去重关联、有效范围及更新时点，再与业务报表对账；表名含 order 可能是工单，零值可能表示启用，采集记录不等于业务交易，计次数不等于去重人数，应实收差额不自动等于逾期欠款。",
+    "why": "本次只读元数据核对发现招商工单、上次合同到期日、识别采集记录和设备启用反向枚举等歧义；字段可见只能支持候选需求，不能直接据此承诺营业额、出租率、转化率或实时设备状态。经验不保存客户表名、记录和连接资料。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "approved-project-current-evidence-contract",
+    "kind": "lesson",
+    "text": "重新调用已有项目时，核对历史引用格式与当前证据检查合同；新规则不兼容时保留真实归档和既有审批，不改检查器或伪造通过，另行记录缺口。",
+    "why": "当前检查发现历史阶段检索数量及带调用方前缀的来源引用不满足新版合同。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "agent-workbench-three-column-verified-charts",
+    "kind": "preference",
+    "text": "数据分析 Agent 工作台采用左侧导航与会话、中间分析图表、右侧问答的三列关系；提问后由核实结果自动出图，追问更新关联分析，图表与解释共用同一结果和权限范围；图表数量服务真实问题，不填造业务数据。",
+    "why": "本轮功能清单继续核对已确认的三列工作台和图表同源偏好；范围说明不冒充应用实现。",
+    "uses": 2,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06",
+    "previous": {
+      "text": "数据分析 Agent 工作台采用左侧导航与会话、中间分析图表、右侧问答的三列关系；提问后由核实结果自动出图，追问更新关联分析，图表与解释共用同一结果和权限范围；图表数量服务真实问题，不填造业务数据。",
+      "replaced_at": "2026-11-06"
+    },
+    "scope": "project"
+  },
+  {
+    "key": "agent-langgraph-complete-lifecycle",
+    "kind": "preference",
+    "text": "问数智能体用 LangGraph 编排意图识别、澄清、记忆调取、受控工具调用、分类限次重试、结果核验和交付；程序控制授权与运行预算，持久记忆和恢复不能绕过当前授权。",
+    "why": "沿用用户已确认要求，当前确认表核实业务边界，不把方案当作应用实现。",
+    "uses": 3,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06",
+    "previous": {
+      "text": "问数智能体用 LangGraph 编排意图识别、澄清、记忆调取、受控工具调用、分类限次重试、结果核验和交付；程序控制授权与运行预算，持久记忆和恢复不能绕过当前授权。",
+      "replaced_at": "2026-11-06"
+    },
+    "scope": "project"
+  },
+  {
+    "key": "stage-research-template-evidence",
+    "kind": "preference",
+    "text": "每个独立业务阶段和项目阶段先实际调用 Luz-Crawl：至少5组不同查询、10篇去重正文、3个独立主体，其中至少3篇官方/标准/一手原文；文档与UI实际使用Design模板。读完正文，逐字引用、定位与覆盖核验后才写作设计开发；关键缺口阻塞，禁止凭模型记忆编造。",
+    "why": "用户2026-11-06明确要求及现行AGENTS规则；统一合同见Luz-Crawl/references/evidence-policy.md。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06",
+    "codified": "Luz-Crawl/references/evidence-policy.md"
+  },
+  {
+    "key": "project-docs-require-business-prototypes",
+    "kind": "lesson",
+    "text": "用户要求项目docs业务原型时，通用模板候选不能代替该项目成果；按已确认业务规则生成页面，并分别核对真实模板来源与业务交互覆盖。",
+    "why": "DemoKit用户明确纠正：查看luz-project，根据业务规则生成docs中的html，而非通用模板。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "project-docs-use-business-and-selected-components",
+    "kind": "preference",
+    "text": "项目界面docs应从已确认页面、动作、权限与状态生成，并使用用户明确指定的真实组件库；通用模板目录不能替代项目专属可交互成果。",
+    "why": "用户连续纠正通用模板，并明确指定组件库。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "blank-verdicts-before-client-review",
+    "kind": "lesson",
+    "text": "确认表可以预填拟定规则和客户已给的资料，但客户审核结果应保持空白；共享模板默认确认不能冒充客户答复。",
+    "why": "实际追踪规范化、功能自动问题与生成链；回归先失败后通过，真实确认表还要逐格复核。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "native-spreadsheet-com-host-identification",
+    "kind": "lesson",
+    "text": "Excel.Application 及 Application.Name 可能由 WPS 兼容实现提供；原生核验须结合应用路径确认实际宿主，并分别记录文件结构、只读导出、逐页目检与未测交互，不把兼容版本号当作 Microsoft Excel 实测。",
+    "why": "实际只读导出后核对宿主路径，修正检查回执的引擎标识；原工作簿哈希保持不变。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "formal-entrypoint-exact-template-contract",
+    "kind": "lesson",
+    "text": "审计正式产出时同时检查CLI与公开Python API。选择记录必须绑定真实Design模板、准确源/目标路径和产物哈希；交付前重验来源与哈希。私有布局夹具不作为业务生成入口，机器台账索引仅免递归研究仍核对模板。",
+    "why": "用户要求逐阶段真实检索、实际使用模板库；本次发现原型套件CLI已禁用但公开build_suite仍可生成，已用拒绝写入负例和全入口审计复验。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "completed-stage-live-evidence-revalidation",
+    "kind": "lesson",
+    "text": "用户审批只绑定当时审阅的文件；next与状态刷新必须重新核验已完成阶段的Crawl、准确模板post与完整UI来源。依据删除或篡改时降级并阻塞，保留历史审批；恢复相同原件后才可恢复状态，业务内容变化继续触发原哈希失效。",
+    "why": "七技能协同审计发现已批准缓存可能跳过实时内部门；以缺Crawl、缺模板和terminal错误done的真实负例复现后修复。",
+    "uses": 1,
+    "first_seen": "2026-11-06",
+    "last_confirmed": "2026-11-06"
+  },
+  {
+    "key": "byte-preserving-template-relocation",
+    "kind": "lesson",
+    "text": "旧项目迁移须先核验真实模板post；00-design记录、快照、已批准文件与产物保持原字节，准确旧新路径由独立同字节凭据连接。凭据只允许读取原产物，新生成必须重新select；原post损坏在任何移动前阻塞。",
+    "why": "实际test_layout先发现00-design遗留，再发现Crawl结论绝对位置失效；接入Design prepare_output_migration/record_output_migration后，24项定向通过，删除凭据拒绝、恢复通过，损坏原post整树不移动。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07"
+  },
+  {
+    "key": "mobile-reference-table-manual-review",
+    "kind": "lesson",
+    "text": "阅读报告的自动检查通过后仍须目检手机截图。141审计报告的引用表曾把采用位置挤成逐字换行；依据Design既有长文本160至360像素列宽规则，保留真实reading-html模板并使用其表内滚动容器，最终390像素视口的页面宽度仍为390。",
+    "why": "以真实浏览器的显示、不同宽度的截图和复查记录核对阅读效果。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07"
+  },
+  {
+    "key": "explicit-intake-deferral-scoped",
+    "kind": "lesson",
+    "text": "用户明确暂缓业务回填并要求先开发时，将原话和已确认变更绑定为有限阶段的继续记录，保留未答项和原确认表摘要；不得伪造回填、导入时间或批准，真实数据接入与验收发布前仍需核实缺口。",
+    "why": "用户本次明确指示先不回填并执行；以默认阻塞、绑定失效和验收隔离测试验证。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07"
+  },
+  {
+    "key": "reset-visual-history-preserve-business-evidence",
+    "kind": "lesson",
+    "text": "用户要求重置前端设计历史时，应区分视觉产物与已确认业务要求；先登记变更并核对引用，清理后按现行上游门禁继续，不沿用旧视觉审批。删除受工具策略阻断时如实记录并采用可恢复隔离。",
+    "why": "本次核查发现旧设计记录与上游需求文件属于不同范围，现行模板与来源校验不能由历史批准替代。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07"
+  },
+  {
+    "key": "paginated-builder-task-font-adapter",
+    "kind": "lesson",
+    "text": "正式分页生成器更新调用入口后，任务内字体与分页适配须跟随真实渲染路径；保留原公开入口的检索、模板、检查和成品登记，并核验最终PDF字体、目录与正文。",
+    "why": "生成检查通过仍可能使用默认字体；本轮在官方门禁内部适配并检查实际导出结果。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07"
+  },
+  {
+    "key": "source-lock-agent-functional-gap",
+    "kind": "lesson",
+    "text": "设计阶段先将已批准页面动作对应到实际准入来源；仅文字复用无法覆盖必需交互时记录可复核缺口并请求明确的项目范围调整，不伪造功能覆盖或以批准架构代替设计批准。",
+    "why": "已有架构批准保留；本阶段来源与20页54动作匹配记录均在关联Design会话raw。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07"
+  },
+  {
+    "key": "ux-dx-ax-measured-rules-20261107",
+    "kind": "lesson",
+    "text": "项目按quality-rules共享库路由具体UX/DX/Agent Experience规则；关键决定逐轴记收益、中性或退步，只有改善主张需要基线；正式文件与具体新手写组件批准保留真实范围。 适用当前七技能协作；具体数值、例外与证据见Luz-Project/references/quality-rules.md及quality-rules.json。",
+    "why": "用户要求把大厂规范与UX/DX/AX研究落为逐条可验证指标，2026-11-07；不得仅写三轴口号。",
+    "uses": 3,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07",
+    "previous": {
+      "text": "项目按quality-rules共享库路由具体UX/DX/Agent Experience规则；关键决定逐轴记收益、中性或退步，只有改善主张需要基线；正式文件与具体新手写组件批准保留真实范围。 适用当前七技能协作；具体数值、例外与证据见Luz-Project/references/quality-rules.md及quality-rules.json。",
+      "replaced_at": "2026-11-07"
+    },
+    "codified": "Luz-Project/references/quality-rules.md"
+  },
+  {
+    "key": "chinese-first-readable-content",
+    "kind": "preference",
+    "text": "说明、报告和界面文案尽量使用中文；代码、字段、命令、路径、固定协议值、必要专名及核对用原文保留原样。必要缩写首次解释中文含义，不无故中英文夹杂。",
+    "why": "2026-11-07 用户明确要求中文表达，并取消强制双主题、组件最低数量及所有按钮图标规则。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07",
+    "codified": "Luz-Project/references/skill-architecture.md › 用户的共同硬规则"
+  },
+  {
+    "key": "ui-decisions-follow-function",
+    "kind": "preference",
+    "text": "界面只需清楚展现已确认功能，由模型根据任务、成熟组件和统一规范决定主题、组件与图标；取消全局双主题、至少六种组件和按钮一律配图标等配额。按实际功能、操作和整体一致性验收，保留必要语义与恢复。",
+    "why": "2026-11-07 用户明确要求中文表达，并取消强制双主题、组件最低数量及所有按钮图标规则。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07",
+    "codified": "Luz-Project/references/skill-architecture.md › 用户的共同硬规则"
+  },
+  {
+    "key": "approved-template-history-binding",
+    "kind": "lesson",
+    "text": "模板升级后先按准确目标核验：新生成始终使用当前模板；历史产物只有原快照、原生成回执、当前成品哈希、有效批准及完整来源和上游绑定一致时才可只读通过。最新撤销不能回退到更早批准，缺旧证据不能补写历史。",
+    "why": "本轮真实模板升级拒绝边界和浏览器淡入、持续动画反例已执行验证；原失败记录保留。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07"
+  },
+  {
+    "key": "browser-painted-readiness",
+    "kind": "lesson",
+    "text": "截图前须等实际字体、图片、布局和可见性稳定，并真实看图；有限淡入未完成不能算通过。持续旋转等合法动画不必强制停止，但目标透明度、位置、布局和资源失败仍须检查。自动成功记录不能代替语义和视觉审阅。",
+    "why": "本轮真实模板升级拒绝边界和浏览器淡入、持续动画反例已执行验证；原失败记录保留。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07"
+  },
+  {
+    "key": "xlsx-print-page-group-labels",
+    "kind": "lesson",
+    "text": "分组合并单元格不得让打印页失去分组名或截断文字；按实际导出页分段合并并重复组名，核对全部数据行与分组值，再逐页看图。打印接口的预估分页不替代最终导出结果。",
+    "why": "DemoKit本轮实际发现跨页合并标签被裁成两半；按WPS实际导出的4页修复7个合并范围，36行内容与分组一致并逐页重看。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07"
+  },
+  {
+    "key": "session-concurrency-limit-two",
+    "kind": "preference",
+    "text": "用户明确本会话总并发上限为2：主代理加最多1个活动子代理，其余任务顺序接续。",
+    "why": "用户原话：注意，这个会话的并发上限是2；2026-11-07。",
+    "uses": 1,
+    "first_seen": "2026-11-07",
+    "last_confirmed": "2026-11-07",
+    "scope": "project"
+  },
+  {
+    "key": "skill-contract-drift-check",
+    "kind": "lesson",
+    "text": "七技能共享生命周期、研究合同、文档合同与质量规则只维护在各自负责技能；改标题、路径和生成器后串行检查入口链接、规则卡、注册和受影响回归。统计条目或哈希不证明语义和产品质量。",
+    "why": "2026-11-08 实测 skill_contracts.py 与 test_skill_contracts.py；共同合同链接和 82 张卡可解析。",
+    "uses": 1,
+    "first_seen": "2026-11-08",
+    "last_confirmed": "2026-11-08"
+  },
+  {
+    "key": "feature-audit-not-page-count",
+    "kind": "lesson",
+    "text": "完整工作台按登记功能的输入、行为、权限和验收逐项核对；页面可打开和演示已上线不能证明功能闭环。保存视图需核对条件、图形、刷新和明细的一致性，团队共享等未完成子项继续保留缺口。",
+    "why": "源代码与公网浏览器核对发现保存视图只保存主题、明细丢失项目。修复后局部操作链通过，计划调度、角色管理及完整交付仍未完成；在新增功能或阶段交付前复核。",
+    "uses": 1,
+    "first_seen": "2026-11-08",
+    "last_confirmed": "2026-11-08"
+  },
+  {
+    "key": "ops017-actual-component-redesign-evidence",
+    "kind": "lesson",
+    "text": "017运营工作台的组件库重设计需将实际复用源码、内部用户授权、适配文件、固定依赖、源包哈希与公网构建绑定。浏览器表格与图表测试应跟随真实DOM更新，但保留业务数值、范围、失效与跨会话竞态断言。单凭22项结果联动或19页可访问不能宣布34项完整需求验收。",
+    "why": "依据为CHG-014至016及library-redesign真实浏览器和源码清单；更换组件实现、图表容器、会话恢复时复验，正式文档和UI素材门禁仍独立记录。",
+    "uses": 1,
+    "first_seen": "2026-11-08",
+    "last_confirmed": "2026-11-08",
+    "scope": "project"
+  },
+  {
+    "key": "cjk-rendered-weight-and-browser-cache",
+    "kind": "lesson",
+    "text": "字体一致性同时核对统一令牌、实际字体文件与真实字重；中文字体分片须核对字形覆盖和网络字节。浏览器缓存实测避免启用会关闭缓存的认证或路由拦截，并等待动态图表字体加载。",
+    "why": "适用于中文Web工作台；依据实际字体、逐页继承、子集覆盖和公网缓存实测。换字体包、浏览器或测试认证方式须重验。",
+    "uses": 1,
+    "first_seen": "2026-11-08",
+    "last_confirmed": "2026-11-08"
+  },
+  {
+    "key": "saved-questions-current-scope",
+    "kind": "lesson",
+    "text": "收藏问法不等于保存执行权限；会话、常用问题和查询结果分开管理，并用归属、撤权、过期与失败恢复验证完整链路。",
+    "why": "FN-009本次后端与公网验证；团队共享和版本管理仍须独立验收。",
+    "uses": 1,
+    "first_seen": "2026-11-08",
+    "last_confirmed": "2026-11-08"
+  },
+  {
+    "key": "font-consistency-is-not-readability",
+    "kind": "lesson",
+    "text": "字体一致性审查要同时包含实际字体、语义字号、字重和同页截图；用户指出丑或小后不能只引用CSS一致的检查。按用户指定库复核并验证各页面和窄屏。",
+    "why": "基于实际渲染与前后对比；仅适用已有界面的可读性修正，跨操作系统需复核。",
+    "uses": 1,
+    "first_seen": "2026-11-08",
+    "last_confirmed": "2026-11-08"
+  },
+  {
+    "key": "one-question-all-business-topics",
+    "kind": "preference",
+    "text": "017-OpsPlatform用户要求一个问题覆盖全部已接入经营主题；任务拆解、缓存和限频由系统负责，不让用户逐主题拆问。",
+    "why": "用户明确要求一个问题问完所有数据；八主题已接入并验证，缺失或中断逐项保留其余结果，仍遵守真实数据、单并发和源库保护。主题及权限变化时复核。",
+    "uses": 2,
+    "first_seen": "2026-11-08",
+    "last_confirmed": "2026-11-08",
+    "previous": {
+      "text": "017-OpsPlatform用户要求一个问题覆盖全部已接入经营主题；任务拆解、缓存和限频由系统负责，不让用户逐主题拆问。",
+      "replaced_at": "2026-11-08"
+    },
+    "scope": "project"
+  },
+  {
+    "key": "all-readable-agent-scope-not-fixed-topics",
+    "kind": "preference",
+    "text": "用户要求一个对话中的任意问题可以面向当前账号授权可读的全部业务数据，由模型按问题检索相关表、组合证据并综合分析；固定经营主题或示例不能作为问数范围边界，也不是每次强制查全库。",
+    "why": "本轮用户纠正及动态目录、真实跨表问答验证；只适用于已授权可读数据，模型仍须遵守只读、字段权限、成本与缓存保护。权限、业务关系或模型工具变化时重测。",
+    "uses": 1,
+    "first_seen": "2026-11-09",
+    "last_confirmed": "2026-11-09",
+    "scope": "project"
+  },
+  {
+    "key": "public-access-preserve-browser-isolation",
+    "kind": "lesson",
+    "text": "免登录公开工作台使用自动独立访客身份，保持原有会话归属；验收必须用新浏览器，不沿用管理员凭据。",
+    "why": "本次用户明确要求公开访问，线上HTML/API无挑战、两个浏览器隔离及真实审批问数实测通过；复杂跨业务分析仍单独待验。",
+    "uses": 1,
+    "first_seen": "2026-11-09",
+    "last_confirmed": "2026-11-09"
+  },
+  {
+    "key": "explicit-single-concurrency",
+    "kind": "preference",
+    "text": "用户明确要求本会话只允许一个并发时，所有工具、脚本及浏览器任务按单队列执行；不启动子代理、不做并行调用，长任务结束后再执行下一项。该约束按会话适用，不泛化为所有未来任务的默认偏好。",
+    "why": "本次用户原话：注意，此会话只允许一个并发。优先于默认并行建议；用户后续明确修改约束时复核。",
+    "uses": 1,
+    "first_seen": "2026-11-09",
+    "last_confirmed": "2026-11-09",
+    "scope": "project"
+  },
+  {
+    "key": "taskbook-front-end-scope",
+    "kind": "lesson",
+    "text": "从科研任务书截图形成纯前端需求时，区分原课题建设目标、用户本次授权范围和拟定交互规则；产能、准确率、设备联网及集成目标不能写成已实现能力。工单、工序、质量与单件追溯用官方业务正文核对；没有现场工艺参数时只能标明演示。",
+    "why": "本次逐张检查任务书截图并核对 Frappe、Odoo、Microsoft 与 Siemens 原文，形成需求文件；没有生产测量或实际产品集成证据。后续取得现场资料或范围变化时须复核，需求文件仍须真实用户审批。",
+    "uses": 1,
+    "first_seen": "2026-11-09",
+    "last_confirmed": "2026-11-09"
+  },
+  {
+    "key": "skill-drift-template-binding",
+    "kind": "lesson",
+    "text": "Design 的模板文件（check_document.py、make_summary.py）一变，已选模板记录与 Crawl 结论里的 template_uses 哈希同时失效；含用户文件的阶段，内部评审页和结论页不能走历史批准，只能重选模板再重生成。conclude 只接受仍与当前 Design 文件一致的模板，已批准成品的旧模板条目从新结论里移出并写进 gaps，不重生成已批准文件。",
+    "why": "018-MES 2026-11-09 方案阶段：Design 在会话中途多次修改，requirements/proposal 的 Crawl check 报“有用户文件的阶段不能用内部阶段批准替代文件批准”；等 Design 脚本停止变动后一次性重选、重新 conclude 才通过。复核触发：Design 的 SKILL.md 或 scripts 再次修改，或 project_template_history.py 规则改变。",
+    "uses": 1,
+    "first_seen": "2026-11-09",
+    "last_confirmed": "2026-11-09"
+  },
+  {
+    "key": "xlsx-no-subtitle-generators",
+    "kind": "lesson",
+    "text": "Design 的 make_xlsx 禁止表格标题下的说明性副标题（第 2 行留空、表头固定第 3 行）；Project 里生成功能清单、确认表、台账、验收清单的 spec 都不得再传 subtitle，改规则时同步生成器、测试和 client-documents.md。",
+    "why": "018-MES 2026-11-09：04-功能清单.xlsx 构建报“表格标题下禁止说明性副标题”，修补 client_render.py 与 client_flow.py 共 5 处并让 test_client_flow 断言第 2 行为空；复核触发：make_xlsx.py 的标题规则再变。",
+    "uses": 1,
+    "first_seen": "2026-11-09",
+    "last_confirmed": "2026-11-09"
+  },
+  {
+    "key": "frontend-mode-project-binding",
+    "kind": "lesson",
+    "text": "Design 的 frontend.py 包（luz-frontend.json，Vue 加 Element Plus）要进 Project 的 prototype 块，须让 project_ui_source 认 frontend 模式（登记表 frontend_outputs、入口取自回执 entries、审阅取 review_sha256），并让 project_ui_requirements 接受关联本项目会话里、字节与架构阶段登记合同一致的 ui-requirements.json 拷贝；其余三种模式不动。",
+    "why": "018-MES 设计阶段：seal 报 UI requirements must be the registered architecture artifact 与未知 UI 来源合同模式；用户明确同意“我来修补对接”，只改 Project 两个文件，带两条单测，现有 4 条测试通过。复核触发：Design 把 frontend 模式正式接入 Project，或 ui_package.py 的返回结构改变。",
+    "uses": 1,
+    "first_seen": "2026-11-09",
+    "last_confirmed": "2026-11-09"
+  },
+  {
+    "key": "gate-change-moves-fixtures",
+    "kind": "lesson",
+    "text": "给生成器或阶段加门禁（模板选择、界面需求合同、前置检索）时，同一次改动里更新所有构造该输出的测试夹具与演练夹具，否则夹具会长期以“既存失败”掩盖真回归",
+    "why": "2026-11-11 维护：Project 演练仍调用已删除的 source_ui.py、架构夹具缺 ui-requirements.json、Design showcase 测试未选模板，共 20 余条基线失败",
+    "uses": 1,
+    "first_seen": "2026-11-11",
+    "last_confirmed": "2026-11-11",
+    "scope": "maintenance"
+  },
+  {
+    "key": "maintenance-no-research",
+    "kind": "preference",
+    "text": "维护七个技能自身的代码与规则时，用户要求先不检索时直接改代码，不跑 Crawl 前置检索，改完用各技能测试、包校验与 skill_contracts.py 验证",
+    "why": "2026-11-11 用户：先不检索，直接修改代码",
+    "uses": 1,
+    "first_seen": "2026-11-11",
+    "last_confirmed": "2026-11-11",
+    "scope": "maintenance"
+  },
+  {
+    "key": "local-preflight-stage-documents",
+    "kind": "lesson",
+    "text": "本地依据已足够时，项目阶段校验并登记绑定的本地记录。联网阶段另核对正文和结论页。",
+    "why": "本地记录通过后，架构成稿与阶段登记之前仍强制要求联网 findings 和结论页。已复现并增加回归。",
+    "uses": 1,
+    "first_seen": "2026-11-18",
+    "last_confirmed": "2026-11-18",
+    "scope": "maintenance",
+    "codified": "references/runbook.md › 每份文件的内部门禁"
+  },
+  {
+    "key": "project-client-file-catalog",
+    "kind": "lesson",
+    "text": "项目目录、文件用途、内容结构与阶段路径由 Project 负责。出稿与审批读取开发矩阵的 documents。Design 维护实际模板与排版。",
+    "why": "Project 出稿路径曾另列一份，文档页也复写了 Design 的字体、页眉、表格与页码参数。",
+    "uses": 1,
+    "first_seen": "2026-11-18",
+    "last_confirmed": "2026-11-18",
+    "scope": "maintenance",
+    "codified": "references/client-documents.md › 需求对接文件的职责"
   }
 ]

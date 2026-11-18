@@ -2503,7 +2503,7 @@
             "范围超限返回稳定的错误，起止日期倒置被拒绝",
             "按账号权限过滤：范围外的租户数据不出现在合计里"
           ],
-          "source": "Luz-Dev/references/module-specs/report.json features 经营日报, inputs 报表页, exceptions 报表口径; backend/SPEC.md §3.4 时间区间, §6 规则 9; Luz-System/references/admin-design.html 数据驾驶舱与时间范围; DATA-004; 实战校验：分析口径（有效订单、核销率、取消率、未取餐）；注：24-report 目录目前没有 MODULE.md 与代码"
+          "source": "Luz-Dev/references/module-specs/report.json features 经营日报, inputs 报表页, exceptions 报表口径; backend/SPEC.md §3.4 时间区间, §6 规则 9; Luz-System/references/admin-design.html 数据驾驶舱与时间范围; DATA-004; 实战校验：分析口径（有效订单、核销率、取消率、未取餐）；注：24-report 目前只有 backend/MODULES.md 的规划一节，没有代码目录"
         },
         {
           "id": "BF-REPORT-02",
@@ -2513,8 +2513,8 @@
             "backend"
           ],
           "kind": "基础",
-          "summary": "当日数据实时计算，历史数据每日固化成日报表；后台第一个菜单是数据驾驶舱，先给要处理的事，再给计算后的结论。",
-          "frontend": "驾驶舱是后台第一个菜单。第一屏按类型：运营型放待办、异常、超时和预警，每项可点击直达已筛选好的列表；分析型放计算后的结论（较上期变化百分比、转化率、达成率、人均与单均）。指标卡用自适应栅格（每张最小约 180 像素），数字旁写变化而不只给累计总数，长期为 0 的指标合并成一行暂无异常，有值时再醒目出现。负向指标（退款、失败、取消）不占首行首位，但超过阈值（例如退款率较上期高 50%）时在指标卡上方出现可关闭的预警，点击直达明细。切换时间范围时保留旧内容并显示局部加载标记，骨架只用于首次加载，失败可重试，无数据显示空状态。",
+          "summary": "当日数据实时计算，历史数据每日固化成日报表；启用看板时先呈现待处理事项，再呈现分析结论。",
+          "frontend": "启用看板时按主任务确定入口。第一屏按类型：运营型放待办、异常、超时和预警，每项可点击直达已筛选好的列表；分析型放计算后的结论（较上期变化百分比、转化率、达成率、人均与单均）。指标卡用自适应栅格（每张最小约 180 像素），数字旁写变化而不只给累计总数，长期为 0 的指标合并成一行暂无异常，有值时再醒目出现。负向指标（退款、失败、取消）不占首行首位，但超过阈值（例如退款率较上期高 50%）时在指标卡上方出现可关闭的预警，点击直达明细。切换时间范围时保留旧内容并显示局部加载标记，骨架只用于首次加载，失败可重试，无数据显示空状态。",
           "backend": "GET /api/v1/admin/reports/realtime 返回今日实时指标（订单数、营收、待处理事项数、异常数），直接对当日数据分组计算；GET /api/v1/admin/reports/daily 读固化日报。固化任务 report.daily 每天 02:00（门店时区）计算前一日各门店指标，写入 store_daily_stats，同一门店同一天覆盖写（upsert），任务体里判断日期窗口，重复执行结果不变。跨日补传的事件或迟到的退款会触发对应日期重算。任务逐门店独立提交，一个门店失败不影响其他门店，失败写运行记录并告警。",
           "database": "store_daily_stats：store_id、stat_date（门店时区日期）、订单数、实收 revenue_cents、退款 refund_cents、储值或其他业务指标列，UNIQUE(store_id, stat_date)。当日数据不落固化表，由实时查询得出。固化表只存可加总的计数与金额，比率在查询时计算。",
           "tech": "固化任务按固定间隔运行并在任务体内判断窗口，不依赖 Cron 表达式；用日期加门店作幂等键。实时与固化走从库或物化视图，查询加超时与行数上限，避免拖垮主库。图表在少于 3 个点时不画折线只显示数字与变化，只有 1 类时不画环形图；排行与占比按数值降序。指标卡数值使用等宽数字，图表悬浮提示显示数值与单位。",
@@ -2723,7 +2723,7 @@
             "多实例同时领取只有一个执行同一个任务",
             "导出文件与同步导出的表头、脱敏规则一致"
           ],
-          "source": "Luz-Dev/references/module-specs/report.json features 导出, flows 导出, tables export_jobs, exceptions 导出数据量过大; backend/SPEC.md §3.4 导出; backend/00-framework/code/luzback/export.py; Luz-System/references/admin-design.html 异步导出; 注：SPEC 称异步导出由 24-report 提供，但 24-report 目录目前为空"
+          "source": "Luz-Dev/references/module-specs/report.json features 导出, flows 导出, tables export_jobs, exceptions 导出数据量过大; backend/SPEC.md §3.4 导出; backend/00-framework/code/luzback/export.py; Luz-System/references/admin-design.html 异步导出; 注：SPEC 称异步导出由 24-report 提供，但 24-report 目前只是 backend/MODULES.md 里的规划"
         }
       ]
     },

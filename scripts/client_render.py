@@ -10,13 +10,50 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import date
 from pathlib import Path
 from typing import Any
 
-from project_core import ProjectError, locate, state_name
+from project_core import ProjectError, client_document_files, locate, state_name
 
 DESIGN_SCRIPTS = Path(__file__).resolve().parents[2] / "Luz-Design" / "scripts"
+
+
+def _template_binding(root: Path, name: str, *, stage: str | None = None, template: str | None = None) -> tuple[str, Path, str]:
+    """Resolve the project deliverable and its Design template for a writer."""
+    kinds = {
+        "requirements": "requirements-pdf", "proposal": "proposal-pdf", "architecture": "architecture-pdf",
+        "feature-list": "feature-list-xlsx", "intake-form": "intake-form", "change-ledger": "change-ledger",
+        "change-ledger-snapshot": "change-ledger-snapshot",
+        "acceptance-checklist": "acceptance-checklist", "user-manual": "user-manual-pdf",
+    }
+    kind = kinds.get(name)
+    if kind is None:
+        raise ProjectError(f"未知正式文档名称，无法绑定 Luz-Design 模板: {name}")
+    folder, filename, default_stage = client_document_files()[kind]
+    from project_core import _stage_record, load_project
+    manifest = load_project(root)
+    stage = stage or default_stage or manifest.get("current_stage")
+    _stage_record(manifest, stage)  # an override still names a real matrix stage
+    target = locate(root, f"{folder}/{filename}")
+    template = template or ("xlsx" if kind.endswith("xlsx") or kind in {"intake-form", "change-ledger", "change-ledger-snapshot", "acceptance-checklist"} else "showcase" if kind == "architecture-pdf" else "docx-paginated")
+    if str(DESIGN_SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(DESIGN_SCRIPTS))
+    try:
+        from template_library import require_selected
+        require_selected(root, "luz-project", stage, target, template)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise ProjectError(f"生成 {target.relative_to(Path(root).parent) if target.is_relative_to(Path(root).parent) else target} 前必须选择 Luz-Design {template} 模板: {exc}") from exc
+    return stage, target, template
+
+
+def record_template_output(root: Path, stage: str, target: Path, template: str, *, generator: str) -> None:
+    if str(DESIGN_SCRIPTS) not in sys.path:
+        sys.path.insert(0, str(DESIGN_SCRIPTS))
+    from template_library import record_output
+    try:
+        record_output(root, "luz-project", stage, target, template, generator=generator)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise ProjectError(f"Luz-Design 模板产出绑定失败：{target}: {exc}") from exc
 
 
 def design_modules():
@@ -43,6 +80,9 @@ def staging(root: Path) -> Path:
 
 def build_showcase(root: Path, name: str, spec: dict[str, Any], *, min_fill: float = 0.75) -> tuple[Path, Path]:
     """Validate the spec, write the display HTML, run Design's document check, export the packed PDF, check it."""
+    stage, final_target, template = _template_binding(Path(root), name, template="showcase")
+    from project_core import require_crawl
+    require_crawl(Path(root), stage)
     showcase, make_showcase, make_table_pdf, _, check_document = design_modules()
     errors = showcase.validate_spec(spec)
     if errors:
@@ -66,13 +106,6 @@ def build_showcase(root: Path, name: str, spec: dict[str, Any], *, min_fill: flo
 
 
 # --- project data -> showcase specs -------------------------------------------------------------------------------
-
-def _module_icon(module: dict[str, Any]) -> str:
-    import showcase_icons as I  # type: ignore
-
-    design_modules()
-    return module.get("icon") or I.pick(module["name"] + module.get("summary", ""), "grid")
-
 
 def expand_auto(spec: dict[str, Any], features: dict[str, Any], theme: str) -> dict[str, Any]:
     """Resolve ``{"type": "auto", "what": ...}`` blocks from the single feature list, so documents cannot disagree with it."""
@@ -191,13 +224,18 @@ def page_sheets(pdf: Path, per: int = 6) -> list[Path]:
 
 def build_docx(root: Path, name: str, spec: dict[str, Any]) -> tuple[Path, Path]:
     """Word first: build the .docx, let a Word-compatible application lay it out (contents page numbers, 续表), export the PDF from it."""
+    stage, final_target, template = _template_binding(Path(root), name, template="docx-paginated")
     design_modules()
     import check_document  # type: ignore
     import make_docx_paginated  # type: ignore
+    from design_output_gate import verified_output_context
 
     out = staging(root) / f"{name}.docx"
     try:
-        make_docx_paginated.build(proposal_docx_spec(spec), out)
+        context = verified_output_context(evidence_root=root, caller="luz-project", stage=stage,
+                                          template_target=final_target, template_id="docx-paginated",
+                                          working_output=out, template_root=root)
+        make_docx_paginated.build(proposal_docx_spec(spec), out, context=context)
     except FileNotFoundError as exc:
         raise ProjectError(f"{name}: 找不到排版用的 Word 兼容软件（WPS 文字或 Word）: {exc}") from exc
     except Exception as exc:  # noqa: BLE001 - the layout step runs an external application
@@ -222,37 +260,61 @@ def ordered_features(features: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def feature_list_xlsx_spec(features: dict[str, Any], project_name: str, theme: str, quote: dict[str, Any] | None = None, *, version: str = "V1.0",
-                           day: str | None = None, hours_column: bool = False) -> dict[str, Any]:
-    """功能清单: 使用端 → 使用角色 → 功能模块 (merged, big to small), 功能, 功能说明, 类型 — no code column, no business rules (those are in the
-    业务逻辑确认表). With a quote there is a second sheet 报价清单: the same list plus 工时（人天） and 报价（元）, and the totals under it.
-    Without prices (``amounts: false``) there is one sheet only; ``hours_column`` adds 工时（人天） to it (the estimate stays, the money does not)."""
-    from client_data import SURFACES, quote_totals
+                           day: str | None = None, estimate: dict[str, Any] | None = None) -> dict[str, Any]:
+    """功能清单: 使用端 → 使用角色 → 功能模块 (merged, big to small), 功能, 功能说明, 类型 — no code column, no business rules (those are in the 业务逻辑确认表).
 
+    By default that is all: one sheet that lists functions, with no workdays, no money, no totals (预算、人日与报价政策). The ``estimate`` block (estimate_policy.State.render_block,
+    which carries the evidence of the switches) opens two more things, independently:
+
+    * ``workdays``: a column 工时（人天） taken from each function's ``hours``, and under the table 基础功能小计, 可选功能小计 and 工时合计 as formulas;
+    * ``quote`` (needs workdays and a quote that a person gave): a second sheet 报价清单 with the same list, 工时（人天）, 单价（元每人天） from quote.json and 报价（元）
+      = 工时 × 单价 as a formula in every row, and the subtotals and the 报价合计 under it as formulas. Not one figure is typed by this code.
+
+    Asking for a quote without the switch (or without the quote that carries the evidence) is an error here, so a price can never reach the file by the back door."""
+    from client_data import SURFACES
+
+    workdays = bool(estimate and estimate.get("workdays"))
+    priced = bool(estimate and estimate.get("quote"))
+    if quote is not None and not priced:
+        raise ValueError("报价单要有 estimate.quote 开关和证据才能进入功能清单；没有开关就不渲染任何金额")
+    if priced and not (workdays and quote):
+        raise ValueError("estimate.quote 打开时需要同时打开 workdays，并且要有人工提供的 quote.json")
     names = {m["id"]: m["name"] for m in features["modules"]}
     ordered = ordered_features(features)
     groups = [{"name": "使用端", "merge": True}, {"name": "使用角色", "merge": True}, {"name": "功能模块", "merge": True}]
     rows = [[SURFACES.get(f["surface"], f["surface"]), "、".join(f["roles"]), names[f["module"]], f["name"], f["summary"], f["tier"]] for f in ordered]
     columns = groups + [{"name": "功能"}, {"name": "功能说明", "type": "longtext"}, {"name": "类型", "tags": ["基础", "可选"]}]
-    today = day or date.today().isoformat()
     look = {"tint_by": "功能模块", "highlight": {"column": "类型", "values": ["可选"]}}          # one pale colour per module, yellow for what the client chooses
-    legend = "底色区分功能模块，黄色为可选功能"
-    if hours_column and not quote:
-        rows = [r + [f["hours"]] for r, f in zip(rows, ordered)]
-        columns = columns + [{"name": "工时（人天）", "type": "days"}]
-    listing = {"sheet": "功能清单", "title": f"{project_name}功能清单", "subtitle": f"{project_name}　·　{version}　·　{today}　·　{legend}", "columns": columns, "rows": rows, **look}
-    if not quote:
+    listing = {"sheet": "功能清单", "title": f"{project_name}功能清单", "columns": columns, "rows": rows, **look}
+    if not workdays:
         return {"title": listing["title"], "theme": theme, **{k: v for k, v in listing.items() if k != "title"}}
-    totals = quote_totals(features, quote)
-    price = quote["unit_price"]
-    quoted = [r + [f["hours"], f["hours"] * price] for r, f in zip(rows, ordered)]
-    unit = f"{price:,.0f}" if float(price).is_integer() else f"{price:,.2f}"
-    footer = [{"label": "基础功能小计", "values": {"工时（人天）": totals["basic_hours"], "报价（元）": totals["basic_amount"]}},
-              {"label": "可选功能小计，选用后另计", "values": {"工时（人天）": totals["optional_hours"], "报价（元）": totals["optional_amount"]}},
-              {"label": f"报价合计，基础功能 {totals['basic_hours']:g} 人天，单价 {unit} 元每人天", "values": {"报价（元）": totals["basic_amount"]}}]
-    pricing = {"sheet": "报价清单", "title": f"{project_name}报价清单", "subtitle": f"金额 = 工时 × 人天单价（{unit} 元）　·　{today}　·　{legend}",
-               "columns": columns + [{"name": "工时（人天）", "type": "days"}, {"name": "报价（元）", "type": "money"}],
-               "rows": quoted, "footer": footer, **look}
-    return {"title": f"{project_name}功能清单与报价", "theme": theme, "sheets": [listing, pricing]}
+    from openpyxl.utils import get_column_letter
+
+    first, last = 4, 3 + len(rows)                           # the header is row 3 (title, spacer, header); the data rows follow
+    kind_col, hours_col = get_column_letter(len(columns)), get_column_letter(len(columns) + 1)
+
+    def summed(column: str, kind: str) -> str:
+        return f'=SUMIF(${kind_col}${first}:${kind_col}${last},"{kind}",{column}${first}:{column}${last})'
+
+    hours = [f["hours"] for f in ordered]
+    days = {"name": "工时（人天）", "type": "days"}
+    listing["columns"] = columns + [days]
+    listing["rows"] = [r + [h] for r, h in zip(rows, hours)]
+    listing["footer"] = [{"label": "基础功能小计", "values": {"工时（人天）": summed(hours_col, "基础")}},
+                         {"label": "可选功能小计，选用后另计", "values": {"工时（人天）": summed(hours_col, "可选")}},
+                         {"label": "工时合计", "values": {"工时（人天）": f"=SUM({hours_col}{first}:{hours_col}{last})"}}]
+    if not priced:
+        return {"title": f"{project_name}功能清单", "theme": theme, "estimate": estimate, **{k: v for k, v in listing.items() if k != "title"}}
+    price = float(quote["unit_price"])
+    unit_col, money_col = get_column_letter(len(columns) + 2), get_column_letter(len(columns) + 3)
+    quoted = [r + [h, price, f"={hours_col}{first + i}*{unit_col}{first + i}"] for i, (r, h) in enumerate(zip(rows, hours))]
+    basic_row = last + 1
+    pricing = {"sheet": "报价清单", "title": f"{project_name}报价清单",
+               "columns": columns + [days, {"name": "单价（元每人天）", "type": "money"}, {"name": "报价（元）", "type": "money"}], "rows": quoted,
+               "footer": [{"label": "基础功能小计", "values": {"工时（人天）": summed(hours_col, "基础"), "报价（元）": summed(money_col, "基础")}},
+                          {"label": "可选功能小计，选用后另计", "values": {"工时（人天）": summed(hours_col, "可选"), "报价（元）": summed(money_col, "可选")}},
+                          {"label": "报价合计，基础功能；可选功能另计", "values": {"报价（元）": f"={money_col}{basic_row}"}}], **look}
+    return {"title": f"{project_name}功能清单与报价", "theme": theme, "estimate": estimate, "sheets": [listing, pricing]}
 
 
 def manual_spec(features: dict[str, Any], manual: dict[str, Any], theme: str) -> dict[str, Any]:
@@ -286,17 +348,26 @@ def manual_spec(features: dict[str, Any], manual: dict[str, Any], theme: str) ->
 
 # --- XLSX ------------------------------------------------------------------------------------------------------
 
-def build_xlsx(root: Path, name: str, spec: dict[str, Any], *, pick_column: str | list[str] | None = None, row_lists: dict[str, dict[int, list[str]]] | dict[int, list[str]] | None = None) -> Path:
+def build_xlsx(root: Path, name: str, spec: dict[str, Any], *, pick_column: str | list[str] | None = None, row_lists: dict[str, dict[int, list[str]]] | dict[int, list[str]] | None = None, stage: str | None = None) -> Path:
     """Build through Design's make_xlsx (its check_document gate included); then tint a fill-in column and add per-row pick-lists.
 
     With ``spec["sheets"]`` the workbook has several sheets and ``row_lists`` maps sheet name -> {data-row index -> options};
     for one sheet it maps data-row index -> options directly.
     """
     _, _, _, make_xlsx, check_document = design_modules()
+    stage, final_target, template = _template_binding(Path(root), name, stage=stage, template="xlsx")
     out = staging(root) / f"{name}.xlsx"
     spec_path = staging(root) / f"{name}.spec.json"
     spec_path.write_text(json.dumps(spec, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
-    make_xlsx.build(spec, out)
+    try:
+        from design_output_gate import verified_output_context
+        context = verified_output_context(evidence_root=root, caller="luz-project", stage=stage,
+                                          template_target=final_target, template_id="xlsx",
+                                          working_output=out, template_root=root)
+        allow = make_xlsx.estimate_allow(spec)               # --allow workdays / quote only for a spec whose estimate block carries the evidence of the switch
+        make_xlsx.build(spec, out, context=context)          # (it writes the evidence into the workbook, which check_document then asks for)
+    except ValueError as exc:
+        raise ProjectError(f"{name}.xlsx 的正式输出检查未通过: {exc}") from exc
     if pick_column:
         from openpyxl import load_workbook
         from openpyxl.styles import Alignment, PatternFill
@@ -324,6 +395,7 @@ def build_xlsx(root: Path, name: str, spec: dict[str, Any], *, pick_column: str 
                 ws.add_data_validation(dv)
                 dv.add(f"{letters[0]}{header_row + 1 + i}")           # the pick list sits on the first answer column
         wb.save(out)
-    if check_document.main([str(out), "--allow", "multi-sheet"] if spec.get("sheets") else [str(out)]) != 0:
+    argv = [str(out)] + (["--allow", "multi-sheet"] if spec.get("sheets") else []) + [a for kind in allow for a in ("--allow", kind)]
+    if check_document.main(argv) != 0:
         raise ProjectError(f"{name}.xlsx 未通过 Luz-Design check_document")
     return out

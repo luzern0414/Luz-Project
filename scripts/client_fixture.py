@@ -6,16 +6,37 @@ from pathlib import Path
 import client_data as cd
 
 
-def new_project(name: str, tmp: Path | str, repository: str | None = None) -> Path:
+def new_project(name: str, tmp: Path | str, repository: str | None = None, model: str = "stage") -> Path:
     """A new project in a temporary folder (test helper): the project directory is ``<tmp>/work/014-<name>`` and the Luz-Project output root ``<tmp>/out``
-    (LUZ_PROJECT_OUTPUT points there, so a project is found from either path). Returns the state root, ``<tmp>/out/014-<name>/raw``."""
+    (LUZ_PROJECT_OUTPUT points there, so a project is found from either path). Returns the state root, ``<tmp>/out/014-<name>/raw``.
+    ``model`` is the approval model: the older tests keep the stage-level one ("stage"), ``"document"`` is what ``init`` makes now."""
     import os
 
     from project_core import create_project
 
     out = Path(tmp) / "out"
     os.environ["LUZ_PROJECT_OUTPUT"] = str(out)
-    return create_project(name, Path(tmp) / "work" / f"014-{name}", out, repository=repository)
+    root = create_project(name, Path(tmp) / "work" / f"014-{name}", out, repository=repository, approval_model=model)
+    # Tests that call the project renderers directly still go through the
+    # production template contract.  Real projects choose these records via
+    # the Design skill; this helper only creates deterministic fixture data.
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Luz-Design" / "scripts"))
+    import template_library
+    choices = {
+        ("requirements", "docx-paginated", "docs/01-需求对接/01-需求说明书.pdf"),
+        ("proposal", "docx-paginated", "docs/01-需求对接/02-方案说明书.pdf"),
+        ("proposal", "showcase", "docs/01-需求对接/03-系统架构图.pdf"),
+        ("proposal", "xlsx", "docs/01-需求对接/04-功能清单.xlsx"),
+        ("proposal", "xlsx", "docs/01-需求对接/06-需求变更台账.xlsx"),
+        ("client-intake", "xlsx", "docs/01-需求对接/05-业务逻辑确认表.xlsx"),
+        ("handover", "docx-paginated", "docs/03-验收交付/01-使用说明.pdf"),
+        ("handover", "xlsx", "docs/03-验收交付/02-验收清单.xlsx"),
+        ("handover", "xlsx", "docs/03-验收交付/03-需求变更台账-交付快照.xlsx"),
+    }
+    for stage, identifier, target in sorted(choices):
+        template_library.select(root, "luz-project", stage, identifier, target)
+    return root
 
 
 def features() -> dict:
@@ -40,6 +61,34 @@ def features() -> dict:
             {"steps": "在后台把提成比例改为 5% 后，让智能助手核算上月某员工绩效", "expected": "结果按 5% 计算，并显示所用规则版本号", "evidence_checks": ["rules_calc", "agent_eval"]},
             {"steps": "用无权限账号让智能助手查询他人绩效", "expected": "被拒绝并说明需要店长权限", "evidence_checks": ["agent_eval"]}]),
     ]}
+
+
+def with_hours(spec: dict, basis: bool = True) -> dict:
+    """The function list of a project that was asked for person-days: every function carries ``hours`` (steps of 0.5) and, unless ``basis`` is False, the ``hours_basis`` it rests on."""
+    for k, f in enumerate(spec["features"]):
+        f["hours"] = 0.5 * (k + 1)
+        if basis:
+            f["hours_basis"] = f"按「{f['name']}」涉及的页面与接口数估算，参照同类功能的实现量"
+    return spec
+
+
+REQUESTED_BY, REQUESTED_AT, REQUEST_NOTE = "王总（客户方负责人）", "2026-11-05", "方案里请写明每项功能的人天，并给出报价"
+QUOTE_BY, QUOTE_EVIDENCE = "客户方采购负责人（李经理）", "李经理在微信里回复：每人天 800 元（测试夹具中的人工报价）"
+
+
+def switch_on(root: Path, *, workdays: bool = True, quote: bool = False) -> dict:
+    """Turn the estimate switches on the way a person asked for them (the command, with the three items of evidence); the function list gets its hours and their basis."""
+    import client_estimate as ce
+
+    cd.save(root, with_hours(features()), "client", "features.json")
+    return ce.set_estimate(root, workdays=workdays or None, quote=quote or None, requested_by=REQUESTED_BY, requested_at=REQUESTED_AT, request_note=REQUEST_NOTE)
+
+
+def human_quote(root: Path, price: float = 800) -> dict:
+    """The quote a person gave, recorded the only way it can be: with who gave it and the words that carry the number."""
+    import client_estimate as ce
+
+    return ce.write_quote(root, unit_price=price, provided_by=QUOTE_BY, evidence=QUOTE_EVIDENCE)
 
 
 def requirements() -> dict:
@@ -121,6 +170,10 @@ def write_all(root: Path, theme: str = "fitness-gym") -> None:
     requirements_provided(root)
     cd.save(root, features(), "client", "features.json")
     cd.save(root, proposal(), "client", "proposal.json")
+    # This fixture chooses the real fast showcase renderer; its selected
+    # template must match that renderer rather than the standard Word route.
+    import template_library
+    template_library.select(root, "luz-project", "proposal", "showcase", "docs/01-需求对接/02-方案说明书.pdf")
     cd.save(root, architecture(), "client", "architecture.json")
     cd.save(root, {"questions": [
         {"category": "预约规则 · 取消", "item": "预约取消", "kind": "logic", "example": "开课前 2 小时可取消，之后不能取消", "why": "决定顾客能否取消和何时截止"},
@@ -146,6 +199,8 @@ def fill_intake(path: Path, root: Path | None = None) -> Path:
                     ws.cell(r, idx["审核结果"]).value = "需要"
                 elif item.endswith(("绩效核算", "对话式经营查询")):
                     ws.cell(r, idx["审核结果"]).value = "不需要"
+                else:
+                    ws.cell(r, idx["审核结果"]).value = "确认"
             elif ws.cell(r, idx["必填"]).value == "必填":
                 ws.cell(r, idx["客户填写"]).value = "已填写（测试）"
     from project_core import locate, state_name
@@ -163,11 +218,19 @@ def crawled(root: Path, *stages: str) -> None:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Luz-Crawl" / "scripts"))
     from test_crawl_preflight import complete_fixture
-    from crawl_gate import evidence_session
-    from project_core import _stage_record, load_project
+    from project_crawl_gate import evidence_session
+    from project_core import _stage_record, load_project, stage_document_path, locate
+    from dev_fixture import SOURCES
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Luz-Design" / "scripts"))
+    import template_library
 
     for stage in stages:
-        complete_fixture(evidence_session(root), _stage_record(load_project(root), stage)["owner"], stage)
+        complete_fixture(evidence_session(root), _stage_record(load_project(root), stage)["owner"], stage, source_urls=[source["url"] for source in SOURCES])
+        # Offline fixtures must exercise the same real template-selection
+        # contract as a production stage; they are not a bypass for it.
+        template_library.select(root, "luz-project", stage, "showcase", stage_document_path(stage, root))
+        template_library.select(root, "luz-project", stage, "xlsx", "docs/01-需求对接/06-需求变更台账.xlsx")
 
 
 def prepare(root: Path, stage: str) -> None:

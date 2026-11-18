@@ -23,6 +23,38 @@ class BaselineFilesTests(unittest.TestCase):
             self.assertIn(name, names)
         self.assertTrue(any("ui-kit" in i["source"] for i in bl.frontend_items("stack")))
 
+    def test_the_ordered_state_ramp_is_a_mandatory_colour_item_that_names_its_tokens_and_its_relation_to_the_other_colours(self):
+        ids = [i["id"] for i in bl.frontend_items("colour")]
+        self.assertEqual(ids[-1], "FE-CL-09")          # numbered after FE-CL-08, never renumbering the others
+        i = bl.item("FE-CL-09")
+        self.assertEqual(i["name"], "有序进度状态的色阶")
+        self.assertTrue(i["mandatory"])
+        self.assertIn("FE-CL-09", bl.mandatory_ids("frontend", "colour"))
+        detail = i["detail"]
+        for word in ("--stage-1", "--stage-6", "data-stage-set", "data-stage-n", "color.stage", "stage_ramp.py", "b2b-graphite",
+                     "FE-CL-03", "FE-CL-05", "FE-CL-06", "终态", "按集合判断，不按页面判断", "不按名字"):
+            self.assertIn(word, detail + " ".join(i["values"].values()) + i["source"], word)
+        self.assertIn("不用", i["replace_when"])         # the way out for a product without such a set is stated
+        self.assertIn("visual-design.html", i["source"])
+        conflicts = (bl.BASE / "CONFLICTS.md").read_text(encoding="utf-8")
+        self.assertIn("F-24", conflicts)
+        self.assertIn("FE-CL-09", conflicts)
+
+    def test_a_project_has_to_say_whether_it_uses_the_ordered_state_ramp(self):
+        s = {"stack": {i["id"]: {"status": "沿用"} for i in bl.stack_items()}, "frontend": {i["id"]: {"status": "沿用"} for i in bl.frontend_items()},
+             "modules": {m["id"]: {"status": "沿用"} for m in bl.functions()["modules"]}}
+        self.assertEqual(bl.project_baseline_errors(s), [])
+        del s["frontend"]["FE-CL-09"]
+        self.assertTrue(any("FE-CL-09" in e and "必有项" in e for e in bl.project_baseline_errors(s)))
+        s["frontend"]["FE-CL-09"] = {"status": "不用"}
+        self.assertTrue(any("FE-CL-09" in e and "理由" in e for e in bl.project_baseline_errors(s)))
+        s["frontend"]["FE-CL-09"] = {"status": "不用", "reason": "产品里没有同屏出现多个取值的有序进度集合"}
+        self.assertEqual(bl.project_baseline_errors(s), [])
+        s["frontend"]["FE-CL-09"] = {"status": "调整", "reason": "取组件库令牌层的色阶，与主题库只差个别十六进制"}
+        self.assertTrue(any("FE-CL-09" in e and "取值" in e for e in bl.project_baseline_errors(s)))
+        s["frontend"]["FE-CL-09"] = {"status": "调整", "value": "沟通深度取 stage-1、2、4、5、6，圆点加文字", "reason": "取组件库令牌层的色阶，与主题库只差个别十六进制"}
+        self.assertEqual(bl.project_baseline_errors(s), [])
+
     def test_ids_resolve_across_the_three_files(self):
         for i in bl.stack_items()[:3] + bl.frontend_items()[:3] + bl.function_items()[:3]:
             self.assertEqual(bl.item(i["id"])["id"], i["id"])

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from client_fixture import new_project
-from crawl_gate import evidence_session
+from project_crawl_gate import evidence_session
 from project_core import ProjectError, approve_stage, create_project, register_artifact, set_stage_status
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Luz-Crawl" / "scripts"))
 from test_crawl_preflight import complete_fixture

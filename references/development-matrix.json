@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "mode": "explicit-project-only",
   "html_required": true,
   "canonical_state": "project.json",
@@ -7,9 +7,10 @@
     "doctor",
     "reuse-project-task",
     "experience --query",
-    "capture-or-search-when-needed"
+    "stage-specific-multi-query-search-and-full-body-capture",
+    "read-bodies-and-record-quotes-coverage-template-uses",
+    "conclude-and-check-each-stage-before-business-output"
   ],
-  "approval_required_at_every_stage": true,
   "standalone_behavior": "unchanged-without-project-context",
   "stages": [
     {
@@ -58,6 +59,166 @@
           "required": true,
           "path": "reviews/01-需求评审.html"
         }
+      ],
+      "documents": [
+        {
+          "id": "requirements-pdf",
+          "path": "docs/01-需求对接/01-需求说明书.pdf",
+          "title": "需求说明书",
+          "skill": "luz-writing",
+          "kind": "requirements-pdf",
+          "what": "客户的业务现状、建设目标、范围与使用者、需求清单、业务规则和验收标准",
+          "how": "用 PDF 阅读器通读；重点核对需求清单有没有漏项、业务规则里的数字对不对、末尾“需要客户确认的事项”是否要你先定",
+          "skip_when": "client_document"
+        },
+        {
+          "id": "change-ledger",
+          "path": "docs/01-需求对接/06-需求变更台账.xlsx",
+          "title": "需求变更台账",
+          "skill": "luz-project",
+          "kind": "change-ledger",
+          "what": "客户可见的需求变更记录",
+          "how": "不单独审批：随台账变化，交接阶段以快照形式审批",
+          "living": true
+        }
+      ],
+      "internal_records": [
+        {
+          "id": "requirements-review",
+          "kind": "review-page",
+          "path": "reviews/01-需求评审.html",
+          "title": "需求评审页",
+          "skill": "luz-project"
+        },
+        {
+          "id": "requirements-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/requirements.json",
+          "title": "阶段事实数据",
+          "skill": "luz-project"
+        },
+        {
+          "id": "requirements-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" requirements",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则卡，记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" requirements --skill luz-project；逐张读 context 输出的 rule_cards 与 client.skill_cards 里的规则卡（各技能为本阶段列出的规则卡）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" requirements rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了哪些卡、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-project --session \"<状态根>\" --topic \"<主题>\" --stage requirements（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：写需求资料 data/client/requirements.json（客户有自己的需求文档时登记它）：luz-writing client-document 卡写正文，luz-system function-list 卡写需求粒度",
+          "gate": "internal",
+          "skill": "luz-writing",
+          "check": "specialist",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py client \"<项目>\" requirements-draft",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论；estimate 开关有谁、何时、什么原话的证据，开了人日时每个在范围内的功能有 hours 与 hours_basis",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [
+            "data/client/requirements.json"
+          ],
+          "files_any": []
+        },
+        {
+          "id": "build",
+          "title": "生成 01-需求说明书.pdf（Word 排版导出）；客户有自己的需求文档时登记它，本阶段没有文件要审",
+          "gate": "internal",
+          "skill": "luz-writing",
+          "check": "build",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py client \"<项目>\" requirements",
+          "proof": "docs 里的文件已生成、已登记、与来源哈希一致（不过期），文件检查通过：01-需求说明书.pdf",
+          "phase": "produce",
+          "only_if": "documents"
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" requirements --file \"<评审事实.json>\"",
+          "proof": "reviews/01-需求评审.html；data/stages/requirements.json；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "present",
+          "title": "向用户出示当前这一个文件：只报路径、是什么、怎么看，三行以内",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "present",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py next \"<项目>\"",
+          "proof": "next 输出的“给用户的汇报”就是这三行",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "decide",
+          "title": "等用户回复：“通过”或修改意见；有修改意见就登记、改完标记 done、重新生成并再次出示",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "decide",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" add --doc <路径> --text \"<意见原文>\"；改完 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" done --id <编号>",
+          "proof": "没有未处理（open）的修改意见",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "record",
+          "title": "用户说“通过”后记录审批（按顺序、绑定哈希），再进入下一个文件",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" requirements --doc <路径> --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=document、mode=user 的记录，哈希与文件一致",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "auto",
+          "title": "本阶段没有 docs 文件（客户自带需求文档时同理），不设用户审批：内部步骤全部通过后自动完成并留记录",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "auto-complete",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" requirements",
+          "proof": "APPROVALS.json 有 scope=stage、mode=internal 的记录",
+          "phase": "complete",
+          "only_if": "no-documents"
+        }
       ]
     },
     {
@@ -93,6 +254,113 @@
           "required": true,
           "path": "reviews/02-调研结论.html"
         }
+      ],
+      "documents": [],
+      "internal_records": [
+        {
+          "id": "research-review",
+          "kind": "review-page",
+          "path": "reviews/02-调研结论.html",
+          "title": "调研结论页",
+          "skill": "luz-crawl"
+        },
+        {
+          "id": "research-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/research.json",
+          "title": "阶段事实数据",
+          "skill": "luz-crawl"
+        },
+        {
+          "id": "research-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" research",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则文件（该技能没有 context.py 规则卡），记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" research --skill luz-crawl；逐个读 context 输出的 rule_files 列出的文件（SKILL.md、references/preflight.md、references/research-method.md）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" research rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了 context 里 rule_files 列出的哪些文件、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-crawl --session \"<状态根>\" --topic \"<主题>\" --stage research（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：把行业、同类产品、平台与技术的调研汇成结论（采用位置、未覆盖范围）",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "specialist",
+          "command": "写评审事实 JSON 后用 project.py document 生成调研结论页",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [],
+          "files_any": []
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" research --file \"<评审事实.json>\"",
+          "proof": "reviews/02-调研结论.html；data/stages/research.json；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "auto",
+          "title": "本阶段没有 docs 文件（客户自带需求文档时同理），不设用户审批：内部步骤全部通过后自动完成并留记录",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "auto-complete",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" research",
+          "proof": "APPROVALS.json 有 scope=stage、mode=internal 的记录",
+          "phase": "complete",
+          "only_if": "no-documents"
+        }
+      ],
+      "rule_files": [
+        {
+          "skill": "luz-crawl",
+          "file": "SKILL.md",
+          "for": "命令与调用协议"
+        },
+        {
+          "skill": "luz-crawl",
+          "file": "references/preflight.md",
+          "for": "前置检索协议：run、读正文、conclude、check 与判定"
+        },
+        {
+          "skill": "luz-crawl",
+          "file": "references/research-method.md",
+          "for": "检索方法：怎样选来源、读正文、写补充信息"
+        }
       ]
     },
     {
@@ -114,7 +382,7 @@
       "outputs": [
         "方案说明书 PDF（项目背景与需求分析、建设目标、解决方案、交付内容；Word 排版后导出）",
         "系统架构图 PDF（完整架构、模块逻辑、依赖、数据链路）",
-        "功能清单 Excel（功能清单 + 报价清单）",
+        "功能清单 Excel（默认只有功能清单一张表；用户明确要求并有证据时才加工时列和人工报价清单）",
         "方案评审 HTML（给开发）",
         "data/client/features.json 稳定功能 ID"
       ],
@@ -174,7 +442,165 @@
       "crawl_focus": "同类方案书的结构与范围、行业业务规则与术语、竞品功能边界、平台入驻与合规前提",
       "approval": "client_proposal",
       "next": "client-intake",
-      "failure_route": "requirements"
+      "failure_route": "requirements",
+      "documents": [
+        {
+          "id": "proposal-pdf",
+          "path": "docs/01-需求对接/02-方案说明书.pdf",
+          "title": "方案说明书",
+          "skill": "luz-writing",
+          "kind": "proposal-pdf",
+          "what": "给客户的方案：先做需求分析，再给出解决方案和交付内容",
+          "how": "用 PDF 阅读器通读；重点看系统构成、各系统的功能与业务逻辑、交付内容是否与你和客户谈的一致"
+        },
+        {
+          "id": "architecture-pdf",
+          "path": "docs/01-需求对接/03-系统架构图.pdf",
+          "title": "系统架构图",
+          "skill": "luz-system",
+          "kind": "architecture-pdf",
+          "what": "系统总体架构、模块逻辑、依赖关系和数据链路的图册",
+          "how": "用 PDF 阅读器看总体架构图和数据链路图：使用端、业务模块有没有画全，依赖关系对不对"
+        },
+        {
+          "id": "feature-list-xlsx",
+          "path": "docs/01-需求对接/04-功能清单.xlsx",
+          "title": "功能清单",
+          "skill": "luz-system",
+          "kind": "feature-list-xlsx",
+          "what": "按使用端、角色、模块列出的全部功能、说明、基础或可选类型（默认不含工时、金额）",
+          "how": "用 Excel 打开，按使用端筛着看：功能有没有漏、基础与可选分得对不对"
+        }
+      ],
+      "internal_records": [
+        {
+          "id": "proposal-review",
+          "kind": "review-page",
+          "path": "reviews/03-方案评审.html",
+          "title": "方案评审页",
+          "skill": "luz-project"
+        },
+        {
+          "id": "proposal-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/proposal.json",
+          "title": "阶段事实数据",
+          "skill": "luz-project"
+        },
+        {
+          "id": "proposal-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" proposal",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则卡，记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" proposal --skill luz-project；逐张读 context 输出的 rule_cards 与 client.skill_cards 里的规则卡（各技能为本阶段列出的规则卡）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" proposal rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了哪些卡、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-project --session \"<状态根>\" --topic \"<主题>\" --stage proposal（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：先确认 config/documents.json 的 estimate 开关（默认不写人日与报价），luz-system 写功能清单 features.json（稳定 FN-ID；开了人日才写 hours 与 hours_basis），luz-writing 写 proposal.json，luz-design 出版式；features_check 通过",
+          "gate": "internal",
+          "skill": "luz-system",
+          "check": "specialist",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py client \"<项目>\" proposal-draft",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [
+            "data/client/features.json",
+            "data/client/proposal.json",
+            "data/client/architecture.json"
+          ],
+          "files_any": []
+        },
+        {
+          "id": "build",
+          "title": "生成方案说明书、系统架构图和功能清单三个客户文件（同源一次构建，用户仍一个一个审；功能清单按 estimate 开关生成，开了报价而没有人工报价单就等待，不生成）",
+          "gate": "internal",
+          "skill": "luz-design",
+          "check": "build",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py client \"<项目>\" proposal",
+          "proof": "docs 里的文件已生成、已登记、与来源哈希一致（不过期，来源含 estimate 开关），文件检查通过：02-方案说明书.pdf、03-系统架构图.pdf、04-功能清单.xlsx；未开启的开关在客户文件里没有工时、金额，开启的有证据，报价来自合格的 quote.json",
+          "phase": "produce",
+          "only_if": "documents"
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" proposal --file \"<评审事实.json>\"",
+          "proof": "reviews/03-方案评审.html；data/stages/proposal.json；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "present",
+          "title": "向用户出示当前这一个文件：只报路径、是什么、怎么看，三行以内",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "present",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py next \"<项目>\"",
+          "proof": "next 输出的“给用户的汇报”就是这三行",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "decide",
+          "title": "等用户回复：“通过”或修改意见；有修改意见就登记、改完标记 done、重新生成并再次出示",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "decide",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" add --doc <路径> --text \"<意见原文>\"；改完 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" done --id <编号>",
+          "proof": "没有未处理（open）的修改意见",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "record",
+          "title": "用户说“通过”后记录审批（按顺序、绑定哈希），再进入下一个文件",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" proposal --doc <路径> --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=document、mode=user 的记录，哈希与文件一致",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        }
+      ]
     },
     {
       "id": "client-intake",
@@ -237,7 +663,165 @@
       "crawl_focus": "目标平台的入驻与上线前置资料（小程序主体资质、类目、备案、支付商户）、行业必填业务规则",
       "approval": "client_info_confirmed",
       "next": "architecture",
-      "failure_route": "proposal"
+      "failure_route": "proposal",
+      "documents": [
+        {
+          "id": "intake-form",
+          "path": "docs/01-需求对接/05-业务逻辑确认表.xlsx",
+          "title": "业务逻辑确认表",
+          "skill": "luz-system",
+          "kind": "intake-form",
+          "what": "发给客户确认的表：每个功能拟定的业务逻辑、待客户决定的规则、只有客户才有的资料",
+          "how": "用 Excel 打开：逐行看拟定的业务逻辑（数字、边界、例外）是否合理，再看“需要提供的资料”问得对不对"
+        },
+        {
+          "id": "intake-response",
+          "path": "docs/01-需求对接/05-业务逻辑确认表-回填.xlsx",
+          "title": "客户回填表",
+          "skill": "client",
+          "kind": "intake-response",
+          "what": "客户填完交回的确认表",
+          "how": "客户的输入，不审批：导入后由内部门检查必填是否答完",
+          "client_input": true
+        }
+      ],
+      "internal_records": [
+        {
+          "id": "client-intake-review",
+          "kind": "review-page",
+          "path": "reviews/04-业务逻辑确认评审.html",
+          "title": "业务逻辑确认评审页",
+          "skill": "luz-project"
+        },
+        {
+          "id": "client-intake-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/client-intake.json",
+          "title": "阶段事实数据",
+          "skill": "luz-project"
+        },
+        {
+          "id": "client-intake-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" client-intake",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则卡，记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" client-intake --skill luz-project；逐张读 context 输出的 rule_cards 与 client.skill_cards 里的规则卡（各技能为本阶段列出的规则卡）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" client-intake rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了哪些卡、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-project --session \"<状态根>\" --topic \"<主题>\" --stage client-intake（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：luz-system 依据功能清单拟定每个功能的业务逻辑和只有客户才有的资料（intake-extra.json）",
+          "gate": "internal",
+          "skill": "luz-system",
+          "check": "specialist",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py client \"<项目>\" intake-status",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [
+            "data/client/features.json"
+          ],
+          "files_any": []
+        },
+        {
+          "id": "build",
+          "title": "生成业务逻辑确认表（Excel）",
+          "gate": "internal",
+          "skill": "luz-design",
+          "check": "build",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py client \"<项目>\" intake-form",
+          "proof": "docs 里的文件已生成、已登记、与来源哈希一致（不过期），文件检查通过：05-业务逻辑确认表.xlsx",
+          "phase": "produce",
+          "only_if": "documents"
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" client-intake --file \"<评审事实.json>\"",
+          "proof": "reviews/04-业务逻辑确认评审.html；data/stages/client-intake.json；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "present",
+          "title": "向用户出示当前这一个文件：只报路径、是什么、怎么看，三行以内",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "present",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py next \"<项目>\"",
+          "proof": "next 输出的“给用户的汇报”就是这三行",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "decide",
+          "title": "等用户回复：“通过”或修改意见；有修改意见就登记、改完标记 done、重新生成并再次出示",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "decide",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" add --doc <路径> --text \"<意见原文>\"；改完 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" done --id <编号>",
+          "proof": "没有未处理（open）的修改意见",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "record",
+          "title": "用户说“通过”后记录审批（按顺序、绑定哈希），再进入下一个文件",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" client-intake --doc <路径> --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=document、mode=user 的记录，哈希与文件一致",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "client-input",
+          "title": "客户回填并导入：客户填完确认表交回，导入后必填项全部有答案（或记录延期的责任人与期限）",
+          "gate": "client",
+          "skill": "luz-project",
+          "check": "client-intake-imported",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py client \"<项目>\" intake-import \"<回填表.xlsx>\"",
+          "proof": "导入后 intake 状态 imported 且无必填未答",
+          "phase": "complete"
+        }
+      ]
     },
     {
       "id": "architecture",
@@ -257,7 +841,7 @@
       "outputs": [
         "系统架构 HTML（01-系统架构）",
         "功能编号到模块、页面、接口的追溯",
-        "界面功能说明（界面功能说明.html 与 frontend-spec.json，有界面的项目；登记为本阶段产物）",
+        "界面功能说明（界面功能说明.html，有界面的项目）。新组件复用项目登记 ui-requirements.json，含主入口和业务规则引用",
         "入口表 entrances*.json（给前端界面设计，多端项目每个使用端或角色一份）与原型逻辑 proto-logic*.json"
       ],
       "crawl_focus": "product flows, navigation, component behavior, platform constraints",
@@ -281,6 +865,153 @@
           "skill": "luz-system",
           "card": "system-design",
           "for": "系统架构清单与架构图的画法"
+        }
+      ],
+      "documents": [
+        {
+          "id": "architecture-review",
+          "path": "docs/02-产品开发/01-系统架构.html",
+          "title": "系统架构",
+          "skill": "luz-system",
+          "kind": "html",
+          "what": "系统架构文档：技术底座表态、模块、每个功能的功能卡（业务逻辑与前端逻辑）、数据与部署",
+          "how": "用浏览器打开，逐个标签页看；重点看功能卡里的业务逻辑、界面入口和底座的沿用或调整是否站得住"
+        }
+      ],
+      "internal_records": [
+        {
+          "id": "architecture-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/architecture.json",
+          "title": "阶段事实数据",
+          "skill": "luz-system"
+        },
+        {
+          "id": "frontend-spec-bundle",
+          "kind": "frontend-spec-bundle",
+          "title": "界面功能说明、入口表（有界面的项目）",
+          "skill": "luz-system"
+        },
+        {
+          "id": "architecture-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" architecture",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则卡，记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-system",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" architecture --skill luz-system；逐张读 context 输出的 rule_cards 与 client.skill_cards 里的规则卡（luz-system system-design）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" architecture rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了哪些卡、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-system --session \"<状态根>\" --topic \"<主题>\" --stage architecture（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：luz-system 写系统架构事实：data/baseline.json 的 stack 与 modules 表态、功能卡、界面功能说明、入口表（system-design 卡）",
+          "gate": "internal",
+          "skill": "luz-system",
+          "check": "specialist",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" architecture --skill luz-system",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [
+            "data/baseline.json"
+          ],
+          "files_any": []
+        },
+        {
+          "id": "build",
+          "title": "生成 01-系统架构.html，并登记界面功能说明、入口表",
+          "gate": "internal",
+          "skill": "luz-system",
+          "check": "build",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" architecture --file \"<评审事实.json>\"",
+          "proof": "docs 里的文件已生成、已登记、与来源哈希一致（不过期），文件检查通过：01-系统架构.html",
+          "phase": "produce",
+          "only_if": "documents"
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" architecture --file \"<评审事实.json>\"",
+          "proof": "data/stages/architecture.json；界面功能说明、入口表（有界面的项目）；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "trace",
+          "title": "追溯与基线对账：功能 → 架构 → 使用说明 → 验收项 → 变更没有缺口",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "trace",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py trace \"<项目>\"",
+          "proof": "trace 的缺口列表为空（架构阶段只看架构落点）",
+          "phase": "produce"
+        },
+        {
+          "id": "present",
+          "title": "向用户出示当前这一个文件：只报路径、是什么、怎么看，三行以内",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "present",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py next \"<项目>\"",
+          "proof": "next 输出的“给用户的汇报”就是这三行",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "decide",
+          "title": "等用户回复：“通过”或修改意见；有修改意见就登记、改完标记 done、重新生成并再次出示",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "decide",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" add --doc <路径> --text \"<意见原文>\"；改完 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" done --id <编号>",
+          "proof": "没有未处理（open）的修改意见",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "record",
+          "title": "用户说“通过”后记录审批（按顺序、绑定哈希），再进入下一个文件",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" architecture --doc <路径> --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=document、mode=user 的记录，哈希与文件一致",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
         }
       ]
     },
@@ -394,6 +1125,145 @@
           "card": "nav-levels",
           "for": "多级导航与层级"
         }
+      ],
+      "documents": [
+        {
+          "id": "prototypes",
+          "dynamic": "prototypes",
+          "skill": "luz-design",
+          "kind": "prototype",
+          "what": "每个前端一个可交互原型",
+          "how": "用浏览器打开，从首页点一遍主要流程：页面、入口、按钮和状态是不是你要的"
+        },
+        {
+          "id": "design-review",
+          "path": "docs/02-产品开发/02-前端界面设计.html",
+          "title": "前端界面设计",
+          "skill": "luz-design",
+          "kind": "html",
+          "what": "前端界面设计文档：风格、前端规范、页面路径，内嵌每个前端的原型",
+          "how": "用浏览器打开逐个标签页看；重点看风格、页面路径与入口。它内嵌各原型，所以在原型之后审"
+        }
+      ],
+      "internal_records": [
+        {
+          "id": "design-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/design.json",
+          "title": "阶段事实数据",
+          "skill": "luz-design"
+        },
+        {
+          "id": "design-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" design",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则卡，记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-design",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" design --skill luz-design；逐张读 context 输出的 rule_cards 与 client.skill_cards 里的规则卡（luz-design design-path, luz-design page-patterns, luz-design interface-visual, luz-design interface-layout, luz-system miniprogram, luz-system admin-list, luz-system interaction, luz-design interface-motion, luz-system prototype, luz-system interaction-patterns, luz-system nav-levels）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" design rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了哪些卡、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-design --session \"<状态根>\" --topic \"<主题>\" --stage design（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：luz-design 按 design-path 卡做风格、令牌、各前端原型；page-patterns 卡定首页与入口",
+          "gate": "internal",
+          "skill": "luz-design",
+          "check": "specialist",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" design --skill luz-design",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [
+            "data/baseline.json"
+          ],
+          "files_any": []
+        },
+        {
+          "id": "build",
+          "title": "生成各前端原型（先）与 02-前端界面设计.html（后，它内嵌原型）",
+          "gate": "internal",
+          "skill": "luz-design",
+          "check": "build",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" design --file \"<评审事实.json>\"",
+          "proof": "docs 里的文件已生成、已登记、与来源哈希一致（不过期），文件检查通过：各前端原型、02-前端界面设计.html",
+          "phase": "produce",
+          "only_if": "documents"
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" design --file \"<评审事实.json>\"",
+          "proof": "data/stages/design.json；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "present",
+          "title": "向用户出示当前这一个文件：只报路径、是什么、怎么看，三行以内",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "present",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py next \"<项目>\"",
+          "proof": "next 输出的“给用户的汇报”就是这三行",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "decide",
+          "title": "等用户回复：“通过”或修改意见；有修改意见就登记、改完标记 done、重新生成并再次出示",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "decide",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" add --doc <路径> --text \"<意见原文>\"；改完 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" done --id <编号>",
+          "proof": "没有未处理（open）的修改意见",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "record",
+          "title": "用户说“通过”后记录审批（按顺序、绑定哈希），再进入下一个文件",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" design --doc <路径> --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=document、mode=user 的记录，哈希与文件一致",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        }
       ]
     },
     {
@@ -448,6 +1318,137 @@
           "skill": "luz-dev",
           "card": "config-logging",
           "for": "配置与日志"
+        }
+      ],
+      "documents": [
+        {
+          "id": "technical-plan-review",
+          "path": "docs/02-产品开发/05-后端设计规范.html",
+          "title": "后端设计规范",
+          "skill": "luz-dev",
+          "kind": "html",
+          "what": "后端设计规范：接口契约、库表、权限、业务规则、部署与回滚",
+          "how": "用浏览器打开；重点看接口清单、数据表、权限和部署回滚方案是否能支撑功能清单"
+        }
+      ],
+      "internal_records": [
+        {
+          "id": "technical-plan-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/technical-plan.json",
+          "title": "阶段事实数据",
+          "skill": "luz-dev"
+        },
+        {
+          "id": "technical-plan-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" technical-plan",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则卡，记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-dev",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" technical-plan --skill luz-dev；逐张读 context 输出的 rule_cards 与 client.skill_cards 里的规则卡（luz-dev backend-module, luz-dev api-data, luz-dev config-logging）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" technical-plan rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了哪些卡、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-dev --session \"<状态根>\" --topic \"<主题>\" --stage technical-plan（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：luz-dev 写后端设计规范的事实：接口契约、库表、权限、业务规则、部署回滚（backend-module、api-data 卡）",
+          "gate": "internal",
+          "skill": "luz-dev",
+          "check": "specialist",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" technical-plan --skill luz-dev",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [
+            "data/baseline.json"
+          ],
+          "files_any": []
+        },
+        {
+          "id": "build",
+          "title": "生成 05-后端设计规范.html",
+          "gate": "internal",
+          "skill": "luz-dev",
+          "check": "build",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" technical-plan --file \"<评审事实.json>\"",
+          "proof": "docs 里的文件已生成、已登记、与来源哈希一致（不过期），文件检查通过：05-后端设计规范.html",
+          "phase": "produce",
+          "only_if": "documents"
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" technical-plan --file \"<评审事实.json>\"",
+          "proof": "data/stages/technical-plan.json；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "present",
+          "title": "向用户出示当前这一个文件：只报路径、是什么、怎么看，三行以内",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "present",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py next \"<项目>\"",
+          "proof": "next 输出的“给用户的汇报”就是这三行",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "decide",
+          "title": "等用户回复：“通过”或修改意见；有修改意见就登记、改完标记 done、重新生成并再次出示",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "decide",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" add --doc <路径> --text \"<意见原文>\"；改完 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" done --id <编号>",
+          "proof": "没有未处理（open）的修改意见",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "record",
+          "title": "用户说“通过”后记录审批（按顺序、绑定哈希），再进入下一个文件",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" technical-plan --doc <路径> --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=document、mode=user 的记录，哈希与文件一致",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
         }
       ]
     },
@@ -524,6 +1525,156 @@
           "card": "project-handoff",
           "for": "项目模式交接与 Ops 证据"
         }
+      ],
+      "documents": [
+        {
+          "id": "implementation-review",
+          "path": "docs/02-产品开发/06-实现报告.html",
+          "title": "实现报告",
+          "skill": "luz-dev",
+          "kind": "html",
+          "what": "实现报告：代码结构、各里程碑完成情况、测试证据与偏离",
+          "how": "用浏览器打开；重点看里程碑是否完成、偏离说明是否可接受"
+        },
+        {
+          "id": "user-terms-pdf",
+          "path": "docs/03-验收交付/07-用户协议.pdf",
+          "title": "用户协议",
+          "skill": "luz-dev",
+          "kind": "legal-pdf",
+          "what": "给终端用户的用户协议",
+          "how": "用 PDF 阅读器通读条款：责任、费用、争议解决是否合适"
+        },
+        {
+          "id": "privacy-policy-pdf",
+          "path": "docs/03-验收交付/08-隐私政策.pdf",
+          "title": "隐私政策",
+          "skill": "luz-dev",
+          "kind": "legal-pdf",
+          "what": "给终端用户的隐私政策",
+          "how": "用 PDF 阅读器通读：收集的个人信息、用途、保存期限是否与产品一致"
+        }
+      ],
+      "internal_records": [
+        {
+          "id": "implementation-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/implementation.json",
+          "title": "阶段事实数据",
+          "skill": "luz-dev"
+        },
+        {
+          "id": "implementation-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" implementation",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则卡，记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-dev",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" implementation --skill luz-dev；逐张读 context 输出的 rule_cards 与 client.skill_cards 里的规则卡（luz-dev project-handoff）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" implementation rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了哪些卡、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-dev --session \"<状态根>\" --topic \"<主题>\" --stage implementation（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：luz-dev 按批准的方案把代码写进 src、test、infra，记录里程碑与测试；用户协议与隐私政策经 formal_doc.py 起草",
+          "gate": "internal",
+          "skill": "luz-dev",
+          "check": "specialist",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" implementation --skill luz-dev",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [],
+          "files_any": [
+            "src",
+            "test"
+          ]
+        },
+        {
+          "id": "build",
+          "title": "生成 06-实现报告.html，以及用户协议、隐私政策 PDF",
+          "gate": "internal",
+          "skill": "luz-dev",
+          "check": "build",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" implementation --file \"<评审事实.json>\"",
+          "proof": "docs 里的文件已生成、已登记、与来源哈希一致（不过期），文件检查通过：06-实现报告.html、07-用户协议.pdf、08-隐私政策.pdf",
+          "phase": "produce",
+          "only_if": "documents"
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" implementation --file \"<评审事实.json>\"",
+          "proof": "data/stages/implementation.json；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "present",
+          "title": "向用户出示当前这一个文件：只报路径、是什么、怎么看，三行以内",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "present",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py next \"<项目>\"",
+          "proof": "next 输出的“给用户的汇报”就是这三行",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "decide",
+          "title": "等用户回复：“通过”或修改意见；有修改意见就登记、改完标记 done、重新生成并再次出示",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "decide",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" add --doc <路径> --text \"<意见原文>\"；改完 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" done --id <编号>",
+          "proof": "没有未处理（open）的修改意见",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "record",
+          "title": "用户说“通过”后记录审批（按顺序、绑定哈希），再进入下一个文件",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" implementation --doc <路径> --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=document、mode=user 的记录，哈希与文件一致",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        }
       ]
     },
     {
@@ -578,7 +1729,174 @@
           "path": "docs/02-产品开发/07-验收测试评审.html"
         }
       ],
-      "client_dir": "docs/03-验收交付"
+      "client_dir": "docs/03-验收交付",
+      "documents": [
+        {
+          "id": "verification-report",
+          "path": "docs/02-产品开发/07-验收测试评审.html",
+          "title": "验收测试评审",
+          "skill": "luz-ops",
+          "kind": "html",
+          "what": "验收测试的证据页：每项检查的结果与证据",
+          "how": "用浏览器打开；重点看失败或豁免的检查及其理由"
+        },
+        {
+          "id": "test-report-pdf",
+          "path": "docs/03-验收交付/04-验收测试报告.pdf",
+          "title": "验收测试报告",
+          "skill": "luz-ops",
+          "kind": "ops-client-pdf",
+          "what": "给客户的验收测试报告",
+          "how": "用 PDF 阅读器通读：测试范围、结果和遗留问题客户能不能看懂"
+        }
+      ],
+      "internal_records": [
+        {
+          "id": "verification-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/verification.json",
+          "title": "阶段事实数据",
+          "skill": "luz-ops"
+        },
+        {
+          "id": "verification-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" verification",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则文件（该技能没有 context.py 规则卡），记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-ops",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" verification --skill luz-ops；逐个读 context 输出的 rule_files 列出的文件（SKILL.md、references/operations-matrix.json、references/release-gates.md、references/evidence-formats.md、references/test-playbooks/）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" verification rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了 context 里 rule_files 列出的哪些文件、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-ops --session \"<状态根>\" --topic \"<主题>\" --stage verification（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：luz-ops 按使用端选检查并记录证据（绑定文件哈希），映射到验收清单",
+          "gate": "internal",
+          "skill": "luz-ops",
+          "check": "specialist",
+          "command": "python -X utf8 D:\\Codes\\Luz-Ops\\scripts\\ops.py check <项目> acceptance",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [
+            "data/ops/checks.json"
+          ],
+          "files_any": []
+        },
+        {
+          "id": "build",
+          "title": "生成 07-验收测试评审.html 与 04-验收测试报告.pdf",
+          "gate": "internal",
+          "skill": "luz-ops",
+          "check": "build",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" verification --file \"<评审事实.json>\"",
+          "proof": "docs 里的文件已生成、已登记、与来源哈希一致（不过期），文件检查通过：07-验收测试评审.html、04-验收测试报告.pdf",
+          "phase": "produce",
+          "only_if": "documents"
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" verification --file \"<评审事实.json>\"",
+          "proof": "data/stages/verification.json；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "present",
+          "title": "向用户出示当前这一个文件：只报路径、是什么、怎么看，三行以内",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "present",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py next \"<项目>\"",
+          "proof": "next 输出的“给用户的汇报”就是这三行",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "decide",
+          "title": "等用户回复：“通过”或修改意见；有修改意见就登记、改完标记 done、重新生成并再次出示",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "decide",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" add --doc <路径> --text \"<意见原文>\"；改完 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" done --id <编号>",
+          "proof": "没有未处理（open）的修改意见",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "record",
+          "title": "用户说“通过”后记录审批（按顺序、绑定哈希），再进入下一个文件",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" verification --doc <路径> --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=document、mode=user 的记录，哈希与文件一致",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        }
+      ],
+      "rule_files": [
+        {
+          "skill": "luz-ops",
+          "file": "SKILL.md",
+          "for": "调用协议、检查流程与证据登记命令"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/operations-matrix.json",
+          "for": "每项检查的阶段、证据类型、手册与客户可读的说明"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/release-gates.md",
+          "for": "验收、发布、交付各道门禁的放行条件"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/evidence-formats.md",
+          "for": "各类证据文件的格式与怎样登记"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/test-playbooks/",
+          "for": "验收测试的各份手册；按 operations-matrix.json 里本项目适用的检查的 playbook 字段读对应的一份"
+        }
+      ]
     },
     {
       "id": "release",
@@ -628,7 +1946,208 @@
           "path": "docs/02-产品开发/08-发布评审.html"
         }
       ],
-      "client_dir": "docs/03-验收交付"
+      "client_dir": "docs/03-验收交付",
+      "documents": [
+        {
+          "id": "release-report",
+          "path": "docs/02-产品开发/08-发布评审.html",
+          "title": "发布评审",
+          "skill": "luz-ops",
+          "kind": "html",
+          "what": "发布评审页：发布计划、迁移、回滚演练与监控",
+          "how": "用浏览器打开；重点看回滚演练结果和发布窗口"
+        },
+        {
+          "id": "release-notes-pdf",
+          "path": "docs/03-验收交付/05-发布说明.pdf",
+          "title": "发布说明",
+          "skill": "luz-ops",
+          "kind": "ops-client-pdf",
+          "what": "给客户的发布说明",
+          "how": "用 PDF 阅读器通读：本次发布的内容、已知问题"
+        }
+      ],
+      "internal_records": [
+        {
+          "id": "release-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/release.json",
+          "title": "阶段事实数据",
+          "skill": "luz-ops"
+        },
+        {
+          "id": "release-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" release",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则文件（该技能没有 context.py 规则卡），记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-ops",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" release --skill luz-ops；逐个读 context 输出的 rule_files 列出的文件（SKILL.md、references/operations-matrix.json、references/release-gates.md、references/evidence-formats.md、references/ops-playbooks/release-rollback.md、references/ops-playbooks/backup-restore.md、references/ops-playbooks/monitoring-alerting.md、references/ops-playbooks/compliance-baseline.md）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" release rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了 context 里 rule_files 列出的哪些文件、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-ops --session \"<状态根>\" --topic \"<主题>\" --stage release（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：luz-ops 做发布计划、迁移、回滚演练与监控检查并记录证据",
+          "gate": "internal",
+          "skill": "luz-ops",
+          "check": "specialist",
+          "command": "python -X utf8 D:\\Codes\\Luz-Ops\\scripts\\ops.py check <项目> release",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [
+            "data/ops/checks.json"
+          ],
+          "files_any": []
+        },
+        {
+          "id": "build",
+          "title": "生成 08-发布评审.html 与 05-发布说明.pdf",
+          "gate": "internal",
+          "skill": "luz-ops",
+          "check": "build",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" release --file \"<评审事实.json>\"",
+          "proof": "docs 里的文件已生成、已登记、与来源哈希一致（不过期），文件检查通过：08-发布评审.html、05-发布说明.pdf",
+          "phase": "produce",
+          "only_if": "documents"
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" release --file \"<评审事实.json>\"",
+          "proof": "data/stages/release.json；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "present",
+          "title": "向用户出示当前这一个文件：只报路径、是什么、怎么看，三行以内",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "present",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py next \"<项目>\"",
+          "proof": "next 输出的“给用户的汇报”就是这三行",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "decide",
+          "title": "等用户回复：“通过”或修改意见；有修改意见就登记、改完标记 done、重新生成并再次出示",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "decide",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" add --doc <路径> --text \"<意见原文>\"；改完 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" done --id <编号>",
+          "proof": "没有未处理（open）的修改意见",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "record",
+          "title": "用户说“通过”后记录审批（按顺序、绑定哈希），再进入下一个文件",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" release --doc <路径> --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=document、mode=user 的记录，哈希与文件一致",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "action-production-release",
+          "title": "动作门：真实生产发布（把版本发布到生产环境是对外动作，不是文件：发布评审与发布说明通过后，经用户明确授权才执行）",
+          "gate": "action",
+          "skill": "luz-ops",
+          "check": "action",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py action \"<项目>\" release production-release --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=action 的用户记录，且文件未再变化",
+          "phase": "complete",
+          "action": "production-release"
+        }
+      ],
+      "action_gates": [
+        {
+          "id": "production-release",
+          "title": "真实生产发布",
+          "what": "把版本发布到生产环境是对外动作，不是文件：发布评审与发布说明通过后，经用户明确授权才执行",
+          "after": "documents"
+        }
+      ],
+      "rule_files": [
+        {
+          "skill": "luz-ops",
+          "file": "SKILL.md",
+          "for": "调用协议、检查流程与证据登记命令"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/operations-matrix.json",
+          "for": "每项检查的阶段、证据类型、手册与客户可读的说明"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/release-gates.md",
+          "for": "验收、发布、交付各道门禁的放行条件"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/evidence-formats.md",
+          "for": "各类证据文件的格式与怎样登记"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/ops-playbooks/release-rollback.md",
+          "for": "迁移、发布与回滚的手册"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/ops-playbooks/backup-restore.md",
+          "for": "备份与恢复演练"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/ops-playbooks/monitoring-alerting.md",
+          "for": "监控与告警"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/ops-playbooks/compliance-baseline.md",
+          "for": "运行合规核对"
+        }
+      ]
     },
     {
       "id": "operations",
@@ -677,7 +2196,179 @@
           "path": "docs/02-产品开发/09-运维评审.html"
         }
       ],
-      "client_dir": "docs/03-验收交付"
+      "client_dir": "docs/03-验收交付",
+      "documents": [
+        {
+          "id": "operations-report",
+          "path": "docs/02-产品开发/09-运维评审.html",
+          "title": "运维评审",
+          "skill": "luz-ops",
+          "kind": "html",
+          "what": "运行交付评审页：监控、备份恢复和遗留风险",
+          "how": "用浏览器打开；重点看备份恢复演练和遗留风险"
+        },
+        {
+          "id": "operations-manual-pdf",
+          "path": "docs/03-验收交付/06-运维手册.pdf",
+          "title": "运维手册",
+          "skill": "luz-ops",
+          "kind": "ops-client-pdf",
+          "what": "给客户的运维手册",
+          "how": "用 PDF 阅读器通读：日常巡检、告警处理、备份恢复步骤"
+        }
+      ],
+      "internal_records": [
+        {
+          "id": "operations-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/operations.json",
+          "title": "阶段事实数据",
+          "skill": "luz-ops"
+        },
+        {
+          "id": "operations-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" operations",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则文件（该技能没有 context.py 规则卡），记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-ops",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" operations --skill luz-ops；逐个读 context 输出的 rule_files 列出的文件（SKILL.md、references/operations-matrix.json、references/release-gates.md、references/evidence-formats.md、references/ops-playbooks/handoff-runbook.md、references/ops-playbooks/incident-response.md）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" operations rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了 context 里 rule_files 列出的哪些文件、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-ops --session \"<状态根>\" --topic \"<主题>\" --stage operations（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：luz-ops 做运行手册、告警、备份恢复检查并记录证据",
+          "gate": "internal",
+          "skill": "luz-ops",
+          "check": "specialist",
+          "command": "python -X utf8 D:\\Codes\\Luz-Ops\\scripts\\ops.py check <项目> delivery",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [
+            "data/ops/checks.json"
+          ],
+          "files_any": []
+        },
+        {
+          "id": "build",
+          "title": "生成 09-运维评审.html 与 06-运维手册.pdf",
+          "gate": "internal",
+          "skill": "luz-ops",
+          "check": "build",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" operations --file \"<评审事实.json>\"",
+          "proof": "docs 里的文件已生成、已登记、与来源哈希一致（不过期），文件检查通过：09-运维评审.html、06-运维手册.pdf",
+          "phase": "produce",
+          "only_if": "documents"
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" operations --file \"<评审事实.json>\"",
+          "proof": "data/stages/operations.json；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "present",
+          "title": "向用户出示当前这一个文件：只报路径、是什么、怎么看，三行以内",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "present",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py next \"<项目>\"",
+          "proof": "next 输出的“给用户的汇报”就是这三行",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "decide",
+          "title": "等用户回复：“通过”或修改意见；有修改意见就登记、改完标记 done、重新生成并再次出示",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "decide",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" add --doc <路径> --text \"<意见原文>\"；改完 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" done --id <编号>",
+          "proof": "没有未处理（open）的修改意见",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "record",
+          "title": "用户说“通过”后记录审批（按顺序、绑定哈希），再进入下一个文件",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" operations --doc <路径> --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=document、mode=user 的记录，哈希与文件一致",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        }
+      ],
+      "rule_files": [
+        {
+          "skill": "luz-ops",
+          "file": "SKILL.md",
+          "for": "调用协议、检查流程与证据登记命令"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/operations-matrix.json",
+          "for": "每项检查的阶段、证据类型、手册与客户可读的说明"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/release-gates.md",
+          "for": "验收、发布、交付各道门禁的放行条件"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/evidence-formats.md",
+          "for": "各类证据文件的格式与怎样登记"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/ops-playbooks/handoff-runbook.md",
+          "for": "交付移交与运维手册"
+        },
+        {
+          "skill": "luz-ops",
+          "file": "references/ops-playbooks/incident-response.md",
+          "for": "故障响应与演练"
+        }
+      ]
     },
     {
       "id": "handover",
@@ -757,7 +2448,203 @@
       "crawl_focus": "交付验收惯例、使用说明编写要点、行业合规与售后条款",
       "approval": "client_final_acceptance",
       "next": null,
-      "failure_route": "operations"
+      "failure_route": "operations",
+      "documents": [
+        {
+          "id": "user-manual",
+          "path": "docs/03-验收交付/01-使用说明.pdf",
+          "title": "使用说明",
+          "skill": "luz-writing",
+          "kind": "user-manual-pdf",
+          "what": "给客户的使用说明：每个功能的入口、步骤、规则、状态和常见问题",
+          "how": "用 PDF 阅读器通读：每个功能都有章节，步骤能照着操作"
+        },
+        {
+          "id": "acceptance-checklist",
+          "path": "docs/03-验收交付/02-验收清单.xlsx",
+          "title": "验收清单",
+          "skill": "luz-ops",
+          "kind": "acceptance-checklist",
+          "what": "客户逐项验收并签字的清单",
+          "how": "用 Excel 打开：每个功能都有验收项，步骤与预期结果清楚；签字由客户在回填时完成"
+        },
+        {
+          "id": "change-ledger-snapshot",
+          "path": "docs/03-验收交付/03-需求变更台账-交付快照.xlsx",
+          "title": "需求变更台账（交付快照）",
+          "skill": "luz-project",
+          "kind": "change-ledger",
+          "what": "交付时冻结的需求变更台账",
+          "how": "用 Excel 打开：每条变更是否都已实施、说明客户看得懂"
+        }
+      ],
+      "internal_records": [
+        {
+          "id": "handover-review",
+          "kind": "review-page",
+          "path": "reviews/05-交付评审.html",
+          "title": "交付评审页",
+          "skill": "luz-project"
+        },
+        {
+          "id": "handover-spec",
+          "kind": "stage-spec",
+          "path": "data/stages/handover.json",
+          "title": "阶段事实数据",
+          "skill": "luz-project"
+        },
+        {
+          "id": "handover-crawl",
+          "kind": "crawl-record",
+          "title": "Crawl 前置记录与联网结论页",
+          "skill": "luz-crawl"
+        }
+      ],
+      "steps": [
+        {
+          "id": "upstream",
+          "title": "上游已通过：前面各阶段的 docs 文件都已由用户逐个批准（含复核预先授权），本阶段不早于它们",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "upstream",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py gate \"<项目>\" handover",
+          "proof": "gate 没有“前置审批未完成”和“待用户复核”；顺序在前的文件都是用户批准的记录",
+          "phase": "prepare"
+        },
+        {
+          "id": "rules",
+          "title": "读交接上下文与规则卡，记录采用的规则",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "step-record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py context \"<项目>\" handover --skill luz-project；逐张读 context 输出的 rule_cards 与 client.skill_cards 里的规则卡（各技能为本阶段列出的规则卡）；再 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py step \"<项目>\" handover rules --note \"读了…；采用的规则：…\"",
+          "proof": "data/steps.json 有 rules 记录，说明读了哪些卡、采用了哪些规则",
+          "phase": "prepare",
+          "record": "rules"
+        },
+        {
+          "id": "crawl",
+          "title": "Luz-Crawl 前置检查：核对本地依据记录或本阶段联网结论",
+          "gate": "internal",
+          "skill": "luz-crawl",
+          "check": "crawl",
+          "command": "python -X utf8 D:\\Codes\\Luz-Crawl\\scripts\\crawl_preflight.py run --caller luz-project --session \"<状态根>\" --topic \"<主题>\" --stage handover（联网时用 --task，读正文后 conclude；本地改用 --research local --reason）；再 check",
+          "proof": "00-crawl 下有本阶段检索记录与结论 HTML，Crawl 校验器无错误",
+          "phase": "prepare"
+        },
+        {
+          "id": "specialist",
+          "title": "专家技能产出：写使用说明事实 data/client/manual.json 与验收清单数据 data/acceptance/checklist.json（luz-writing、luz-ops、luz-design 协助）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "specialist",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py client \"<项目>\" manual-draft",
+          "proof": "专家技能的事实数据文件存在，并用 step 记录写明产出与技能自带检查的结论",
+          "phase": "produce",
+          "record": "specialist",
+          "files": [
+            "data/client/manual.json",
+            "data/acceptance/checklist.json"
+          ],
+          "files_any": []
+        },
+        {
+          "id": "build",
+          "title": "生成使用说明、验收清单，冻结变更台账快照",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "build",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py client \"<项目>\" acceptance",
+          "proof": "docs 里的文件已生成、已登记、与来源哈希一致（不过期），文件检查通过：01-使用说明.pdf、02-验收清单.xlsx、03-需求变更台账-交付快照.xlsx",
+          "phase": "produce",
+          "only_if": "documents"
+        },
+        {
+          "id": "records",
+          "title": "内部记录：评审页与阶段事实数据已生成并登记（用户不看）",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "records",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py document \"<项目>\" handover --file \"<评审事实.json>\"",
+          "proof": "reviews/05-交付评审.html；data/stages/handover.json；Crawl 前置记录与适用的联网结论页已登记",
+          "phase": "produce"
+        },
+        {
+          "id": "trace",
+          "title": "追溯与基线对账：功能 → 架构 → 使用说明 → 验收项 → 变更没有缺口",
+          "gate": "internal",
+          "skill": "luz-project",
+          "check": "trace",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py trace \"<项目>\"",
+          "proof": "trace 的缺口列表为空",
+          "phase": "produce"
+        },
+        {
+          "id": "present",
+          "title": "向用户出示当前这一个文件：只报路径、是什么、怎么看，三行以内",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "present",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py next \"<项目>\"",
+          "proof": "next 输出的“给用户的汇报”就是这三行",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "decide",
+          "title": "等用户回复：“通过”或修改意见；有修改意见就登记、改完标记 done、重新生成并再次出示",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "decide",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" add --doc <路径> --text \"<意见原文>\"；改完 py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py review \"<项目>\" done --id <编号>",
+          "proof": "没有未处理（open）的修改意见",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "record",
+          "title": "用户说“通过”后记录审批（按顺序、绑定哈希），再进入下一个文件",
+          "gate": "user",
+          "skill": "luz-project",
+          "check": "record",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py approve \"<项目>\" handover --doc <路径> --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=document、mode=user 的记录，哈希与文件一致",
+          "phase": "review",
+          "per": "document",
+          "only_if": "documents"
+        },
+        {
+          "id": "client-signoff",
+          "title": "客户在验收清单上逐项签字：每项通过或豁免（有确认人与理由），变更台账全部实施",
+          "gate": "client",
+          "skill": "luz-ops",
+          "check": "handover-signed",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py client \"<项目>\" acceptance-import \"<回填表.xlsx>\"",
+          "proof": "验收清单每项 passed（有签字）或 waived（有理由），变更台账无未实施条目",
+          "phase": "complete"
+        },
+        {
+          "id": "action-final-acceptance",
+          "title": "动作门：客户最终验收（客户在验收清单上逐项签字后，用户确认最终验收；签字只来自客户自己的回填，脚本和模型不代签）",
+          "gate": "action",
+          "skill": "luz-project",
+          "check": "action",
+          "command": "py -X utf8 D:\\Codes\\Luz-Project\\scripts\\project.py action \"<项目>\" handover final-acceptance --note \"<用户原话>\" --approver \"<用户>\"",
+          "proof": "APPROVALS.json 有 scope=action 的用户记录，且文件未再变化",
+          "phase": "complete",
+          "action": "final-acceptance"
+        }
+      ],
+      "action_gates": [
+        {
+          "id": "final-acceptance",
+          "title": "客户最终验收",
+          "what": "客户在验收清单上逐项签字后，用户确认最终验收；签字只来自客户自己的回填，脚本和模型不代签",
+          "after": "documents"
+        }
+      ]
     }
   ],
   "audiences": {
@@ -769,11 +2656,13 @@
     "docs/01-需求对接": "需求对接阶段交给客户的文件，只有 PDF 和 XLSX，平铺不建子目录：01 需求说明书、02 方案说明书、03 系统架构图、04 功能清单、05 业务逻辑确认表与回填、06 需求变更台账；客户给的原始资料放状态根的 uploads，Word 源文件放状态根的 client-docs",
     "docs/02-产品开发": "开发阶段的 HTML，平铺不建子目录，一个“两位序号加中文名”的顺序：01 系统架构、02 前端界面设计、各前端的原型（03 起，序号 + 前端名称 + 原型，有几个前端就几个，如 03-手机原型、04-后台原型）、05 后端设计规范、06 实现报告、07 验收测试评审、08 发布评审、09 运维评审",
     "docs/03-验收交付": "交付给客户的文件，只有 PDF 和 XLSX，平铺不建子目录：01 使用说明、02 验收清单、03 需求变更台账快照、04 验收测试报告、05 发布说明、06 运维手册、07 用户协议、08 隐私政策",
-    "reviews（状态根）": "需求、调研、方案、客户信息、交付这几个阶段给你审批、给开发看的评审页（内部页，不交给客户，也不进 docs）：01 需求评审、02 调研结论、03 方案评审、04 业务逻辑确认评审、05 交付评审"
+    "reviews（状态根）": "需求、调研、方案、客户信息、交付这几个阶段的评审页（内部记录：用户不审阅，不交给客户，也不进 docs）：01 需求评审、02 调研结论、03 方案评审、04 业务逻辑确认评审、05 交付评审"
   },
   "global_ledgers": [
     "data/changes.json",
     "data/client/features.json",
     "data/acceptance/checklist.json"
-  ]
+  ],
+  "approval_unit": "document",
+  "approval_note": "用户审批的单位是 docs 里的文件，一次一个：当前待审文件通过后才生成、出示下一个。其余产物（评审页、Crawl 记录、检索结论、规则卡采用记录、检查输出）是内部记录，不让用户审，但每个阶段的 steps 必须全部做完并通过，缺一步下游不放行。动作门（生产发布、最终验收）不是文件，仍须用户明确授权。"
 }

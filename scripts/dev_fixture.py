@@ -7,9 +7,12 @@ from typing import Any
 import dev_documents as dd
 
 SOURCES = [
-    {"id": "SRC-001", "url": "https://example.org/a", "finding": "离线演练中的一条来源内容", "applies_to": "演练文档的结论"},
-    {"id": "SRC-002", "url": "https://example.org/b", "finding": "离线演练中的另一条来源内容", "applies_to": "演练文档的表"},
+    {"id": "SRC-001", "url": "https://example.org/a", "finding": "离线夹具中的补充信息", "applies_to": "测试场景的方案输入"},
+    {"id": "SRC-002", "url": "https://example.org/b", "finding": "离线夹具中的补充信息", "applies_to": "测试场景的方案输入"},
 ]
+# Broad offline evidence for the mandatory research floor; never real research.
+SOURCES += [{"id": f"SRC-{i + 3:03d}", "url": f"https://publisher{i % 3}.example/document-{i}",
+             "finding": "离线夹具中的补充信息", "applies_to": "测试场景的方案输入"} for i in range(8)]
 
 
 def figure(caption: str) -> dict[str, Any]:
@@ -22,16 +25,111 @@ def table(caption: str) -> dict[str, Any]:
 
 
 def prototype(root: Path, title: str, name: str, kind: str = "phone") -> dict[str, Any]:
-    """A prototype page that carries every marker the standard looks for (never a real prototype). ``kind`` phone names Vant, wide names Element Plus."""
+    """Shape-only placeholder; it cannot pass the real source/output gate.
+
+    Tests that actually write the design document must call ``install_source``.
+    No marker file, size padding or claimed component library is fabricated.
+    """
     digits = "".join(c for c in name if c.isdigit()) or "0"
     rel = f"docs/02-产品开发/{int(digits) + 2:02d}-{name}.html"                  # prototypes of a project sit in docs/02-产品开发 with a two-digit number
-    path = dd.project_file(root, rel)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    marks = "@media (prefers-reduced-motion: reduce) {} dlg.showModal(); UI.demo({});"
-    parts = ["button", "input", "table", "dialog", "tag", "card", "tabs", "switch"]
-    classes = " ".join(f"{'van' if kind == 'phone' else 'el'}-{c}" for c in parts)     # the rehearsal names eight components of the library it declares
-    path.write_text("<!doctype html><title>演练原型</title><script>" + marks + "</script><div class='" + classes + "'></div><!--" + "x" * 130_000 + "-->", encoding="utf-8")
-    return {"type": "prototype", "file": rel, "title": title, "kind": kind, "library": "vant" if kind == "phone" else "element-plus"}
+    return {"type": "prototype", "file": rel, "title": title, "kind": kind,
+            "source": {"session": "OFFLINE-SHAPE-ONLY-NOT-A-SESSION",
+                       "package": "OFFLINE-SHAPE-ONLY-NOT-A-PACKAGE", "entry": "index.html"}}
+
+
+def install_source(root: Path, spec: dict[str, Any]) -> dict[str, str]:
+    """Attach an actually built, sealed and reviewed Luz-Design frontend package (tests only).
+
+    Crawl inputs and the review evidence are explicitly synthetic; the package bytes, the seal, the review binding and the
+    package check are the public Design implementation without a gate mock. Both preview sizes reuse one responsive web
+    package; this fixture does not claim native mini-program behavior, business integration or acceptance.
+    """
+    import json
+    import subprocess
+    import sys
+
+    from project_core import _load_artifacts
+    from project_crawl_gate import crawl_errors
+    from project_summary import register_session
+    from project_paths import locate
+
+    root = Path(root).resolve()
+    errors = crawl_errors(root, "design", caller="luz-design")
+    if errors:
+        raise ValueError("The explicit offline design-stage Crawl fixture is required: " + "; ".join(errors))
+    blocks = [block for tab in spec.get("tabs", []) for section in tab.get("sections", [])
+              for block in section.get("blocks", []) if block.get("type") == "prototype"]
+    import template_library
+    for block in blocks:
+        template_library.select(root, "luz-project", "design", "reading-html", str(locate(root, block["file"])))
+    # A frontend package of a project is sealed against the behaviour contract its architecture stage registered.
+    contract = next((locate(root, str(a["path"])) for a in _load_artifacts(root)
+                     if a.get("stage") == "architecture" and a.get("kind") == "ui-requirements"), None)
+    if contract is None:
+        raise ValueError("The architecture stage has to be approved with its ui-requirements.json registered first (frontend_handover)")
+    design_scripts = Path(__file__).resolve().parents[2] / "Luz-Design/scripts"
+    # A separate interpreter avoids collisions among the skills' historical
+    # context/new_session/crawl_gate module names in a full routing rehearsal.
+    worker = r"""
+import json, sys
+from pathlib import Path
+import new_session, frontend as f, ui_package
+
+root = Path(sys.argv[1]).resolve()
+cache = root / "00-design" / "fixture-source.json"
+if cache.is_file():
+    source = json.loads(cache.read_text(encoding="utf-8"))
+    ui_package.verify_package(Path(source["package"]), session=Path(source["session"]))
+else:
+    session = new_session.create_session(root / "00-design" / "source-fixtures",
+        "TEST ONLY complete source", ["document"], cards=["interface-visual"], project=root)
+    package = Path(f.init("app-task", session, "design", requirements=sys.argv[2])["package"])
+    # Synthetic review evidence, the same shape Design's own unit fixture uses: never visual acceptance.
+    from PIL import Image
+    raw = session / "raw"
+    image = raw / "fixture.png"; Image.new("RGB", (240, 300), "white").save(image)
+    log = raw / "fixture.txt"; log.write_text("TEST ONLY synthetic fixture; not product acceptance.", encoding="utf-8")
+    receipt = f.read(package / f.RECEIPT)
+    browser = raw / "browser-fixture.json"
+    f.write(browser, {"bundle_sha256": receipt["bundle_sha256"], "observations": ["TEST ONLY contract fixture"], "limitations": ["Not product evidence"]})
+    q = f.quality_module()
+    assessment = q.plan(q.read(q.CATALOG), q.digest(q.CATALOG), "luz-design", "design")
+    assessment.update(receipt_sha256=f.digest(package / f.RECEIPT), browser_report_sha256=f.digest(browser))
+    for row in assessment["rows"]:
+        row.update(status="not-applicable", reason="TEST ONLY validator fixture; no product claim", reviewer="unit-test-fixture")
+    quality = raw / "quality-fixture.json"; f.write(quality, assessment)
+    evidence = {"path": str(log), "sha256": f.digest(log)}
+    contract = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+    covers = {"page_ids": [x["id"] for x in contract["pages"]], "action_ids": [x["id"] for x in contract["actions"]],
+              "journey_ids": [x["id"] for x in contract["journeys"]]}
+    review = {"bundle_sha256": receipt["bundle_sha256"], "reviewer": "unit-test-fixture",
+              "browser_report": {"path": str(browser), "sha256": f.digest(browser)},
+              "quality_assessment": {"path": str(quality), "sha256": f.digest(quality)},
+              "blocking_findings": [], "component_usage": ["fixture"], "limitations": ["synthetic fixture"],
+              "hard_rules": {"sha256": f.digest(f.HARD_RULES), "violations": [], "reviewed": sorted(f.REVIEW_RULES)},
+              "loaded_assets": ["artwork/list.webp", "artwork/pattern.webp"],
+              "experience_axes": {axis: {"status": "verified", "observed": "TEST ONLY contract fixture", "limitations": ["Not product evidence"], "evidence": [evidence]} for axis in ("UX", "AX", "DX")},
+              "observations": [{"viewport": "fixture", "finding": "fixture only", "screenshot": {"path": str(image), "sha256": f.digest(image)}}],
+              "interactions": [{"action": "fixture", "result": "fixture", "evidence": evidence, "covers": covers}]}
+    review_input = raw / "review-input.json"; f.write(review_input, review)
+    f.review(package, session, review_input)
+    ui_package.verify_package(package, session=session)
+    source = {"session": str(session), "package": str(package), "entry": receipt["entries"][0]}
+    cache.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+print(json.dumps(source, ensure_ascii=False))
+"""
+    process = subprocess.run([sys.executable, "-X", "utf8", "-c", worker, str(root), str(contract)],
+                             cwd=design_scripts, text=True, encoding="utf-8", errors="replace",
+                             capture_output=True, timeout=1800, shell=False)
+    if process.returncode:
+        raise ValueError("Real Design source fixture failed: " + (process.stdout + process.stderr).strip())
+    source = json.loads(process.stdout.splitlines()[-1])
+    register_session(root, "luz-design", source["session"], "design",
+                     "TEST ONLY: real package seal and check, synthetic review; responsive web preview, not native or product acceptance")
+    for block in blocks:
+        block["source"] = dict(source)
+    spec["conclusion"] += " 本夹具复用同一个响应式 Web 界面包，只核验封存、审阅绑定和来源链，不是原生小程序或业务验收。"
+    return source
 
 
 def paths_blocks(prototypes: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -114,6 +212,25 @@ def sample_spec(stage: str, root: Path, frontends: list[tuple[str, str, str]] | 
         sections.append({"title": title, "blocks": blocks_for(title, {"tables": std.get("tables", {}).get(title, 0), "figures": std.get("figures", {}).get(title, 0)})})
     return {"title": f"{stage} 离线演练", "conclusion": "只验证路由、门禁和文档标准，不构成真实的开发文档，也不是产品验收。", "sections": sections, "sources": SOURCES}
 
+def ui_requirements(ids: list[str]) -> dict[str, Any]:
+    """The behaviour contract Luz-System's ui_requirements.py checks, for a rehearsal: one page, one component, one action and
+    one journey that answer for the given functions. TEST ONLY wording, never real requirements."""
+    states = ("default", "loading", "empty", "success", "error", "disabled", "permission_denied", "offline")
+    return {
+        "schema": "luz-ui-requirements/2",
+        "action_groups": [{"id": "rehearsal", "owner_page_id": "P-001", "feature_ids": list(ids)}],
+        "features": [{"id": i, "need": "演练需求", "acceptance": "演练验收条件", "basis": {"kind": "user", "ref": "TEST ONLY 演练夹具"}} for i in ids],
+        "pages": [{"id": "P-001", "route": "/home", "goal": "演练页面目标", "entry": "演练入口", "exit": "演练离开方式", "feature_ids": list(ids),
+                   "component_ids": ["C-001"], "states": {state: "演练状态说明" for state in states}, "primary_action": "A-001"}],
+        "actions": [{"id": "A-001", "name": "演练动作", "precondition": "演练前置条件", "result": "演练结果", "error": "演练错误提示", "recovery": "演练恢复方式",
+                     "permission": "演练权限", "feature_id": ids[0], "page_id": "P-001", "component_id": "C-001"}],
+        "components": [{"id": "C-001", "purpose": "演练用途", "behavior": "演练行为", "data_contract": "演练数据", "acceptance": "演练验收",
+                        "page_ids": ["P-001"], "feature_ids": list(ids), "states": ["default"]}],
+        "journeys": [{"id": "J-001", "expected": "演练预期", "recovery": "演练恢复", "page_ids": ["P-001"], "action_ids": ["A-001"]}],
+        "non_ui_features": [],
+    }
+
+
 def frontend_handover(root: Path) -> None:
     """The 界面功能说明 and entrance table an architecture stage of a project with screens hands over (references/dev-documents.md): minimal files that
     answer for every function of the function list, registered as artifacts of the stage (never real content)."""
@@ -129,5 +246,38 @@ def frontend_handover(root: Path) -> None:
     (folder / "frontend-spec.json").write_text(json.dumps({"fn_homes": [{"fn": i} for i in ids]}, ensure_ascii=False), encoding="utf-8")
     (folder / "界面功能说明.html").write_text("<!doctype html><title>界面功能说明（演练）</title><h1>界面功能说明</h1>", encoding="utf-8")
     (folder / "entrances.json").write_text(json.dumps({"entrances": [{"fn": i} for i in ids], "no_entrance": []}, ensure_ascii=False), encoding="utf-8")
-    for name, kind in (("frontend-spec.json", "frontend-spec"), ("界面功能说明.html", "frontend-spec-page"), ("entrances.json", "entrances")):
+    # A component-reuse project (the default) also registers the behaviour contract of its screens: exactly the functions
+    # the client kept, which the intake form may have narrowed.
+    from client_flow import effective_features
+    scope = [f["id"] for f in effective_features(root, cd.load_features(root))]
+    (folder / "ui-requirements.json").write_text(json.dumps(ui_requirements(scope), ensure_ascii=False), encoding="utf-8")
+    for name, kind in (("frontend-spec.json", "frontend-spec"), ("界面功能说明.html", "frontend-spec-page"), ("entrances.json", "entrances"),
+                       ("ui-requirements.json", "ui-requirements")):
         register_artifact(root, "architecture", folder / name, kind)
+
+
+def approved_frontend_handover(root: Path) -> None:
+    """Supply an isolated stage-approval fixture to tests of design rendering and source tampering."""
+    import client_fixture
+    import project_core as pc
+
+    client_fixture.crawled(root, "architecture")
+    frontend_handover(root)
+    manifest = pc.load_project(root)
+    architecture = pc._stage_record(manifest, "architecture")
+    artifacts = {item["id"]: item["sha256"] for item in pc._load_artifacts(root) if item["stage"] == "architecture"}
+    approvals = pc._load_approvals(root)
+    record = {
+        "id": pc._next_id(approvals["approvals"], "APPROVAL"),
+        "project_id": manifest["project_id"],
+        "stage": "architecture",
+        "status": "approved",
+        "approver": "TEST FIXTURE",
+        "note": "TEST ONLY: isolated setup for design document tests",
+        "approved_at": pc.now_iso(),
+        "artifact_hashes": artifacts,
+    }
+    approvals["approvals"].append(record)
+    architecture.update(status="approved", approval_id=record["id"], approved_hashes=artifacts)
+    pc._write_json(root / "APPROVALS.json", approvals)
+    pc._save_manifest(root, manifest)
