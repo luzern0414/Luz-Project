@@ -1576,5 +1576,16 @@
     "last_confirmed": "2026-11-21",
     "scope": "maintenance",
     "codified": "references/commercial-project.md#原型验收"
+  },
+  {
+    "key": "project-chinese-readme",
+    "kind": "preference",
+    "text": "每个项目以仓库根目录中文 README 介绍用途、核心功能、典型流程与架构，并提供可复现的启动步骤和开发文档入口。",
+    "why": "用户要求开发者打开项目即可了解用途和接手方式，章节顺序参考 GreaterWMS README。",
+    "uses": 1,
+    "first_seen": "2026-11-21",
+    "last_confirmed": "2026-11-21",
+    "scope": "maintenance",
+    "codified": "references/project-structure.md#项目-readme"
   }
 ]

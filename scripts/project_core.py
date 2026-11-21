@@ -469,7 +469,9 @@ def _write_state_files(state: Path, manifest: dict[str, Any]) -> None:
             _write_json(path, payload)
 
 
-def create_project(name: str, project_dir: Path | str, output: Path | str, repository: str | None = None, approval_model: str | None = None, *, ui_mode: str = "component-reuse", workflow: str | None = None) -> Path:
+def create_project(name: str, project_dir: Path | str, output: Path | str, repository: str | None = None,
+                   approval_model: str | None = None, *, ui_mode: str = "component-reuse",
+                   workflow: str | None = None, summary: str | None = None) -> Path:
     """Create a project: its Luz-Project session ``<output>/<项目目录名>`` (a ``raw`` folder, the state root, and the summary page) and its
     project directory. Default to the commercial workflow. Existing callers explicitly selecting the old
     approval_model keep their matrix. Use workflow='legacy' to request it directly."""
@@ -492,9 +494,13 @@ def create_project(name: str, project_dir: Path | str, output: Path | str, repos
     approval_model = approval_model or "document"
     if workflow not in {"legacy", cw.WORKFLOW}:
         raise ProjectError(f"未知项目流程: {workflow}")
+    from project_scaffold import create_scaffold, render_readme, write_missing_readme
     if workflow == cw.WORKFLOW and not deliver.exists():
-        from project_scaffold import create_scaffold
-        create_scaffold(name, deliver)
+        create_scaffold(name, deliver, summary=summary)
+    else:
+        readme = render_readme(name, summary)
+        deliver.mkdir(parents=True, exist_ok=True)
+        write_missing_readme(deliver, readme)
     state.mkdir(parents=True, exist_ok=True)
     for relative in (cw.FOLDERS if workflow == cw.WORKFLOW else DELIVER_MADE):
         (deliver / relative).mkdir(parents=True, exist_ok=True)
@@ -1342,7 +1348,7 @@ def ensure_gitignore(root: Path, lines: Iterable[str]) -> list[str]:
 
 
 def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterable[tuple[str, str]] = (), aliases: dict[str, str] | None = None,
-                  output: Path | str | None = None, workflow: str = "auto") -> dict[str, Any]:
+                  output: Path | str | None = None, workflow: str = "auto", summary: str | None = None) -> dict[str, Any]:
     """Turn an existing repository into a Luz project in place: the repository stays the project directory, its state goes to a new session.
 
     Code folders are never renamed: ``aliases`` records where a standard folder really lives (for example ``test`` -> ``tests``).
@@ -1368,6 +1374,9 @@ def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterab
         workflow = cw.WORKFLOW
     if workflow not in {"legacy", cw.WORKFLOW}:
         raise ProjectError(f"未知项目流程: {workflow}")
+    from project_scaffold import render_readme, write_missing_readme
+    name = (name or deliver.name).strip()
+    readme = render_readme(name, summary)
     log: list[str] = []
     pairs: list[tuple[str, str]] = []
     state.mkdir(parents=True, exist_ok=True)
@@ -1388,7 +1397,7 @@ def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterab
             (deliver / target).mkdir(parents=True, exist_ok=True)
     matrix = commercial_matrix() if workflow == cw.WORKFLOW else _load_matrix()
     stages = [_empty_stage(item, current=(index == 0), root=state) for index, item in enumerate(matrix["stages"])]
-    manifest = _new_manifest((name or deliver.name).strip(), deliver, stages, str(deliver), "document")
+    manifest = _new_manifest(name, deliver, stages, str(deliver), "document")
     if workflow == cw.WORKFLOW:
         manifest.update(workflow=workflow, ui_mode="component-reuse", ui_requirements_version=2)
     manifest["adopted"] = {"at": now_iso(), "aliases": aliases, "moves": log, "note": "既有仓库就地接入：不预设任何阶段为已批准，历史文档只是输入材料"}
@@ -1396,6 +1405,7 @@ def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterab
     _write_json(state / "config" / "paths.json", {"docs": "docs", "aliases": aliases})
     added = ensure_gitignore(deliver, GITIGNORE_SAFE)
     relinked = _relink(deliver, pairs) if pairs else {"files_updated": []}
+    write_missing_readme(deliver, readme)
     manifest["adopted"]["pairs"] = [list(p) for p in pairs]
     _save_manifest(state, manifest)
     render_project(state)

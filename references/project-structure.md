@@ -6,7 +6,7 @@
 
 ```text
 项目名/
-├─ README.md              项目用途、启动方式、目录和协作约定
+├─ README.md              项目介绍、核心功能、运行方式和开发入口
 ├─ .gitignore             仓库忽略清单
 ├─ .env.example           环境变量名称和填法示例
 ├─ src/                   产品代码，按需分端或分模块
@@ -26,10 +26,22 @@
 ### 创建骨架
 
 ```powershell
-py -X utf8 D:\Codes\Luz-Project\scripts\project.py scaffold "智慧健身管理系统" --project-dir "D:\Codes\018-智慧健身管理系统"
+py -X utf8 D:\Codes\Luz-Project\scripts\project.py scaffold "智慧健身管理系统" --project-dir "D:\Codes\018-智慧健身管理系统" --summary "为健身门店提供会员管理、课程预约与到店核销。"
 ```
 
-选择项目的新目录。命令建立目录并填入 README 的项目名称。按实际技术栈填写启动方式与环境，按采用顺序从对应模板选出要写的文件。骨架源文件在[项目 README 模板](../templates/项目骨架/README.md)。
+选择项目的新目录。命令建立目录并写入 README 的项目名称和已提供的一句话简介。
+
+### 项目 README
+
+仓库根目录的 `README.md` 面向第一次接手的开发者。开头一句说清使用对象和核心任务。接着介绍主要场景与实际成果，列出核心功能及使用角色，挑一条完整的业务流程说明发起、办理和结果。有可公开的界面或演示时放在项目介绍附近。 [中文 README 模板](../templates/项目骨架/README.md)
+
+技术架构写各端、服务、数据与外部依赖的实际职责。快速开始按环境与版本、取代码、装依赖、配置与迁移、启动与验证展开。每条命令标明工作目录和适用环境。验证给出本地地址或入口，以及一项开发者可复现的操作和预期结果。
+
+目录树只列实际存在的主要入口。功能、接口、测试与运维材料用仓库相对链接。协作一节登记实际的检查命令、评审方式和维护渠道。有许可证时链接原文件。开发交接前按 README 走一遍启动过程，核对链接与已实现功能，并清除模板占位符。入口、架构或启动命令变更时随代码更新 README。
+
+`scaffold` 和 `init` 建立项目 README，`adopt` 在仓库缺少根目录 README 时补建。三种入口均可用 `--summary` 填写一句话简介。已有 README 由维护者按模板增补，保留原有项目事实和有效入口。
+
+章节顺序参考 GreaterWMS 的功能演示、应用场景、架构介绍和分端启动。 [GreaterWMS README](https://github.com/GreaterWMS/GreaterWMS#readme)
 
 ### 仓库、配置与数据库
 

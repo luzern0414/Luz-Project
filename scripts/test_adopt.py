@@ -79,8 +79,11 @@ class AdoptTests(unittest.TestCase):
     def test_adopt_makes_a_gitignore_when_the_repository_has_none(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = self.repo(tmp)
+            readme = root / "README.md"
+            before = readme.read_bytes()
             self.assertFalse((root / ".gitignore").exists())
-            adopt_project(root, "演示项目", aliases={"test": "tests"}, output=Path(tmp) / "out")
+            adopt_project(root, "演示项目", aliases={"test": "tests"}, output=Path(tmp) / "out", summary="新仓库说明")
+            self.assertEqual(readme.read_bytes(), before)
             lines = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
             for wanted in (".env", "node_modules/", "dist/", "build/"):
                 self.assertIn(wanted, lines)

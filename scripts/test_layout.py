@@ -345,7 +345,7 @@ class CommandLineTests(unittest.TestCase):
             self.assertEqual(Path(info["project"]), deliver.resolve())
             self.assertEqual(Path(info["state_root"]), (out / "021-命令行" / "raw").resolve())
             self.assertTrue(Path(info["summary"]).is_file())
-            self.assertEqual(sorted(p.name for p in deliver.iterdir()), [".env.example", ".gitignore", "docs"])
+            self.assertEqual(sorted(p.name for p in deliver.iterdir()), [".env.example", ".gitignore", "README.md", "docs"])
             for given in (deliver, out / "021-命令行", out / "021-命令行" / "raw"):
                 code, text = run("check", str(given), "--strict")
                 self.assertEqual(code, 0, text)

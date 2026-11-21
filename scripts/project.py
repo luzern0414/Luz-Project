@@ -50,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--project-dir", required=True, help="项目目录 D:/Codes/NNN-项目名（不存在则创建）；会话目录与它同名")
     init.add_argument("--output-root", help="Luz-Project 的输出根（默认 E:/Skill输出/Luz-Project，或环境变量 LUZ_PROJECT_OUTPUT）")
     init.add_argument("--repository")
+    init.add_argument("--summary", help="写入新 README 的一句话项目简介")
     init.add_argument("--workflow", choices=["commercial", "legacy"], default="commercial", help="默认商业流程；已有项目按自身流程继续")
     init.add_argument("--ui-mode", choices=["component-reuse", "source-locked"], default="component-reuse",
                       help="新项目 UI 模式，写入 project.json；默认 component-reuse，source-locked 需显式指定")
@@ -57,6 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     scaffold = sub.add_parser("scaffold", help="按目录标准创建项目骨架和基础文件")
     scaffold.add_argument("name", help="写入 README 的项目名称")
     scaffold.add_argument("--project-dir", required=True, help="骨架的目标新目录")
+    scaffold.add_argument("--summary", help="写入 README 的一句话项目简介")
 
     status = sub.add_parser("status", help="查看项目状态")
     status.add_argument("project")
@@ -166,6 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
     adopt.add_argument("project")
     adopt.add_argument("--output-root", help="Luz-Project 的输出根")
     adopt.add_argument("--name")
+    adopt.add_argument("--summary", help="写入补建 README 的一句话项目简介")
     adopt.add_argument("--move", action="append", default=[], metavar="旧=新", help="相对项目根的路径迁移，可重复；已跟踪文件用 git mv")
     adopt.add_argument("--alias", action="append", default=[], metavar="标准目录=实际目录", help="例如 test=tests、infra=config、raw/logs=logs")
     relink = sub.add_parser("relink", help="按接入时记录的迁移（或 --move 旧=新）修复 Markdown 链接和文档路径提及")
@@ -350,7 +353,9 @@ def execute(args: argparse.Namespace) -> int:
     import commercial_workflow as cw
     try:
         if args.command == "init":
-            state = create_project(args.name, _path(args.project_dir), _path(args.output_root) if args.output_root else output_root(), args.repository, ui_mode=args.ui_mode, workflow=cw.WORKFLOW if args.workflow == "commercial" else "legacy")
+            state = create_project(args.name, _path(args.project_dir), _path(args.output_root) if args.output_root else output_root(),
+                                   args.repository, ui_mode=args.ui_mode, workflow=cw.WORKFLOW if args.workflow == "commercial" else "legacy",
+                                   summary=args.summary)
             _print({"project": str(deliver_root(state)), "state_root": str(state), "session": str(state.parent), "summary": str(state.parent / f"{state.parent.name}.html"),
                     "next": f'project.py next "{command_project(state)}"'})
         elif args.command in {"build", "templates"}:
@@ -368,7 +373,7 @@ def execute(args: argparse.Namespace) -> int:
                 _print(cw.build(root, args.stage, _path(args.data)))
         elif args.command == "scaffold":
             from project_scaffold import create_scaffold
-            folder = create_scaffold(args.name, _path(args.project_dir))
+            folder = create_scaffold(args.name, _path(args.project_dir), summary=args.summary)
             _print({"project": str(folder), "readme": str(folder / "README.md")})
         elif args.command == "status":
             _print(project_status(_path(args.project)))
@@ -481,7 +486,7 @@ def execute(args: argparse.Namespace) -> int:
             from project_core import adopt_project
             pair = lambda v: tuple(x.strip() for x in v.split("=", 1))
             _print(adopt_project(_path(args.project), args.name, moves=[pair(v) for v in args.move], aliases=dict(pair(v) for v in args.alias),
-                                 output=_path(args.output_root) if args.output_root else None, workflow=args.workflow))
+                                 output=_path(args.output_root) if args.output_root else None, workflow=args.workflow, summary=args.summary))
         elif args.command == "relink":
             from project_core import relink_after_moves
             pairs = [tuple(x.strip() for x in v.split("=", 1)) for v in args.move] or [tuple(x) for x in load_project(_path(args.project)).get("adopted", {}).get("pairs", [])]

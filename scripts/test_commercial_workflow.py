@@ -22,12 +22,15 @@ import project_crawl_gate
 @pytest.fixture
 def root(tmp_path, monkeypatch):
     monkeypatch.setenv("LUZ_PROJECT_OUTPUT", str(tmp_path / "sessions"))
-    assert project.main(["init", "流程测试", "--project-dir", str(tmp_path / "work/036-商业测试")]) == 0
+    assert project.main(["init", "流程测试", "--project-dir", str(tmp_path / "work/036-商业测试"),
+                         "--summary", "为门店提供预约办理。"]) == 0
     return tmp_path / "sessions/036-商业测试/raw"
 
 
 def test_default_init_and_existing_manifest(root, tmp_path):
     assert pc.load_project(root)["workflow"] == cw.WORKFLOW
+    readme = pc.deliver_root(root) / "README.md"
+    assert readme.read_text(encoding="utf-8").startswith("# 流程测试\n\n为门店提供预约办理。\n")
     assert list(pc._stage_defs(root)) == [*cw.BATCHES, "implementation", "verification", "release", "operations", "handover"]
     assert set(p.name for p in pc.locate(root, "docs").iterdir()) == {p.split("/")[1] for p in cw.FOLDERS}
     assert pc.validate_project(root, strict=True) == []
@@ -47,8 +50,9 @@ def test_adopt_recognizes_existing_layout_and_preserves_source_material(tmp_path
         original = deliver / folder / "未整理.txt"
         original.parent.mkdir(parents=True)
         original.write_bytes(b"existing source")
-        result = pc.adopt_project(deliver, output=tmp_path / "sessions")
+        result = pc.adopt_project(deliver, "仓储系统", summary="办理收货和库存查询。", output=tmp_path / "sessions")
         assert pc.load_project(result["state_root"]).get("workflow") == workflow
+        assert (deliver / "README.md").read_text(encoding="utf-8").startswith("# 仓储系统\n\n办理收货和库存查询。\n")
         assert original.read_bytes() == b"existing source"
         assert result["moves"] == []
 

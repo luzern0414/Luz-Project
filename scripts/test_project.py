@@ -57,12 +57,16 @@ class ProjectScaffoldTests(unittest.TestCase):
     def test_scaffold_creates_base_layout_and_keeps_existing_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "001-骨架项目"
-            self.assertEqual(create_scaffold("骨架项目", target), target.resolve())
+            from project import main
+            summary = "为仓库作业员提供收货、上架与库存查询。"
+            self.assertEqual(main(["scaffold", "骨架项目", "--project-dir", str(target), "--summary", summary]), 0)
             for path in ("src", "log", "config", "infra/migrations", "docs/01-原始资料", "docs/02-对接资料", "docs/03-开发资料"):
                 self.assertTrue((target / path).is_dir(), path)
             readme = target / "README.md"
             original = readme.read_text(encoding="utf-8")
-            self.assertTrue(original.startswith("# 骨架项目\n"))
+            self.assertTrue(original.startswith(f"# 骨架项目\n\n{summary}\n"))
+            self.assertLess(original.index("## 核心功能"), original.index("## 快速开始"))
+            self.assertIn("## 开发文档", original)
             self.assertTrue((target / "infra/README.md").is_file())
             self.assertTrue((target / ".gitignore").is_file())
             self.assertTrue((target / ".env.example").is_file())
@@ -81,7 +85,8 @@ class ProjectScaffoldTests(unittest.TestCase):
             library().require_selected(session, "luz-project", "internal-summary", session / "014-示例项目.html", "reading-html", phase="post")
             self.assertEqual(sorted(p.name for p in (state / "data").iterdir()), ["artifacts.json", "changes.json", "client", "ops", "project.json", "stages"])
             self.assertEqual(sorted(p.name for p in (state / "config").iterdir()), ["documents.json", "keys.example.json", "paths.json"])
-            self.assertEqual(sorted(p.name for p in deliver.iterdir()), [".env.example", ".gitignore", "docs"], "项目目录只有成果，src 等有东西要写时才建")
+            self.assertEqual(sorted(p.name for p in deliver.iterdir()), [".env.example", ".gitignore", "README.md", "docs"])
+            self.assertTrue((deliver / "README.md").read_text(encoding="utf-8").startswith("# 示例项目\n"))
             self.assertEqual(sorted(p.name for p in (deliver / "docs").iterdir()), ["01-需求对接", "02-产品开发", "03-验收交付"])
             for folder in ("01-需求对接", "02-产品开发", "03-验收交付"):
                 self.assertEqual(list((deliver / "docs" / folder).iterdir()), [], f"docs/{folder} 开始是空的，只有一层")

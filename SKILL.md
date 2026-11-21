@@ -1,6 +1,6 @@
 ---
 name: luz-project
-description: 用户要求搭建或规范项目目录、整理和命名项目资料，或创建、管理和执行完整 Luz 项目时使用。负责交付文档、阶段顺序、审批和需求变更。
+description: 用户要求搭建或规范项目目录、编写项目 README、整理和命名项目资料，或创建、管理和执行完整 Luz 项目时使用。负责交付文档、阶段顺序、审批和需求变更。
 metadata:
   short-description: 编排完整 Luz 项目生命周期与客户文档
 ---
@@ -24,7 +24,9 @@ metadata:
 
 涉及应用界面的项目，从第二批前端开发说明开始采用 [Design 成品要求](../Luz-Design/references/design/hard-rules.md)。第三批构建在真实浏览器逐步检查首页、每次操作后的状态和结果页，并把 HTML、规则版本与走查记录绑定到本批确认。
 
-项目通用文件从[项目骨架](templates/项目骨架/README.md)取用，包含 README、Git 忽略清单、环境变量示例、配置与数据库迁移说明。商业项目由矩阵固定对接和开发资料编号，包括第三次确认的 `docs/03-开发资料/05-交互原型.html`。单独整理档案时按[文件命名规则](references/project-structure.md#编号与归档)及已有外发记录编号。开发文种见[开发资料模板](templates/03-开发资料/README.md)。
+每个项目根目录的 `README.md` 按[项目 README 写法](references/project-structure.md#项目-readme)介绍用途、核心功能、业务流程和开发入口。按[中文模板](templates/项目骨架/README.md)填写，开发交接前核对启动步骤和仓库内链接。
+
+项目骨架还包含 Git 忽略清单、环境变量示例、配置与数据库迁移说明。商业项目由矩阵固定对接和开发资料编号，包括第三次确认的 `docs/03-开发资料/05-交互原型.html`。单独整理档案时按[文件命名规则](references/project-structure.md#编号与归档)及已有外发记录编号。开发文种见[开发资料模板](templates/03-开发资料/README.md)。
 
 已有逐文件项目继续按前端名称归档分端原型，在各自的评审记录中保留原路径。
 
