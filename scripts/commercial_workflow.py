@@ -109,15 +109,32 @@ def matrix(legacy):
             "directory_contract": {ORIGINALS: "客户提供的原件", CLIENT: "对接资料、正式交付与签收文件", DEVELOPMENT: "开发资料、可操作原型与实施验证记录"}}
 
 
+def _has_real_search(record):
+    return (isinstance(record, dict) and record.get("research_mode") in {"search", "deep"}
+            and any(isinstance(step, dict) and step.get("command") == "search" and step.get("search_performed") is True
+                    for step in (record.get("steps") or [])))
+
+
 def scope_evidence_errors(root):
     from project_crawl_gate import stage_record
     manifest = pc.load_project(root)
     if pc._stage_record(manifest, "scope").get("owner") != BATCHES["scope"][1]:
         return ["范围与系统方案的检索调用者必须是 luz-system"]
     record = pc._read_json(stage_record(root, manifest, "scope"), {}) or {}
-    if record.get("research_mode") not in {"search", "deep"} or not any(
-            step.get("command") == "search" and step.get("search_performed") is True for step in record.get("steps", [])):
+    if not _has_real_search(record):
         return ["需求与方案需要 Luz-System 的本阶段真实检索记录（search/deep），并读正文、归档和 conclude"]
+    return []
+
+
+def design_evidence_errors(ctx):
+    from project_crawl_gate import stage_record
+
+    # An unchanged approved batch keeps the evidence admitted at its review.
+    if batch_record(ctx, "design", check_templates=False)[0]:
+        return []
+    record_path = stage_record(ctx.root, ctx.manifest, "design")
+    if not _has_real_search(pc._read_json(record_path, {})):
+        return ["功能与技术设计需由 System 和 Dev 在本阶段真实搜索（search/deep），核对目标版本的技术、组件及恢复方案，再 conclude"]
     return []
 
 
@@ -322,21 +339,21 @@ def confirm(root, stage, note, approver):
     return existing or _decision(ctx, stage, note.strip(), approver.strip())
 
 
-def require_scope_sources(ctx, data_path):
+def require_batch_sources(ctx, data_path, stage):
     from project_crawl_gate import stage_record
     from urllib.parse import urldefrag
-    evidence = pc._read_json(stage_record(ctx.root, ctx.manifest, "scope"))
+    evidence = pc._read_json(stage_record(ctx.root, ctx.manifest, stage))
     findings = {f.get("source_id") for f in evidence.get("findings", []) if f.get("adopted") is True}
     urls = {urldefrag(s["url"])[0] for s in evidence.get("sources", []) if s.get("url") and s.get("id") in findings}
     facts = json.loads(Path(data_path).read_text(encoding="utf-8-sig"))
     if not isinstance(facts, dict) or not isinstance(facts.get("sources"), list):
-        raise ProjectError("需求与系统方案的事实文件需提供 sources 列表")
+        raise ProjectError("本批事实文件需提供 sources 列表")
     cited = {urldefrag(s["reference"])[0] for s in facts["sources"] if isinstance(s, dict)
              and isinstance(s.get("reference"), str) and s["reference"].startswith(("http://", "https://"))}
     if not urls.intersection(cited):
-        raise ProjectError("需求与系统方案的 sources[].reference 应引用已采用的本阶段 Crawl 正文网址")
+        raise ProjectError("本批 sources[].reference 应引用已采用的本阶段 Crawl 正文网址")
     if cited - urls:
-        raise ProjectError("首批外部来源须逐项对应已采用的原文：" + "、".join(sorted(cited - urls)))
+        raise ProjectError("本批外部来源须逐项对应已采用的原文：" + "、".join(sorted(cited - urls)))
 
 
 def build(root, stage, data_path):
@@ -348,10 +365,10 @@ def build(root, stage, data_path):
     if problems:
         raise ProjectError("构建前的内部步骤未通过：" + "；".join(problems))
     ctx = ad.Ctx(root)
-    if stage == "scope":
-        require_scope_sources(ctx, data_path)
     if batch_record(ctx, stage)[0] and not build_errors(ctx, stage):
         raise ProjectError("本批已经定稿。修改已确认版本请先登记变更")
+    if stage in {"scope", "design"}:
+        require_batch_sources(ctx, data_path, stage)
     from commercial_documents import build as generate, output_errors
     deliver = pc.deliver_root(root)
     pc._register_evidence(root, stage)

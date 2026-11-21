@@ -1528,9 +1528,12 @@ def gate_stage(project: Path | str, stage: str, *, specialist_checks: bool = Tru
         from project_template_gate import output_errors
         for document in approval_docs.documents(root, stage):
             errors.extend(output_errors(root, stage, document))
-    if commercial_at(root) and stage == "scope":
-        from commercial_workflow import scope_evidence_errors
-        errors += scope_evidence_errors(root)
+    if commercial_at(root):
+        from commercial_workflow import design_evidence_errors, scope_evidence_errors
+        if stage == "scope":
+            errors += scope_evidence_errors(root)
+        elif stage == "design":
+            errors += design_evidence_errors(approval_docs.Ctx(root))
     if specialist_checks and stage in {"verification", "release", "operations"}:
         import sys
         sys.path.insert(0, str(ROOT.parent / "Luz-Ops" / "scripts"))

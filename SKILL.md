@@ -15,14 +15,14 @@ metadata:
 
 1. 运行 `python -X utf8 scripts/project.py matrix`，读手册和 [经验](experience/catalog.md)。搭建新目录用 `project.py scaffold`，见[项目目录标准](references/project-structure.md#项目目录标准)。启用阶段矩阵用 `project.py init`，既有仓库用 `adopt`，旧布局先预演 `migrate`。阶段执行路径见[现行工具目录](references/project-structure.md#现行工具目录)。
 2. `project.py next`、`project.py checklist <项目> <阶段>` 确认当前步骤。取 `project.py context <项目> <阶段> --skill <技能>` 后依次完成规则、阶段依据、领域自检、模板绑定和追溯。遇 `blockers` 先补前置条件。内部步骤不省略。
-3. 新商业项目按[三次项目确认](references/commercial-project.md)执行。System 先调 Crawl 搜索，同批生成需求与方案。第一次确认后形成四份功能和技术说明，第二次确认后由 Design 制作可操作的 HTML Demo。第三次确认后定稿对接资料 03 至 06。一次出示整批，用户明确通过才用 `project.py approve` 登记原话与版本。需要修改用 `project.py review`。已有逐文件项目沿用原审批模型。
+3. 新商业项目按[三次项目确认](references/commercial-project.md)执行。System 调 Crawl 研究同类系统，同批生成需求与方案。第一次确认后，System 与 Dev 在本阶段联合检索并形成四份功能和技术说明。第二次确认后由 Design 制作可操作的 HTML Demo。第三次确认后定稿对接资料 03 至 06。一次出示整批，用户明确通过才用 `project.py approve` 登记原话与版本。需要修改用 `project.py review`。已有逐文件项目沿用原审批模型。
 4. 需求变化先 `project.py change`。受影响的阶段按[变更规则](references/change-control.md)重新确认。生产发布和最终验收是动作门，用 `project.py action` 记录当次授权。项目整体预先授权条件见手册。
 5. 预算、人日与报价默认不写。用户或客户明确要求才用 `project.py client <项目> estimate`，记录要求人、日期和原话。没有人工报价时显示“等待人工报价”，agent 不得自拟。
 6. 用 `project.py trace`、`project.py render`、`project.py check <项目> --strict` 复核交付。`experience.py note` 写入或确认本次经验。
 
 ## 项目文件
 
-涉及应用界面的项目，从第二批前端开发说明开始采用 [Design 成品要求](../Luz-Design/references/design/hard-rules.md)。第三批构建在真实浏览器逐步检查首页、每次操作后的状态和结果页，并把 HTML、规则版本与走查记录绑定到本批确认。
+涉及应用界面的项目，从第二批前端开发说明开始采用 [Design 成品要求](../Luz-Design/references/design/hard-rules.md)。第三批构建在浏览器逐步检查入口、动作和结果页，把 HTML、规则版本与走查记录绑定到本批确认。Ops 验收浏览器界面时保存内置浏览器的实际操作结果。
 
 每个项目根目录的 `README.md` 按[项目 README 写法](references/project-structure.md#项目-readme)介绍用途、核心功能、业务流程和开发入口。按[中文模板](templates/项目骨架/README.md)填写，开发交接前核对启动步骤和仓库内链接。
 

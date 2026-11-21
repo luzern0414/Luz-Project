@@ -96,10 +96,10 @@ def test_scope_checks_every_external_source(root, tmp_path):
                           "sources": [{"id": "SRC-1", "url": page}]})
     facts = tmp_path / "scope.json"
     pc._write_json(facts, {"sources": [{"reference": page + "#receipt"}, {"reference": "客户收货单"}]})
-    cw.require_scope_sources(ctx, facts)
+    cw.require_batch_sources(ctx, facts, "scope")
     pc._write_json(facts, {"sources": [{"reference": page}, {"reference": "https://other.example.org/shipment"}]})
     with pytest.raises(pc.ProjectError, match="逐项对应"):
-        cw.require_scope_sources(ctx, facts)
+        cw.require_batch_sources(ctx, facts, "scope")
 
 
 @pytest.fixture
@@ -113,12 +113,12 @@ def package_facts(root, tmp_path, monkeypatch):
     for stage in cw.BATCHES:
         record = project_crawl_gate.stage_record(root, pc.load_project(root), stage)
         evidence = {"research_mode": "local"}
-        if stage == "scope":
+        if stage in {"scope", "design"}:
             evidence = {"research_mode": "search", "steps": [{"command": "search", "search_performed": True}],
                         "task_root": str(tmp_path / "crawl"), "sources": [{"id": "S1", "url": "https://example.test/source"}],
                         "findings": [{"source_id": "S1", "adopted": True}]}
         pc._write_json(record, evidence)
-        if stage == "scope":
+        if stage in {"scope", "design"}:
             record.with_suffix(".html").write_text("<p>offline fixture</p>", encoding="utf8")
 
     def generate(deliver, state, stage, source):
@@ -144,6 +144,27 @@ def package_facts(root, tmp_path, monkeypatch):
                 pc._write_json(state / "data" / path, content)
     monkeypatch.setattr(commercial_documents, "build", generate)
     return facts
+
+
+def test_design_uses_stage_technical_evidence(root, package_facts):
+    build_package(root, "scope", package_facts)
+    assert confirm(root, "scope") == 0
+    record = project_crawl_gate.stage_record(root, pc.load_project(root), "design")
+    evidence = pc._read_json(record)
+    pc._write_json(record, {"research_mode": "local", "reason": "仅内部讨论"})
+    assert cw.design_evidence_errors(ad.Ctx(root))
+    flow_steps.record_step(root, "design", "rules", "测试商业技术方案依据和采用原文")
+    with pytest.raises(pc.ProjectError, match="真实搜索"):
+        flow_steps.record_step(root, "design", "specialist", "测试商业技术方案依据和采用原文")
+    assert project.main(["build", str(root), "design", "--data", str(package_facts)]) == 2
+    pc._write_json(record, evidence)
+    flow_steps.record_step(root, "design", "specialist", "测试商业技术方案依据和采用原文")
+    facts = package_facts.with_name("wrong-sources.json")
+    pc._write_json(facts, {"sources": [{"reference": "https://other.example.org/client"}]})
+    assert project.main(["build", str(root), "design", "--data", str(facts)]) == 2
+    build_package(root, "design", package_facts)
+    assert confirm(root, "design") == 0
+    assert not cw.design_evidence_errors(ad.Ctx(root))
 
 
 def build_package(root, stage, facts):

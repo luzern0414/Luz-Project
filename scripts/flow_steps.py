@@ -82,6 +82,9 @@ def _c_crawl(ctx: ad.Ctx, stage: str, step: dict[str, Any], light: bool = False)
     if stage == "scope" and pc.commercial_at(ctx.root):
         from commercial_workflow import scope_evidence_errors
         return list(cache[stage]) + scope_evidence_errors(ctx.root)
+    if stage == "design" and pc.commercial_at(ctx.root):
+        from commercial_workflow import design_evidence_errors
+        return list(cache[stage]) + design_evidence_errors(ctx)
     return list(cache[stage])
 
 
