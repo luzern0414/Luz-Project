@@ -1,6 +1,8 @@
 # Project HTML contract
 
-Project HTML is a review artifact, not a runtime product screen. It is rendered from `project.json`, the state root's `data/`, registered artifacts, and stage evidence. The development documents are written to the project directory's `docs/02-产品开发/`, the review pages of the requirement stages to the state root's `reviews/`.
+项目汇总、开发说明与文档评审使用本页的阅读版式，由项目清单、状态根事实、已登记成果和阶段证据生成。商业项目的开发说明放在 `docs/03-开发资料/`，旧流程沿用 `docs/02-产品开发/`，需求阶段评审页放在状态根的 `reviews/`。
+
+商业项目的 `docs/03-开发资料/05-交互原型.html` 使用应用界面模板。它按 [Design 成品要求](../../Luz-Design/references/design/hard-rules.md) 呈现和操作业务页面，按[原型验收](commercial-project.md#原型验收)登记浏览器证据。
 
 Every document has UTF-8 encoding, `lang="zh-CN"`, one visible title, a stable `data-document-id`, `data-project-id`, `data-stage`, `data-status`, and `data-version`. The first content block is the conclusion or current state. Details follow in semantic sections with stable IDs.
 

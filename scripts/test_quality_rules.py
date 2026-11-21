@@ -59,3 +59,11 @@ def test_catalog_requires_metric_and_valid_source(tmp_path):
     c,_,_=fixture(tmp_path)
     c['rules'][0]['source_ids']=['imaginary'];c['rules'][0].pop('metric')
     assert len(q.catalog_errors(c))>=2
+
+
+def test_commercial_demo_uses_design_rules_and_keeps_its_own_scope():
+    catalog = q.read(q.CATALOG)
+    design = q.select(catalog, 'luz-design', 'design')
+    demo = q.plan(catalog, q.digest(q.CATALOG), 'luz-design', 'demo')
+    assert design and demo['scope'] == {'owner': 'luz-design', 'stage': 'demo'}
+    assert [r['id'] for r in design] == [r['rule_id'] for r in demo['rows']]

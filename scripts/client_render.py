@@ -29,7 +29,7 @@ def _template_binding(root: Path, name: str, *, stage: str | None = None, templa
     kind = kinds.get(name)
     if kind is None:
         raise ProjectError(f"未知正式文档名称，无法绑定 Luz-Design 模板: {name}")
-    folder, filename, default_stage = client_document_files()[kind]
+    folder, filename, default_stage = client_document_files(root)[kind]
     from project_core import _stage_record, load_project
     manifest = load_project(root)
     stage = stage or default_stage or manifest.get("current_stage")
@@ -247,7 +247,7 @@ def build_docx(root: Path, name: str, spec: dict[str, Any]) -> tuple[Path, Path]
 
 
 def ordered_features(features: dict[str, Any]) -> list[dict[str, Any]]:
-    """Big groups first: 使用端, then 使用角色, then 功能模块, then the function id; every Excel that lists functions uses this order."""
+    """Keep each surface and module together, with roles and function IDs ordered inside the module."""
     from client_data import SURFACES, active_features
 
     items = active_features(features)
@@ -256,12 +256,12 @@ def ordered_features(features: dict[str, Any]) -> list[dict[str, Any]]:
     for f in items:
         role_rank.setdefault("、".join(f["roles"]), len(role_rank))
     module_rank = {m["id"]: i for i, m in enumerate(features["modules"])}
-    return sorted(items, key=lambda f: (surface_rank.get(f["surface"], 99), role_rank["、".join(f["roles"])], module_rank.get(f["module"], 99), f["id"]))
+    return sorted(items, key=lambda f: (surface_rank.get(f["surface"], 99), module_rank.get(f["module"], 99), role_rank["、".join(f["roles"])], f["id"]))
 
 
 def feature_list_xlsx_spec(features: dict[str, Any], project_name: str, theme: str, quote: dict[str, Any] | None = None, *, version: str = "V1.0",
                            day: str | None = None, estimate: dict[str, Any] | None = None) -> dict[str, Any]:
-    """功能清单: 使用端 → 使用角色 → 功能模块 (merged, big to small), 功能, 功能说明, 类型 — no code column, no business rules (those are in the 业务逻辑确认表).
+    """功能清单: 使用端 → 功能模块 → 使用角色 (merged), 功能, 功能说明, 类型 — no code column, no business rules (those are in the 业务逻辑确认表).
 
     By default that is all: one sheet that lists functions, with no workdays, no money, no totals (预算、人日与报价政策). The ``estimate`` block (estimate_policy.State.render_block,
     which carries the evidence of the switches) opens two more things, independently:
@@ -281,8 +281,8 @@ def feature_list_xlsx_spec(features: dict[str, Any], project_name: str, theme: s
         raise ValueError("estimate.quote 打开时需要同时打开 workdays，并且要有人工提供的 quote.json")
     names = {m["id"]: m["name"] for m in features["modules"]}
     ordered = ordered_features(features)
-    groups = [{"name": "使用端", "merge": True}, {"name": "使用角色", "merge": True}, {"name": "功能模块", "merge": True}]
-    rows = [[SURFACES.get(f["surface"], f["surface"]), "、".join(f["roles"]), names[f["module"]], f["name"], f["summary"], f["tier"]] for f in ordered]
+    groups = [{"name": "使用端", "merge": True}, {"name": "功能模块", "merge": True}, {"name": "使用角色", "merge": True}]
+    rows = [[SURFACES.get(f["surface"], f["surface"]), names[f["module"]], "、".join(f["roles"]), f["name"], f["summary"], f["tier"]] for f in ordered]
     columns = groups + [{"name": "功能"}, {"name": "功能说明", "type": "longtext"}, {"name": "类型", "tags": ["基础", "可选"]}]
     look = {"tint_by": "功能模块", "highlight": {"column": "类型", "values": ["可选"]}}          # one pale colour per module, yellow for what the client chooses
     listing = {"sheet": "功能清单", "title": f"{project_name}功能清单", "columns": columns, "rows": rows, **look}

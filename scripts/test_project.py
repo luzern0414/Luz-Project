@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "Luz-Crawl" / "scripts"))
@@ -14,7 +16,8 @@ from test_crawl_preflight import complete_fixture
 from client_fixture import new_project
 from legacy_fixture import legacy_project
 from project_crawl_gate import evidence_session
-from project_paths import locate
+from project_paths import ProjectError, locate
+from project_scaffold import create_scaffold
 from project_core import (  # type: ignore[import-not-found]
     approve_stage,
     create_project,
@@ -24,7 +27,49 @@ from project_core import (  # type: ignore[import-not-found]
 )
 
 
+class StateWriteTests(unittest.TestCase):
+    def test_json_write_retries_a_windows_file_lock_without_replacing_the_old_state_early(self) -> None:
+        from project_core import _write_json
+
+        replace = os.replace
+        attempts = []
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ledger-render.json"
+            _write_json(path, {"status": "ready"})
+
+            def locked_once(source: Path, target: Path) -> None:
+                self.assertEqual(json.loads(target.read_text(encoding="utf-8")), {"status": "ready"})
+                attempts.append(source)
+                if len(attempts) == 1:
+                    error = PermissionError("destination is held open")
+                    error.winerror = 5
+                    raise error
+                replace(source, target)
+
+            with patch("project_core.os.replace", side_effect=locked_once):
+                _write_json(path, {"status": "rendered"})
+            self.assertEqual(len(attempts), 2)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"status": "rendered"})
+            self.assertEqual(list(path.parent.iterdir()), [path])
+
+
 class ProjectScaffoldTests(unittest.TestCase):
+    def test_scaffold_creates_base_layout_and_keeps_existing_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "001-骨架项目"
+            self.assertEqual(create_scaffold("骨架项目", target), target.resolve())
+            for path in ("src", "log", "config", "infra/migrations", "docs/01-原始资料", "docs/02-对接资料", "docs/03-开发资料"):
+                self.assertTrue((target / path).is_dir(), path)
+            readme = target / "README.md"
+            original = readme.read_text(encoding="utf-8")
+            self.assertTrue(original.startswith("# 骨架项目\n"))
+            self.assertTrue((target / "infra/README.md").is_file())
+            self.assertTrue((target / ".gitignore").is_file())
+            self.assertTrue((target / ".env.example").is_file())
+            with self.assertRaisesRegex(ProjectError, "目标目录已存在"):
+                create_scaffold("另一项目", target)
+            self.assertEqual(readme.read_text(encoding="utf-8"), original)
+
     def test_init_creates_the_session_with_the_state_root_and_the_project_directory_with_results_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             state = create_project("示例项目", Path(tmp) / "work" / "014-示例项目", Path(tmp) / "out", repository="D:/repo/example", approval_model="stage")
@@ -306,12 +351,13 @@ class InitContractTests(unittest.TestCase):
     def test_the_contract_text_lists_what_init_makes(self) -> None:
         root = Path(__file__).resolve().parents[1]
         text = (root / "references" / "project-structure.md").read_text(encoding="utf-8")
-        tree = text.split("```")[1]                                                          # the directory tree of the contract
+        init_contract = text.split("\n## 现行工具目录\n", 1)[1]
+        tree = init_contract.split("```", 2)[1]
         for gone in ("sources.json", "decisions.json", "raw/crawl", "crawl/ 检索证据"):
             self.assertNotIn(gone, tree)
         for there in ("paths.json", "documents.json", "keys.example.json", "00-crawl", "baseline.json", "project.json", "docs", "reviews", "uploads", "client-docs"):
             self.assertIn(there, tree)
-        self.assertIn("不预先建", text)
+        self.assertIn("不预先建", init_contract)
 
     def test_migrate_repoints_an_older_project_and_names_the_empty_skeletons_without_deleting_them(self) -> None:
         from project_core import migrate_project

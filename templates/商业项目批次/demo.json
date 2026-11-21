@@ -1,0 +1,2188 @@
+{
+  "html": "仓储履约演示.html",
+  "journeys": [
+    {
+      "name": "手机登记短拣必须填写原因",
+      "feature": "FN-001",
+      "width": 390,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#menu"
+        },
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-CK-260902\"]"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#actual .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#actual input",
+          "value": "8"
+        },
+        {
+          "action": "press",
+          "selector": "#actual input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        }
+      ],
+      "result": "#feedback",
+      "expected": "请填写差异原因"
+    },
+    {
+      "name": "差异单由仓库主管核准",
+      "feature": "FN-001",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-CK-260902\"]"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#actual .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#actual input",
+          "value": "8"
+        },
+        {
+          "action": "press",
+          "selector": "#actual input",
+          "value": "Tab"
+        },
+        {
+          "action": "fill",
+          "selector": "#reason",
+          "value": "拣位缺两件"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": ".facts",
+          "expected": "拣位缺两件"
+        },
+        {
+          "action": "select",
+          "selector": "#role",
+          "value": "复核员"
+        }
+      ],
+      "result": "#role-warning",
+      "expected": "请切换为仓库主管"
+    },
+    {
+      "name": "主管批准短拣，复核阶段保留原预占",
+      "feature": "FN-002",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-CK-260902\"]"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#actual .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#actual input",
+          "value": "8"
+        },
+        {
+          "action": "press",
+          "selector": "#actual input",
+          "value": "Tab"
+        },
+        {
+          "action": "fill",
+          "selector": "#reason",
+          "value": "库位缺两件"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "select",
+          "selector": "#role",
+          "value": "仓库主管"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#feedback",
+          "expected": "复核通过，待发运"
+        },
+        {
+          "action": "click",
+          "selector": "#doc-stock"
+        },
+        {
+          "action": "check",
+          "selector": "#onhand",
+          "expected": "48"
+        }
+      ],
+      "result": "#reserved",
+      "expected": "10"
+    },
+    {
+      "name": "回传失败按同一事件重试并保留两次投递记录",
+      "feature": "FN-003",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-events"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-EVT-CK-260905\"]"
+        },
+        {
+          "action": "select",
+          "selector": "#role",
+          "value": "仓库主管"
+        },
+        {
+          "action": "click",
+          "selector": "#retry"
+        },
+        {
+          "action": "check",
+          "selector": ".facts",
+          "expected": "2 次"
+        },
+        {
+          "action": "check",
+          "selector": ".facts",
+          "expected": "回传成功"
+        },
+        {
+          "action": "click",
+          "selector": "#event-doc"
+        }
+      ],
+      "result": ".timeline >> nth=0",
+      "expected": "重试回传"
+    },
+    {
+      "name": "商品目录按分类和条码查询并打开商品规格",
+      "feature": "FN-004",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-products"
+        },
+        {
+          "action": "select",
+          "selector": "#filter",
+          "value": "家居水具"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "6973310801000"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-SKU-1001\"]"
+        }
+      ],
+      "result": ".facts",
+      "expected": "500 mL / 雾灰"
+    },
+    {
+      "name": "手机查商品，打开批次和库位余额",
+      "feature": "FN-004",
+      "width": 390,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#menu"
+        },
+        {
+          "action": "click",
+          "selector": "#nav-products"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "不锈钢"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-SKU-1001\"]"
+        },
+        {
+          "action": "click",
+          "selector": ".line .link >> nth=0"
+        }
+      ],
+      "result": ".facts",
+      "expected": "A-01-01 / LOT-1001A"
+    },
+    {
+      "name": "库存按库位和商品筛选，查看现有预占",
+      "feature": "FN-005",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-stock"
+        },
+        {
+          "action": "select",
+          "selector": "#filter",
+          "value": "A-01-01"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "保温杯"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-HD~SKU-1001~A-01-01~LOT-1001A\"]"
+        },
+        {
+          "action": "check",
+          "selector": "#onhand",
+          "expected": "48"
+        },
+        {
+          "action": "check",
+          "selector": "#reserved",
+          "expected": "10"
+        }
+      ],
+      "result": "#available",
+      "expected": "38"
+    },
+    {
+      "name": "从流水反查出库单并追溯关联库存",
+      "feature": "FN-005",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-ledger"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "CK-260902"
+        },
+        {
+          "action": "click",
+          "selector": "tbody .link >> nth=0"
+        },
+        {
+          "action": "check",
+          "selector": ".dstatus",
+          "expected": "待拣货"
+        },
+        {
+          "action": "click",
+          "selector": "#doc-stock"
+        }
+      ],
+      "result": ".facts",
+      "expected": "LOT-1001A"
+    },
+    {
+      "name": "新建采购入库，按供应商与商品批次核对",
+      "feature": "FN-006",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-inbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "山海供应链"
+        },
+        {
+          "action": "select",
+          "selector": "#sku",
+          "value": "SKU-1004"
+        },
+        {
+          "action": "fill",
+          "selector": "#batch",
+          "value": "LOT-SH-1121"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "12"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "check",
+          "selector": "#feedback",
+          "expected": "RK-261001 已保存 · 待收货"
+        },
+        {
+          "action": "click",
+          "selector": "#open-RK-261001"
+        },
+        {
+          "action": "check",
+          "selector": ".facts",
+          "expected": "LOT-SH-1121"
+        }
+      ],
+      "result": ".dstatus",
+      "expected": "RK-261001"
+    },
+    {
+      "name": "收货数量进入暂存区，上架后计入可用",
+      "feature": "FN-007",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-inbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "山海供应链"
+        },
+        {
+          "action": "select",
+          "selector": "#sku",
+          "value": "SKU-1004"
+        },
+        {
+          "action": "fill",
+          "selector": "#batch",
+          "value": "LOT-SH-1121"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "12"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#open-RK-261001"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#actual .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#actual input",
+          "value": "10"
+        },
+        {
+          "action": "press",
+          "selector": "#actual input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#feedback",
+          "expected": "已收货 10 件，待上架"
+        },
+        {
+          "action": "click",
+          "selector": "#close"
+        },
+        {
+          "action": "click",
+          "selector": "#nav-stock"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "LOT-SH-1121"
+        }
+      ],
+      "result": ".empty",
+      "expected": "没有符合条件的记录"
+    },
+    {
+      "name": "上架必须选择目标库位",
+      "feature": "FN-008",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-inbound"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-RK-260822\"]"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        }
+      ],
+      "result": "#feedback",
+      "expected": "请选择上架库位"
+    },
+    {
+      "name": "指定库位上架后刷新并由流水追溯来源单据",
+      "feature": "FN-008",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-inbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "山海供应链"
+        },
+        {
+          "action": "select",
+          "selector": "#sku",
+          "value": "SKU-1004"
+        },
+        {
+          "action": "fill",
+          "selector": "#batch",
+          "value": "LOT-SH-1121"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "12"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#open-RK-261001"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#actual .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#actual input",
+          "value": "10"
+        },
+        {
+          "action": "press",
+          "selector": "#actual input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "select",
+          "selector": "#putloc",
+          "value": "B-02-02"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#feedback",
+          "expected": "已上架 10 件至 B-02-02"
+        },
+        {
+          "action": "reload"
+        },
+        {
+          "action": "click",
+          "selector": "#nav-stock"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "LOT-SH-1121"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-HD~SKU-1004~B-02-02~LOT-SH-1121\"]"
+        },
+        {
+          "action": "check",
+          "selector": "#onhand",
+          "expected": "10"
+        },
+        {
+          "action": "click",
+          "selector": "#stock-ledger"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "RK-261001"
+        },
+        {
+          "action": "click",
+          "selector": "tbody .link >> nth=0"
+        }
+      ],
+      "result": ".dstatus",
+      "expected": "已上架"
+    },
+    {
+      "name": "出库建单登记客户、商品和计划量",
+      "feature": "FN-009",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "海风零售"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "5"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "check",
+          "selector": "#feedback",
+          "expected": "CK-261001 已保存 · 待分配"
+        },
+        {
+          "action": "click",
+          "selector": "#open-CK-261001"
+        },
+        {
+          "action": "check",
+          "selector": ".facts",
+          "expected": "海风零售"
+        }
+      ],
+      "result": ".dstatus",
+      "expected": "CK-261001"
+    },
+    {
+      "name": "分配数量受可用余额限制",
+      "feature": "FN-010",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "海风零售"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "1000"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#open-CK-261001"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        }
+      ],
+      "result": "#feedback",
+      "expected": "可用库存不足"
+    },
+    {
+      "name": "预占单提交后核对可用与实物余额",
+      "feature": "FN-010",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "海风零售"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "5"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#open-CK-261001"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#feedback",
+          "expected": "已预占 5 件"
+        },
+        {
+          "action": "click",
+          "selector": "#doc-stock"
+        },
+        {
+          "action": "check",
+          "selector": "#onhand",
+          "expected": "48"
+        },
+        {
+          "action": "check",
+          "selector": "#reserved",
+          "expected": "15"
+        }
+      ],
+      "result": "#available",
+      "expected": "33"
+    },
+    {
+      "name": "按实拣数量交接并由复核员复核正常单",
+      "feature": "FN-011",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "海风零售"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "5"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#open-CK-261001"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#actual .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#actual input",
+          "value": "5"
+        },
+        {
+          "action": "press",
+          "selector": "#actual input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#feedback",
+          "expected": "实拣 5 件，待复核"
+        },
+        {
+          "action": "select",
+          "selector": "#role",
+          "value": "复核员"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        }
+      ],
+      "result": "#feedback",
+      "expected": "复核通过，待发运"
+    },
+    {
+      "name": "短拣发运扣减实物、释放整笔预占并核对流水",
+      "feature": "FN-012",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-CK-260902\"]"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#actual .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#actual input",
+          "value": "8"
+        },
+        {
+          "action": "press",
+          "selector": "#actual input",
+          "value": "Tab"
+        },
+        {
+          "action": "fill",
+          "selector": "#reason",
+          "value": "少两件"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "select",
+          "selector": "#role",
+          "value": "仓库主管"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#feedback",
+          "expected": "已发运 8 件，释放预占 10 件"
+        },
+        {
+          "action": "click",
+          "selector": "#doc-stock"
+        },
+        {
+          "action": "check",
+          "selector": "#onhand",
+          "expected": "40"
+        },
+        {
+          "action": "check",
+          "selector": "#reserved",
+          "expected": "0"
+        },
+        {
+          "action": "check",
+          "selector": "#available",
+          "expected": "40"
+        },
+        {
+          "action": "click",
+          "selector": "#stock-ledger"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "CK-260902"
+        }
+      ],
+      "result": "tbody tr >> nth=0",
+      "expected": "-8"
+    },
+    {
+      "name": "同仓移库成对记账，查看目标批次结存",
+      "feature": "FN-013",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-transfer"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "select",
+          "selector": "#dest",
+          "value": "C-02-01"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "4"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#open-YK-261001"
+        },
+        {
+          "action": "check",
+          "selector": ".dstatus",
+          "expected": "已移库"
+        },
+        {
+          "action": "click",
+          "selector": "#doc-ledger"
+        },
+        {
+          "action": "check",
+          "selector": "tbody",
+          "expected": "移库出"
+        },
+        {
+          "action": "check",
+          "selector": "tbody",
+          "expected": "移库入"
+        },
+        {
+          "action": "click",
+          "selector": "#nav-stock"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "LOT-1001A"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-HD~SKU-1001~C-02-01~LOT-1001A\"]"
+        }
+      ],
+      "result": "#onhand",
+      "expected": "4"
+    },
+    {
+      "name": "同库位转移触发库位校验",
+      "feature": "FN-013",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-transfer"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "select",
+          "selector": "#dest",
+          "value": "A-01-01"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "2"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        }
+      ],
+      "result": "#feedback",
+      "expected": "请选择不同的目标库位"
+    },
+    {
+      "name": "盘点差异仅由主管过账并重新计算可用",
+      "feature": "FN-014",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-count"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "47"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "fill",
+          "selector": "#memo",
+          "value": "盘点少一件"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#open-PD-261001"
+        },
+        {
+          "action": "check",
+          "selector": "#role-warning",
+          "expected": "仓库主管"
+        },
+        {
+          "action": "select",
+          "selector": "#role",
+          "value": "仓库主管"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#feedback",
+          "expected": "差异 -1 件"
+        },
+        {
+          "action": "click",
+          "selector": "#doc-stock"
+        },
+        {
+          "action": "check",
+          "selector": "#reserved",
+          "expected": "10"
+        }
+      ],
+      "result": "#available",
+      "expected": "37"
+    },
+    {
+      "name": "仓库切换后只显示本仓待办单据",
+      "feature": "FN-015",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "select",
+          "selector": "#warehouse",
+          "value": "HN"
+        },
+        {
+          "action": "click",
+          "selector": "#task-待收货"
+        },
+        {
+          "action": "check",
+          "selector": "tbody",
+          "expected": "RK-260921"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-RK-260921\"]"
+        }
+      ],
+      "result": ".dstatus",
+      "expected": "RK-260921"
+    },
+    {
+      "name": "工作台最近动态直达移库单并查看双向流水",
+      "feature": "FN-015",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": ".panel:last-child tbody .link >> nth=0"
+        },
+        {
+          "action": "check",
+          "selector": ".dstatus",
+          "expected": "已移库"
+        },
+        {
+          "action": "click",
+          "selector": "#doc-ledger"
+        },
+        {
+          "action": "check",
+          "selector": "tbody",
+          "expected": "移库入"
+        }
+      ],
+      "result": ".listing tbody",
+      "expected": "移库出"
+    },
+    {
+      "name": "复核员查询入库单并核对角色权限",
+      "feature": "FN-006",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-inbound"
+        },
+        {
+          "action": "select",
+          "selector": "#role",
+          "value": "复核员"
+        },
+        {
+          "action": "click",
+          "selector": "#open-RK-260821"
+        },
+        {
+          "action": "check",
+          "selector": ".facts",
+          "expected": "杭越家居"
+        }
+      ],
+      "result": "#role-warning",
+      "expected": "请切换为作业员或仓库主管办理收货"
+    },
+    {
+      "name": "作业员查询回传状态与重试权限",
+      "feature": "FN-003",
+      "width": 390,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#menu"
+        },
+        {
+          "action": "click",
+          "selector": "#nav-events"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-EVT-CK-260905\"]"
+        }
+      ],
+      "result": ".notice",
+      "expected": "请切换为仓库主管重试"
+    },
+    {
+      "name": "一张入库单分两行收货上架，逐行核对库位余额",
+      "feature": "FN-006",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-inbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "临港日用"
+        },
+        {
+          "action": "fill",
+          "selector": "#batch",
+          "value": "Z1121-A"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "8"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#add-item"
+        },
+        {
+          "action": "select",
+          "selector": "#sku",
+          "value": "SKU-1002"
+        },
+        {
+          "action": "fill",
+          "selector": "#batch",
+          "value": "Z1121-B"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "6"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#open-RK-261001"
+        },
+        {
+          "action": "check",
+          "selector": ".orderlines",
+          "expected": "2 行"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "select",
+          "selector": "#putloc",
+          "value": "C-01-01"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#item-1",
+          "expected": "已上架"
+        },
+        {
+          "action": "click",
+          "selector": "#doc-stock"
+        },
+        {
+          "action": "check",
+          "selector": "#onhand",
+          "expected": "8"
+        },
+        {
+          "action": "click",
+          "selector": "#close"
+        },
+        {
+          "action": "click",
+          "selector": "#close"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "RK-261001"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-RK-261001\"]"
+        },
+        {
+          "action": "check",
+          "selector": "#item-2",
+          "expected": "待收货"
+        },
+        {
+          "action": "click",
+          "selector": "#item-2"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#actual .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#actual input",
+          "value": "5"
+        },
+        {
+          "action": "press",
+          "selector": "#actual input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "select",
+          "selector": "#putloc",
+          "value": "B-02-02"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#item-2",
+          "expected": "已上架"
+        },
+        {
+          "action": "click",
+          "selector": "#doc-stock"
+        },
+        {
+          "action": "check",
+          "selector": "#onhand",
+          "expected": "5"
+        }
+      ],
+      "result": ".facts",
+      "expected": "Z1121-B"
+    },
+    {
+      "name": "一张出库单逐行预占、拣货、复核、发运",
+      "feature": "FN-012",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "青禾百货"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "7"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#add-item"
+        },
+        {
+          "action": "select",
+          "selector": "#sku",
+          "value": "SKU-1002"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "3"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#open-CK-261001"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#actual .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#actual input",
+          "value": "7"
+        },
+        {
+          "action": "press",
+          "selector": "#actual input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "select",
+          "selector": "#role",
+          "value": "仓库主管"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#item-1",
+          "expected": "已发运"
+        },
+        {
+          "action": "check",
+          "selector": "#item-2",
+          "expected": "待分配"
+        },
+        {
+          "action": "click",
+          "selector": "#item-2"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#actual .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#actual input",
+          "value": "3"
+        },
+        {
+          "action": "press",
+          "selector": "#actual input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#item-2",
+          "expected": "已发运"
+        },
+        {
+          "action": "click",
+          "selector": "#group-ledger"
+        },
+        {
+          "action": "check",
+          "selector": "tbody",
+          "expected": "CK-261001-01"
+        }
+      ],
+      "result": ".listing tbody",
+      "expected": "CK-261001-02"
+    },
+    {
+      "name": "同库位两行分配共享可用余额",
+      "feature": "FN-010",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "合远门店"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "22"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#add-item"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "24"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#open-CK-261001"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#item-1",
+          "expected": "待拣货"
+        },
+        {
+          "action": "click",
+          "selector": "#item-2"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#execute"
+        },
+        {
+          "action": "check",
+          "selector": "#feedback",
+          "expected": "可用库存不足"
+        },
+        {
+          "action": "click",
+          "selector": "#cancel-work"
+        },
+        {
+          "action": "click",
+          "selector": "#doc-stock"
+        },
+        {
+          "action": "check",
+          "selector": "#onhand",
+          "expected": "48"
+        },
+        {
+          "action": "check",
+          "selector": "#reserved",
+          "expected": "32"
+        }
+      ],
+      "result": "#available",
+      "expected": "16"
+    },
+    {
+      "name": "建单时可移除明细行后提交单据",
+      "feature": "FN-009",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "安福门店"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "5"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#add-item"
+        },
+        {
+          "action": "select",
+          "selector": "#sku",
+          "value": "SKU-1004"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "7"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#add-item"
+        },
+        {
+          "action": "click",
+          "selector": "#remove-item-1"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#open-CK-261001"
+        }
+      ],
+      "result": ".facts",
+      "expected": "玻璃冷水壶"
+    },
+    {
+      "name": "商品明细由流水反查期初库存单",
+      "feature": "FN-005",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-products"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "不锈钢"
+        },
+        {
+          "action": "click",
+          "selector": "[id=\"open-SKU-1001\"]"
+        },
+        {
+          "action": "click",
+          "selector": "#product-ledger"
+        },
+        {
+          "action": "select",
+          "selector": "#filter",
+          "value": "期初结存"
+        },
+        {
+          "action": "click",
+          "selector": "tbody .link >> nth=0"
+        }
+      ],
+      "result": ".facts",
+      "expected": "期初库存导入"
+    },
+    {
+      "name": "工作台按主单核算待收货作业",
+      "feature": "FN-015",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-inbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "临港日用"
+        },
+        {
+          "action": "fill",
+          "selector": "#batch",
+          "value": "Z1121-A"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "8"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#add-item"
+        },
+        {
+          "action": "select",
+          "selector": "#sku",
+          "value": "SKU-1002"
+        },
+        {
+          "action": "fill",
+          "selector": "#batch",
+          "value": "Z1121-B"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "6"
+        },
+        {
+          "action": "press",
+          "selector": "#qty input",
+          "value": "Tab"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "click",
+          "selector": "#nav-home"
+        },
+        {
+          "action": "check",
+          "selector": "#task-待收货",
+          "expected": "2 单"
+        },
+        {
+          "action": "click",
+          "selector": "#task-待收货"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "RK-261001"
+        }
+      ],
+      "result": ".listing tbody",
+      "expected": "2 行商品"
+    },
+    {
+      "name": "商品详情返回原筛选列表并保留搜索",
+      "feature": "FN-004",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-products"
+        },
+        {
+          "action": "select",
+          "selector": "#filter",
+          "value": "家居水具"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "咖啡"
+        },
+        {
+          "action": "click",
+          "selector": "#open-SKU-1007"
+        },
+        {
+          "action": "check",
+          "selector": "#record-title",
+          "expected": "双层咖啡杯"
+        },
+        {
+          "action": "click",
+          "selector": "#close"
+        }
+      ],
+      "result": ".listing tbody",
+      "expected": "双层咖啡杯"
+    },
+    {
+      "name": "手机在独立页面填单后取消，返回已筛选的入库列表",
+      "feature": "FN-006",
+      "width": 390,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#menu"
+        },
+        {
+          "action": "click",
+          "selector": "#nav-inbound"
+        },
+        {
+          "action": "select",
+          "selector": "#filter",
+          "value": "待收货"
+        },
+        {
+          "action": "fill",
+          "selector": "#search",
+          "value": "RK-260821"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "check",
+          "selector": "#record-title",
+          "expected": "新建入库单"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "试录单位"
+        },
+        {
+          "action": "click",
+          "selector": "#cancel"
+        }
+      ],
+      "result": ".listing tbody",
+      "expected": "RK-260821"
+    },
+    {
+      "name": "数量滚轮以方向键调整，直接输入超出快捷范围的数量",
+      "feature": "FN-009",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "#create"
+        },
+        {
+          "action": "fill",
+          "selector": "#party",
+          "value": "东港门店"
+        },
+        {
+          "action": "press",
+          "selector": "#qty [role=\"spinbutton\"]",
+          "value": "ArrowUp"
+        },
+        {
+          "action": "check",
+          "selector": "#qty .wheel-chosen",
+          "expected": "2"
+        },
+        {
+          "action": "click",
+          "selector": "#qty .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#qty input",
+          "value": "150"
+        },
+        {
+          "action": "click",
+          "selector": "#save"
+        },
+        {
+          "action": "check",
+          "selector": "#feedback",
+          "expected": "CK-261001 已保存"
+        },
+        {
+          "action": "click",
+          "selector": "#open-CK-261001"
+        }
+      ],
+      "result": ".facts",
+      "expected": "150 件"
+    },
+    {
+      "name": "作业详情只读，主动进入办理后取消保留原单状态",
+      "feature": "FN-011",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "click",
+          "selector": "#nav-outbound"
+        },
+        {
+          "action": "click",
+          "selector": "#open-CK-260902"
+        },
+        {
+          "action": "click",
+          "selector": "#handle"
+        },
+        {
+          "action": "click",
+          "selector": "#actual .wheel-edit"
+        },
+        {
+          "action": "fill",
+          "selector": "#actual input",
+          "value": "4"
+        },
+        {
+          "action": "click",
+          "selector": "#cancel-work"
+        }
+      ],
+      "result": ".dstatus",
+      "expected": "待拣货"
+    },
+    {
+      "name": "键盘定位趋势数据点，读取同日入库和出库数量",
+      "feature": "FN-015",
+      "width": 1360,
+      "steps": [
+        {
+          "action": "press",
+          "selector": "#day-6",
+          "value": "ArrowLeft"
+        }
+      ],
+      "result": "#day-detail",
+      "expected": "入库 46 件"
+    }
+  ]
+}

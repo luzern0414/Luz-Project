@@ -339,7 +339,7 @@ class CommandLineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             deliver, out = Path(tmp) / "work" / "021-命令行", Path(tmp) / "out"
             os.environ["LUZ_PROJECT_OUTPUT"] = str(out)
-            code, text = run("init", "命令行项目", "--project-dir", str(deliver), "--output-root", str(out))
+            code, text = run("init", "命令行项目", "--workflow", "legacy", "--project-dir", str(deliver), "--output-root", str(out))
             self.assertEqual(code, 0, text)
             info = json.loads(text)
             self.assertEqual(Path(info["project"]), deliver.resolve())
@@ -354,7 +354,7 @@ class CommandLineTests(unittest.TestCase):
                 self.assertEqual(Path(context["state_root"]), (out / "021-命令行" / "raw").resolve())
                 self.assertEqual(Path(context["deliver_root"]), deliver.resolve())
                 self.assertEqual(Path(context["output_root"]), deliver.resolve() / "docs" / "01-需求对接")
-            code, text = run("init", "命令行项目", "--project-dir", str(deliver), "--output-root", str(out))
+            code, text = run("init", "命令行项目", "--workflow", "legacy", "--project-dir", str(deliver), "--output-root", str(out))
             self.assertEqual(code, 2, "同一个项目不能 init 两次")
             code, text = run("init", "没序号", "--project-dir", str(Path(tmp) / "work" / "没序号"), "--output-root", str(out))
             self.assertEqual(code, 2)

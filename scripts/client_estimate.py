@@ -38,10 +38,12 @@ def _register_change(root: Path, *, title: str, detail: str, requester: str, not
     visible, an internal decision is not), confirm it, and let it reopen the stage so the approvals of its files are void and each file is looked at again. None when nothing
     of the proposal had been approved yet (the files are simply regenerated)."""
     manifest = load_project(root)
-    record = _stage_record(manifest, "proposal")
-    if not (record.get("status") in {"approved", "completed"} or record.get("approval_id") or cf._approved_files(root, "proposal")):
+    from commercial_workflow import WORKFLOW
+    stage = "baseline" if manifest.get("workflow") == WORKFLOW else "proposal"
+    record = _stage_record(manifest, stage)
+    if not (record.get("status") in {"approved", "completed"} or record.get("approval_id") or cf._approved_files(root, stage)):
         return None
-    entry = cf.add_change(root, type="修改", category="范围", title=title, detail=detail, source=source, requester=requester or "用户", affects=["proposal"], status="已确认",
+    entry = cf.add_change(root, type="修改", category="范围", title=title, detail=detail, source=source, requester=requester or "用户", affects=[stage], status="已确认",
                           confirmed_by=requester or "用户", note=note)
     return str(entry["id"])
 
@@ -170,14 +172,16 @@ def write_quote(root: Path, *, unit_price: float | None = None, from_file: Path 
         if not source.is_file():
             raise ProjectError(f"找不到报价单: {source}")
         unit_price = read_unit_price(source)
-        uploads = locate(root, state_name(root, UPLOADS_DIR))
+        from commercial_workflow import ORIGINALS, active
+        originals = ORIGINALS if active(root) else state_name(root, UPLOADS_DIR)
+        uploads = locate(root, originals)
         uploads.mkdir(parents=True, exist_ok=True)
         target = uploads / source.name
         if source.resolve() != target.resolve():
             if target.exists() and sha256_file(target) != sha256_file(source):
                 target = uploads / f"{source.stem}-{sha256_file(source)[:8]}{source.suffix}"
             shutil.copyfile(source, target)
-        kept = f"{state_name(root, UPLOADS_DIR)}/{target.name}"
+        kept = f"{originals}/{target.name}"
         digest = sha256_file(target)
         evidence = evidence.strip() or kept
     elif not evidence.strip():

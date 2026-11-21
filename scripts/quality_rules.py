@@ -38,7 +38,11 @@ def catalog_errors(catalog):
     return errors
 
 def select(catalog,owner=None,stage=None):
-    return [r for r in catalog['rules'] if (owner is None or r['owner']==owner) and (stage is None or stage in r['stages'])]
+    # The joint design batch documents the contract; the following demo tests the rendered UI.
+    return [rule for rule in catalog['rules']
+            if (owner is None or rule['owner'] == owner)
+            and (stage is None or stage in rule['stages']
+                 or (stage == 'demo' and rule['owner'] == 'luz-design' and 'design' in rule['stages']))]
 
 def plan(catalog,catalog_hash,owner,stage):
     return {'schema':'luz-quality-assessment/1','catalog_sha256':catalog_hash,'scope':{'owner':owner,'stage':stage},'limit':LIMIT,

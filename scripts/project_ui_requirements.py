@@ -29,6 +29,26 @@ def _packaged_copy(root,path):
 def binding(root,requirements_path):
     root=pc.resolve_state_root(root);requirements_path=Path(requirements_path).resolve()
     manifest=pc.load_project(root)
+    if pc.commercial_at(root):
+        import approval_docs as ad
+        import flow_steps
+        import commercial_workflow as cw
+        ctx = ad.Ctx(root)
+        grant, _ = cw.batch_record(ctx, "design")
+        if not grant or flow_steps.internal_errors(root, "design", ctx=ctx) or ad.hold_errors(ctx, "design"):
+            raise ValueError("开发说明批次与其上游尚未有效确认")
+        package = pc._read_json(root / "data/commercial/design.json")
+        required = json.loads(requirements_path.read_text(encoding="utf-8-sig"))
+        if not isinstance(required, dict) or required != package.get("ui_requirements"):
+            raise ValueError("UI 合同与开发说明中已确认的 ui_requirements 不一致")
+        features = cd.active_features(package["features"])
+        if {f["id"] for f in features} != {f["id"] for f in required.get("features", [])}:
+            raise ValueError("UI 合同与已确认功能范围不一致")
+        projection = {"project_id": manifest["project_id"], "design_approval": grant["id"],
+                      "package_sha256": ctx.hash_of("data/commercial/design.json"), "requirements_sha256": pc.sha256_file(requirements_path),
+                      "effective_features": features, "validator_sha256": pc.sha256_file(Path(__file__))}
+        digest = hashlib.sha256(json.dumps(projection, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        return {"sha256": digest, "projection": projection}
     stage=next((s for s in manifest.get('stages',[]) if s.get('id')=='architecture'),{})
     if stage.get('status') not in {'approved','completed'}: raise ValueError('System architecture is not approved')
     artifacts=[a for a in pc._load_artifacts(root) if a.get('stage')=='architecture']

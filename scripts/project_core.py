@@ -19,6 +19,8 @@ import unicodedata
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+from time import sleep
 from typing import Any, Iterable
 from urllib.parse import quote, unquote, urlsplit
 
@@ -28,6 +30,7 @@ from project_paths import (  # noqa: F401  (re-exported: the other skills read t
     DEFAULT_OUTPUT_ROOT,
     DELIVER_DIRS,
     ProjectError,
+    commercial_at,
     deliver_root,
     is_legacy,
     kind_of,
@@ -83,6 +86,11 @@ def expected_doc_folder(stage: str, suffix: str, project: Path | str | None = No
     reviews (``raw/reviews`` in a project of the old layout, which ``project`` tells)."""
     html = suffix.lower() == ".html"
     reviews = state_name(project, REVIEW_DIR) if project is not None else REVIEW_DIR
+    if project is not None and commercial_at(project):
+        import commercial_workflow as cw
+        if stage in cw.BATCHES:
+            return cw.BATCHES[stage][3]
+        return (reviews if stage == "handover" else cw.DEVELOPMENT) if html else cw.CLIENT
     if stage in REQUIREMENT_STAGES:
         return reviews if html else "docs/01-需求对接"
     if stage == "handover":
@@ -178,9 +186,24 @@ def _json_default(value: Any) -> Any:
 
 def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default) + "\n", encoding="utf-8")
-    os.replace(temp, path)
+    content = json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default) + "\n"
+    temporary_path = None
+    try:
+        with NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, suffix=".tmp", delete=False) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(content)
+        # On Windows, readers and file scanners may briefly prevent replacement.
+        for delay in (0.02, 0.05, 0.10, 0.20, None):
+            try:
+                os.replace(temporary_path, path)
+                return
+            except PermissionError as error:
+                if delay is None or getattr(error, "winerror", None) not in {5, 32, 33}:
+                    raise
+                sleep(delay)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def _read_json(path: Path, default: Any = None) -> Any:
@@ -210,7 +233,7 @@ def _slug(name: str) -> str:
 _MATRIX_CACHE: dict[str, Any] = {}
 
 
-def client_document_files() -> dict[str, tuple[str, str, str | None]]:
+def client_document_files(project=None) -> dict[str, tuple[str, str, str | None]]:
     """The relative output paths and stages of Project's client document writers."""
     files = {}
     for stage in _load_matrix()["stages"]:
@@ -220,6 +243,13 @@ def client_document_files() -> dict[str, tuple[str, str, str | None]]:
             folder, name = document["path"].rsplit("/", 1)
             kind = document["kind"] if document["id"] == "user-manual" else document["id"]
             files[kind] = (folder, name, None if document.get("living") else stage["id"])
+    if project is not None and commercial_at(project):
+        import commercial_workflow as cw
+        for item in _stage_defs(project)["handover"]["documents"]:
+            kind = item["kind"] if item["id"] == "user-manual" else item["id"]
+            files[kind] = (*item["path"].rsplit("/", 1), "handover")
+        files["feature-list-xlsx"] = (cw.CLIENT, "04-功能需求清单.xlsx", "baseline")
+        files["change-ledger"] = ("client-docs", "需求变更台账.xlsx", None)
     return files
 
 
@@ -246,8 +276,20 @@ def load_matrix() -> dict[str, Any]:
     return json.loads(json.dumps(_load_matrix(), ensure_ascii=False))
 
 
-def _stage_defs() -> dict[str, dict[str, Any]]:
-    return {str(item["id"]): item for item in _load_matrix()["stages"]}
+def commercial_matrix():
+    import commercial_workflow as cw
+    legacy = _load_matrix()
+    if _MATRIX_CACHE.get("commercial_source") is not legacy:
+        _MATRIX_CACHE.update(commercial=cw.matrix(legacy), commercial_source=legacy)
+    return _MATRIX_CACHE["commercial"]
+
+
+def matrix_for(project):
+    return commercial_matrix() if project is not None and commercial_at(project) else _load_matrix()
+
+
+def _stage_defs(project=None) -> dict[str, dict[str, Any]]:
+    return {str(item["id"]): item for item in matrix_for(project)["stages"]}
 
 
 def _project_root(project: Path | str) -> Path:
@@ -300,7 +342,7 @@ def stage_deliverables(root: Path | None, item: dict[str, Any]) -> list[dict[str
     without that document the matrix default stands. Paths are relative to the root they belong to (docs/... to the project directory, reviews/...
     to the state root); a project of the old layout keeps its review pages under raw/."""
     base = [dict(d) for d in item.get("deliverables", [])]
-    found = _design_prototypes(root) if item.get("id") == "design" else []
+    found = _design_prototypes(root) if item.get("id") == "design" and not item.get("approval") == "user-batch" else []
     if found:
         first = next((i for i, d in enumerate(base) if d.get("kind") == "prototype"), len(base))
         base = [d for d in base[:first] if d.get("kind") != "prototype"] + found + [d for d in base[first:] if d.get("kind") != "prototype"]
@@ -427,9 +469,10 @@ def _write_state_files(state: Path, manifest: dict[str, Any]) -> None:
             _write_json(path, payload)
 
 
-def create_project(name: str, project_dir: Path | str, output: Path | str, repository: str | None = None, approval_model: str = "document", *, ui_mode: str = "component-reuse") -> Path:
+def create_project(name: str, project_dir: Path | str, output: Path | str, repository: str | None = None, approval_model: str | None = None, *, ui_mode: str = "component-reuse", workflow: str | None = None) -> Path:
     """Create a project: its Luz-Project session ``<output>/<项目目录名>`` (a ``raw`` folder, the state root, and the summary page) and its
-    project directory, which gets the three document folders only. Returns the state root."""
+    project directory. Default to the commercial workflow. Existing callers explicitly selecting the old
+    approval_model keep their matrix. Use workflow='legacy' to request it directly."""
     if not str(name).strip():
         raise ProjectError("项目名称不能为空")
     if ui_mode not in {"component-reuse", "source-locked"}:
@@ -441,11 +484,25 @@ def create_project(name: str, project_dir: Path | str, output: Path | str, repos
     state = session / "raw"
     if (state / "project.json").exists():
         raise ProjectError(f"这个项目已经有会话: {session}")
+    import commercial_workflow as cw
+    workflow = workflow or ("legacy" if approval_model is not None else cw.WORKFLOW)
+    workflow = cw.WORKFLOW if workflow == "commercial" else workflow
+    if workflow == cw.WORKFLOW and approval_model not in {None, "document"}:
+        raise ProjectError("商业项目按批次和文档确认，不能使用旧阶段审批模型")
+    approval_model = approval_model or "document"
+    if workflow not in {"legacy", cw.WORKFLOW}:
+        raise ProjectError(f"未知项目流程: {workflow}")
+    if workflow == cw.WORKFLOW and not deliver.exists():
+        from project_scaffold import create_scaffold
+        create_scaffold(name, deliver)
     state.mkdir(parents=True, exist_ok=True)
-    for relative in DELIVER_MADE:
+    for relative in (cw.FOLDERS if workflow == cw.WORKFLOW else DELIVER_MADE):
         (deliver / relative).mkdir(parents=True, exist_ok=True)
-    stages = [_empty_stage(item, current=(index == 0), root=state) for index, item in enumerate(_load_matrix()["stages"])]
+    matrix = commercial_matrix() if workflow == cw.WORKFLOW else _load_matrix()
+    stages = [_empty_stage(item, current=(index == 0), root=state) for index, item in enumerate(matrix["stages"])]
     manifest = _new_manifest(name, deliver, stages, repository, approval_model)
+    if workflow == cw.WORKFLOW:
+        manifest["workflow"] = workflow
     manifest["ui_mode"] = ui_mode
     if ui_mode == "component-reuse":
         manifest["ui_requirements_version"] = 2
@@ -521,7 +578,7 @@ def _safe_relative(root: Path, path: Path | str) -> tuple[Path, str]:
 def stage_document_path(stage: str, project: Path | str | None = None) -> str:
     """The project-relative path of the developer document of a stage, from its deliverable in the matrix (a project of the old layout keeps its
     review pages under raw/, which ``project`` tells)."""
-    for item in _load_matrix()["stages"]:
+    for item in matrix_for(project)["stages"]:
         if item["id"] == stage:
             pages = [d for d in item.get("deliverables", []) if d.get("format") == "html"]
             pages.sort(key=lambda d: d.get("audience") != "dev")               # the developer document first, then Luz-Ops' page
@@ -570,7 +627,7 @@ def _stage_record(manifest: dict[str, Any], stage: str) -> dict[str, Any]:
 
 
 def _invalidate_downstream(manifest: dict[str, Any], stage: str) -> None:
-    ids = [item["id"] for item in _load_matrix()["stages"]]
+    ids = [item["id"] for item in manifest["stages"]]
     try:
         position = ids.index(stage)
     except ValueError:
@@ -607,6 +664,8 @@ def register_artifact(
     manifest = load_project(root)
     stage_record = _stage_record(manifest, stage)
     path, relative = _safe_relative(root, artifact)
+    if commercial_at(root) and relative.startswith("docs/01-原始资料/"):
+        raise ProjectError("客户原件保留在原始资料中，不登记为项目生成的阶段产物")
     if not path.is_file():
         raise ProjectError(f"产物不存在: {path}")
     source_list = list(dict.fromkeys(str(item) for item in (source_ids or []) if str(item).strip()))
@@ -711,7 +770,12 @@ def _register_evidence(root: Path, stage: str) -> None:
     task_root = str(Path(record["task_root"]).resolve())
     bound_task = manifest["crawl"].get("task_root")
     if bound_task and str(Path(bound_task).resolve()) != task_root:
-        raise ProjectError("同一项目必须复用绑定的 Crawl 任务，不能换成另一项需求的记录")
+        from commercial_workflow import scope_research_change
+        change = scope_research_change(root, stage)
+        if change is None:
+            raise ProjectError("同一项目必须复用绑定的 Crawl 任务，不能换成另一项需求的记录")
+        manifest["crawl"].setdefault("task_history", []).append({
+            "change": change["id"], "previous_task": bound_task, "new_task": task_root, "at": now_iso()})
     manifest["crawl"]["task_root"] = task_root
     _save_manifest(root, manifest)
     for path in (preflight, conclusion):
@@ -869,7 +933,7 @@ def layout_errors(project: Path | str) -> list[str]:
     import check_output_layout
 
     root = _project_root(project)
-    errors, _notes = check_output_layout.check_project(deliver_root(root))
+    errors, _notes = check_output_layout.check_project(deliver_root(root), commercial=commercial_at(root))
     if is_legacy(root):
         errors = [e for e in errors if e.startswith("docs") and "应以两位序号开头" not in e and not e.endswith("多出文件 README.md")]
     return [f"目录约定：{e}" for e in errors]
@@ -970,7 +1034,8 @@ def validate_project(project: Path | str, strict: bool = False) -> list[str]:
     for relative in STATE_DIRS:
         if not (root / relative).is_dir():
             errors.append(f"缺少目录: {relative}（状态根 {root}）")
-    for relative in DELIVER_MADE:
+    import commercial_workflow as cw
+    for relative in (cw.FOLDERS if commercial_at(root) else DELIVER_MADE):
         target = _alias_target(aliases, relative)
         if target is not None and not (deliver / target).is_dir():
             errors.append(f"缺少目录: {relative}" + (f"（别名 {target}）" if target != relative else ""))
@@ -981,7 +1046,7 @@ def validate_project(project: Path | str, strict: bool = False) -> list[str]:
         manifest = load_project(root)
     except ProjectError as exc:
         return errors + [str(exc)]
-    definitions = _stage_defs()
+    definitions = _stage_defs(root)
     manifest_stages = manifest.get("stages")
     if not isinstance(manifest_stages, list):
         errors.append("project.json 的 stages 必须是数组")
@@ -989,7 +1054,7 @@ def validate_project(project: Path | str, strict: bool = False) -> list[str]:
     ids = [str(item.get("id")) for item in manifest_stages]
     if len(ids) != len(set(ids)):
         errors.append("stages 含重复稳定 ID")
-    if set(ids) != set(definitions):
+    if (ids != list(definitions) if commercial_at(root) else set(ids) != set(definitions)):
         errors.append("project.json 的 stages 与 development-matrix 不一致（旧项目请运行 project.py migrate <项目>）")
     if schema_at_least(manifest, "1.1"):
         for relative in V11_DIRS:
@@ -1063,6 +1128,8 @@ def validate_project(project: Path | str, strict: bool = False) -> list[str]:
     if is_legacy(root):
         pages.insert(0, root / "README.html")                   # the index page of the old layout
     for html_path in pages:
+        if commercial_at(root) and html_path.is_relative_to(deliver / cw.ORIGINALS):
+            continue
         if not html_path.is_file():
             continue
         if any(part in {".git", "__pycache__"} for part in html_path.parts):
@@ -1088,6 +1155,11 @@ def set_stage_status(project: Path | str, stage: str, status: str) -> dict[str, 
     root = _project_root(project)
     manifest = load_project(root)
     record = _stage_record(manifest, stage)
+    if status in {"in-progress", "pending-review"} and commercial_at(root):
+        import approval_docs
+        holds = approval_docs.hold_errors(approval_docs.Ctx(root), stage)
+        if holds:
+            raise ProjectError("前置阶段尚未通过：" + "；".join(holds[:2]))
     if status not in STAGE_STATUSES:
         raise ProjectError(f"无效阶段状态: {status}")
     if status in {"approved", "completed"} and not record.get("approval_id"):
@@ -1135,6 +1207,8 @@ def _bind_architecture_baseline(root: Path, manifest: dict[str, Any]) -> str | N
 
 def migrate_project(project: Path | str, *, apply: bool = False, output: Path | str | None = None) -> dict[str, Any]:
     """Preview (default) or carry out the migration of an older project to the current layout and matrix (project_migrate.py)."""
+    if commercial_at(project):
+        raise ProjectError("商业项目已使用现行目录，无需旧矩阵迁移")
     import project_migrate
 
     return project_migrate.migrate_project(project, apply=apply, output=output)
@@ -1268,11 +1342,12 @@ def ensure_gitignore(root: Path, lines: Iterable[str]) -> list[str]:
 
 
 def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterable[tuple[str, str]] = (), aliases: dict[str, str] | None = None,
-                  output: Path | str | None = None) -> dict[str, Any]:
+                  output: Path | str | None = None, workflow: str = "auto") -> dict[str, Any]:
     """Turn an existing repository into a Luz project in place: the repository stays the project directory, its state goes to a new session.
 
     Code folders are never renamed: ``aliases`` records where a standard folder really lives (for example ``test`` -> ``tests``).
-    Document folders are relocated with ``moves`` (git mv when tracked). Nothing is overwritten and no stage is pre-approved.
+    Only explicit ``moves`` relocate files. Auto uses the commercial workflow unless an old document folder
+    exists or the requested moves explicitly name the historical layout. No stage is pre-approved.
     """
     deliver = _project_dir(project)
     if not deliver.is_dir():
@@ -1283,6 +1358,16 @@ def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterab
     state = session / "raw"
     if (state / "project.json").exists():
         raise ProjectError(f"这个项目已经有会话: {session}")
+    import commercial_workflow as cw
+    moves = list(moves)
+    if workflow == "auto":
+        legacy = any((deliver / folder).is_dir() for folder in DELIVER_MADE)
+        legacy |= any(any(new.startswith(prefix + "/") for prefix in (*DELIVER_MADE, "uploads")) for _, new in moves)
+        workflow = "legacy" if legacy else cw.WORKFLOW
+    if workflow == "commercial":
+        workflow = cw.WORKFLOW
+    if workflow not in {"legacy", cw.WORKFLOW}:
+        raise ProjectError(f"未知项目流程: {workflow}")
     log: list[str] = []
     pairs: list[tuple[str, str]] = []
     state.mkdir(parents=True, exist_ok=True)
@@ -1297,12 +1382,15 @@ def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterab
     for real in aliases.values():
         if not (deliver / real).is_dir():
             raise ProjectError(f"别名指向的目录不存在: {real}")
-    for relative in DELIVER_MADE:
+    for relative in (cw.FOLDERS if workflow == cw.WORKFLOW else DELIVER_MADE):
         target = _alias_target(aliases, relative)
         if target is not None:
             (deliver / target).mkdir(parents=True, exist_ok=True)
-    stages = [_empty_stage(item, current=(index == 0), root=state) for index, item in enumerate(_load_matrix()["stages"])]
+    matrix = commercial_matrix() if workflow == cw.WORKFLOW else _load_matrix()
+    stages = [_empty_stage(item, current=(index == 0), root=state) for index, item in enumerate(matrix["stages"])]
     manifest = _new_manifest((name or deliver.name).strip(), deliver, stages, str(deliver), "document")
+    if workflow == cw.WORKFLOW:
+        manifest.update(workflow=workflow, ui_mode="component-reuse", ui_requirements_version=2)
     manifest["adopted"] = {"at": now_iso(), "aliases": aliases, "moves": log, "note": "既有仓库就地接入：不预设任何阶段为已批准，历史文档只是输入材料"}
     _write_state_files(state, manifest)
     _write_json(state / "config" / "paths.json", {"docs": "docs", "aliases": aliases})
@@ -1316,6 +1404,9 @@ def adopt_project(project: Path | str, name: str | None = None, *, moves: Iterab
 
 def project_status(project: Path | str) -> dict[str, Any]:
     manifest = load_project(project)
+    if commercial_at(project):
+        import approval_docs
+        manifest = approval_docs.refresh(_project_root(project), save=False)
     result = {
         "project_id": manifest.get("project_id"),
         "name": manifest.get("name"),
@@ -1338,7 +1429,8 @@ def project_status(project: Path | str) -> dict[str, Any]:
                                        "open": [r["id"] for r in sched["steps"] if r["gate"] != "user" and r["status"] != "done"]}
             entry["complete"] = approval_docs.stage_complete(ctx, sid)
             entry["waiting_review"] = [d["document"] for d in docs if d["state"] == "pending-review"]
-        result["next"] = flow_steps.next_report(root).get("document", {}).get("path")
+        report = flow_steps.next_report(root)
+        result["next"] = report.get("documents") or report.get("document", {}).get("path")
     return result
 
 
@@ -1357,11 +1449,11 @@ def skill_folder(skill: str) -> Path:
     return ROOT.parent / ("Luz-" + skill.split("-", 1)[-1].capitalize())
 
 
-def rule_files(stage: str) -> list[dict[str, Any]]:
+def rule_files(stage: str, project=None) -> list[dict[str, Any]]:
     """The files to read before a stage whose skill has no context.py rule card (Luz-Ops, Luz-Crawl): the matrix lists them (``rule_files``), this gives their paths. A name ending in
     ``/`` is a folder whose files the stage reads as the work calls for (Luz-Ops' test playbooks). ``exists`` is False for a file that is not there."""
     out = []
-    for item in _stage_defs()[stage].get("rule_files", []):
+    for item in _stage_defs(project)[stage].get("rule_files", []):
         path = skill_folder(item["skill"]) / item["file"]
         out.append({"skill": item["skill"], "file": item["file"], "path": str(path), "exists": path.is_dir() if item["file"].endswith("/") else path.is_file(), "for": item["for"]})
     return out
@@ -1370,6 +1462,9 @@ def rule_files(stage: str) -> list[dict[str, Any]]:
 def stage_route(project: Path | str, stage: str | None = None) -> dict[str, Any]:
     """Describe the specialist, inputs, outputs, and next gate for a stage."""
     manifest = load_project(project)
+    if stage is None and commercial_at(project):
+        import approval_docs
+        manifest = approval_docs.refresh(_project_root(project), save=False)
     selected = stage or manifest.get("current_stage")
     record = _stage_record(manifest, str(selected))
     return {
@@ -1388,13 +1483,13 @@ def stage_route(project: Path | str, stage: str | None = None) -> dict[str, Any]
         "status": record.get("status"),
         "standard": record.get("standard"),
         "rule_cards": record.get("rule_cards", []),
-        "rule_files": rule_files(str(selected)),
+        "rule_files": rule_files(str(selected), project),
         "document": next((str(x["path"]) for x in record.get("deliverables", []) if x.get("format") == "html"), None),
-        "approval_model": (manifest.get("approval_policy") or {}).get("model", "stage"),
+        "approval_model": record["approval"] if commercial_at(project) and record.get("approval") in {"user-batch", "internal-baseline"} else (manifest.get("approval_policy") or {}).get("model", "stage"),
         "documents": [{"path": d["path"], "title": d.get("title"), "skill": d.get("skill"), "state": d["state"]} for d in _doc_states(project, str(selected))],
-        "internal_records": _stage_defs()[str(selected)].get("internal_records", []),
-        "steps": [{"id": x["id"], "gate": x["gate"], "skill": x["skill"], "title": x["title"]} for x in _stage_defs()[str(selected)].get("steps", [])],
-        "action_gates": _stage_defs()[str(selected)].get("action_gates", []),
+        "internal_records": _stage_defs(project)[str(selected)].get("internal_records", []),
+        "steps": [{"id": x["id"], "gate": x["gate"], "skill": x["skill"], "title": x["title"]} for x in _stage_defs(project)[str(selected)].get("steps", [])],
+        "action_gates": _stage_defs(project)[str(selected)].get("action_gates", []),
     }
 
 
@@ -1408,7 +1503,7 @@ def gate_stage(project: Path | str, stage: str, *, specialist_checks: bool = Tru
     owner = _stage_record(manifest, stage)["owner"]
     import approval_docs
     errors.extend(crawl_errors(root, stage, caller=owner, waive_expiry=approval_docs.crawl_expiry_waived(root, stage)))
-    ordered = [s["id"] for s in _load_matrix()["stages"]]
+    ordered = [s["id"] for s in manifest["stages"]]
     stages = {s["id"]: s for s in manifest["stages"]}
     if (manifest.get("approval_policy") or {}).get("model") == "document":
         import approval_docs
@@ -1423,6 +1518,9 @@ def gate_stage(project: Path | str, stage: str, *, specialist_checks: bool = Tru
         from project_template_gate import output_errors
         for document in approval_docs.documents(root, stage):
             errors.extend(output_errors(root, stage, document))
+    if commercial_at(root) and stage == "scope":
+        from commercial_workflow import scope_evidence_errors
+        errors += scope_evidence_errors(root)
     if specialist_checks and stage in {"verification", "release", "operations"}:
         import sys
         sys.path.insert(0, str(ROOT.parent / "Luz-Ops" / "scripts"))
@@ -1461,10 +1559,33 @@ def stage_context(project: Path | str, stage: str, skill: str | None = None) -> 
             inputs.append(target)
         else:
             pending_inputs.append(target)
+    if commercial_at(root):
+        import flow_steps
+        valid = set()
+        for sid in predecessors:
+            if not approval_docs.stage_complete(approval_ctx, sid, allow_pre=False) or flow_steps.internal_errors(root, sid, ctx=approval_ctx):
+                break
+            valid.add(sid)
+        pending_inputs.extend(a for a in inputs if a["stage"] not in valid)
+        inputs = [a for a in inputs if a["stage"] in valid]
     session = session_dir(root)
     result = {**stage_route(root, stage), "state_root": str(root), "deliver_root": str(deliver), "session": str(session) if session else None, "mode": "project", "inputs": inputs,
               "pending_inputs": pending_inputs,
               "crawl": manifest["crawl"], "blockers": gate_stage(root, stage), "output_root": str(deliver / record["docs_dir"])}
+    if commercial_at(root):
+        from commercial_workflow import BATCHES, ORIGINALS, batch_record
+        result.update(workflow=manifest["workflow"], originals=str(deliver / ORIGINALS))
+        result["approved_facts"] = []
+        for batch in predecessors:
+            if batch in valid and batch in BATCHES:
+                rel = f"data/commercial/{batch}.json"
+                grant, _ = batch_record(approval_ctx, batch)
+                if grant:
+                    result["approved_facts"].append({"stage": batch, "path": rel, "absolute_path": str(locate(root, rel)),
+                                                     "sha256": approval_ctx.hash_of(rel), "approval": grant["id"]})
+        if stage == "scope":
+            result["input_materials"] = [{"path": p.relative_to(deliver).as_posix(), "absolute_path": str(p), "sha256": sha256_file(p)}
+                                         for p in sorted((deliver / ORIGINALS).rglob("*")) if p.is_file()]
     if schema_at_least(manifest, "1.1"):
         import client_flow
         result["client"] = client_flow.client_context(root, stage)

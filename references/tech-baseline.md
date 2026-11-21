@@ -9,7 +9,7 @@
 | 技术栈 | 前端（小程序、后台）、后端、数据库、缓存与队列、文件存储、部署、运维观测、安全、测试与发布共 10 层，每项写规定、详细做法、理由、什么情况下可以换 | [baseline/stack.json](baseline/stack.json) | Luz-Dev（`backend/SPEC.md`、`operations.md`、`miniprogram.md`、`admin.md`）、Luz-System（架构分层） |
 | 前端基础 | 设计原则、前端技术栈、前端逻辑（分层、路由、状态、请求）、字体、色彩、卡片与容器、图标、布局与响应式、动效、交互与反馈、文案、图片与素材、可访问性共 13 类 | [baseline/frontend.json](baseline/frontend.json) | Luz-Design（`visual-design.html`、`themes.json`）、Luz-System（`ui-standards.html` 与各端规范） |
 | 基础功能 | 登录与账号、后台账号与权限、租户与门店、商品与套餐、订单、支付、会员卡与月卡、储值、优惠券、通知、文件、导入导出、审计、协议与隐私、统计、配置等模块；每个功能写前端逻辑、后端逻辑、数据库、技术方案、业务规则、异常、测试 | [baseline/functions.json](baseline/functions.json) | Luz-Dev（`module-specs/`、`backend/NN-*/MODULE.md`、`function-catalog.json`）、Luz-System（`function-list-design.html`） |
-| 原型底座 | 可交互原型的运行底座：动效令牌、对话框与底部弹层、提示、骨架屏、场景配置面板、后台外壳与控件、图表 | `Luz-System/references/prototype-kit/` | Luz-System、Luz-Design（动效规则卡） |
+| 原型底座 | 独立办理页、原位选择、就近反馈、无输入警告、骨架屏、导航和图表。组件选型与呈现执行 [Design 成品要求](../../Luz-Design/references/design/hard-rules.md)。 | [组件复用](../../Luz-Design/references/component-reuse.md)与[原型参考](../../Luz-Design/references/prototype-reference.html) | Luz-System、Luz-Design（动效规则卡） |
 
 底座文件由 `scripts/baseline.py` 校验（`python scripts/baseline.py`）：每一层、每一类都在，编号唯一，没有空字段和占位字样。底座的内容有变化时改底座，不改项目；项目的文档下次生成时自动带上新的底座。
 

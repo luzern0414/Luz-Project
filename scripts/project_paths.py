@@ -30,7 +30,7 @@ SESSION_NAME = re.compile(r"^\d{3}-[^\\/:*?\"<>|]+$")
 # What belongs to the project directory. Everything else a path can name is tool state and lives in the state root.
 DELIVER_DIRS = ("docs", "src", "test", "assets", "infra", "scripts")
 # Below data/ and config/ only these names are tool state; business data (schema, seeds, fixtures ...) and the product's own config are results.
-STATE_DATA = ("client", "stages", "ops", "acceptance", "artifacts.json", "changes.json", "baseline.json", "project.json", "sessions.json", "steps.json", "review-notes.json")
+STATE_DATA = ("commercial", "client", "stages", "ops", "acceptance", "artifacts.json", "changes.json", "baseline.json", "project.json", "sessions.json", "steps.json", "review-notes.json")
 STATE_CONFIG = ("paths.json", "documents.json", "keys.example.json")
 
 
@@ -82,8 +82,19 @@ def resolve_state_root(project: Path | str) -> Path:
         return path / "raw"
     candidate = output_root() / path.name / "raw"
     if (candidate / "project.json").is_file():
+        registered = _manifest(candidate).get("deliver_root")
+        if path.is_dir() and registered and _absolute(registered) != path:
+            raise ProjectError(f"同名会话属于另一项目目录：{registered}。请使用此项目的实际状态根")
         return candidate.resolve()
     raise ProjectError(f"不是 Luz 项目（{path} 下没有 project.json，{candidate} 也不存在）；新项目用 project.py init <名称> --project-dir <项目目录>")
+
+
+def commercial_at(project: Path | str | None) -> bool:
+    if project is None:
+        return False
+    path = Path(project)
+    root = path if (path / "project.json").is_file() else resolve_state_root(path)
+    return _manifest(root).get("workflow") == "commercial-v1"
 
 
 def deliver_root(project: Path | str) -> Path:
@@ -91,6 +102,18 @@ def deliver_root(project: Path | str) -> Path:
     root = resolve_state_root(project)
     value = _manifest(root).get("deliver_root")
     return _absolute(value) if value else root
+
+
+def command_project(project: Path | str) -> Path:
+    """A project argument which works when copied into a new CLI command, including custom output roots."""
+    state = resolve_state_root(project)
+    deliver = deliver_root(state)
+    try:
+        if resolve_state_root(deliver) == state:
+            return deliver
+    except ProjectError:
+        pass
+    return state
 
 
 def is_legacy(project: Path | str) -> bool:

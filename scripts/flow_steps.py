@@ -15,7 +15,7 @@ from typing import Any
 import approval_docs as ad
 import estimate_policy as ep
 import project_core as pc
-from project_paths import ProjectError, locate
+from project_paths import ProjectError, command_project, locate
 
 PREPARE, PRODUCE, REVIEW, COMPLETE = "prepare", "produce", "review", "complete"
 INTERNAL_PHASES = (PREPARE, PRODUCE)
@@ -27,7 +27,7 @@ MIN_NOTE = 8
 
 def steps_of(root: Path, stage: str) -> list[dict[str, Any]]:
     """The steps of a stage that apply to this project: the ones marked ``only_if: documents`` only when the stage has files for the user, ``no-documents`` only when it has none."""
-    item = pc._stage_defs()[stage]
+    item = pc._stage_defs(root)[stage]
     has_docs = bool(ad.documents(root, stage))
     out = []
     for step in item.get("steps", []):
@@ -79,6 +79,9 @@ def _c_crawl(ctx: ad.Ctx, stage: str, step: dict[str, Any], light: bool = False)
         # there, valid and concluded: a project that takes longer than a week does not redo the research of stages the user already approved. A change that reopens the stage
         # voids those approvals, so the age counts again from then on.
         cache[stage] = crawl_errors(ctx.root, stage, caller=pc._stage_record(ctx.manifest, stage)["owner"], waive_expiry=ad.crawl_expiry_waived(ctx.root, stage, ctx=ctx))
+    if stage == "scope" and pc.commercial_at(ctx.root):
+        from commercial_workflow import scope_evidence_errors
+        return list(cache[stage]) + scope_evidence_errors(ctx.root)
     return list(cache[stage])
 
 
@@ -144,7 +147,7 @@ def _c_build(ctx: ad.Ctx, stage: str, step: dict[str, Any], light: bool = False)
 
 def _c_records(ctx: ad.Ctx, stage: str, step: dict[str, Any], light: bool = False) -> list[str]:
     errors = []
-    item = pc._stage_defs()[stage]
+    item = pc._stage_defs(ctx.root)[stage]
     for rec in item.get("internal_records", []):
         kind = rec["kind"]
         if kind == "crawl-record":
@@ -216,7 +219,9 @@ def _c_user(ctx: ad.Ctx, stage: str, step: dict[str, Any], light: bool = False) 
     return [f"{s['document']}（{s['label']}）" for s in todo]
 
 
-CHECKS = {"upstream": _c_upstream, "step-record": _c_record, "crawl": _c_crawl, "specialist": _c_specialist, "build": _c_build, "records": _c_records, "trace": _c_trace,
+from commercial_workflow import build_errors as commercial_build_errors, template_errors as commercial_template_errors
+
+CHECKS = {"commercial-build": commercial_build_errors, "commercial-templates": commercial_template_errors, "upstream": _c_upstream, "step-record": _c_record, "crawl": _c_crawl, "specialist": _c_specialist, "build": _c_build, "records": _c_records, "trace": _c_trace,
           "client-intake-imported": _c_complete_client, "handover-signed": _c_complete_client, "action": _c_action, "auto-complete": _c_auto,
           "present": _c_user, "decide": _c_user, "record": _c_user}
 
@@ -337,8 +342,8 @@ def checklist(root: Path, stage: str, *, ctx: ad.Ctx | None = None, project: str
                "status": "done" if done else "todo", "blocked_by": problems, "proof": step["proof"], "command": _fmt(step["command"], project, stage), "backfilled": backfilled}
         if step.get("per") == "document":
             row["document"] = (current_doc or {}).get("document")
-        if step.get("record") == "rules" and pc._stage_defs()[stage].get("rule_files"):
-            row["rule_files"] = [f["path"] + ("" if f["exists"] else "（找不到）") for f in pc.rule_files(stage)]
+        if step.get("record") == "rules" and pc._stage_defs(root)[stage].get("rule_files"):
+            row["rule_files"] = [f["path"] + ("" if f["exists"] else "（找不到）") for f in pc.rule_files(stage, root)]
         if not done and not current_seen:
             row["status"], row["current"] = "todo", True
             current_seen = True
@@ -389,7 +394,7 @@ def next_report(project: Path | str) -> dict[str, Any]:
     or, when no file can be shown yet, the next internal step with its command."""
     root = pc._project_root(project)
     manifest = pc.load_project(root)
-    name = str(pc.deliver_root(root))
+    name = str(command_project(root))
     if not ad.is_document_model(root):
         return {"model": "stage", "kind": "legacy", "message": "这个项目还按阶段审批（旧模型）：当前阶段 " + str(manifest.get("current_stage")) + "。先 project.py approvals-upgrade <项目> 预演升级为逐文件审批。",
                 "current_stage": manifest.get("current_stage")}
@@ -397,7 +402,12 @@ def next_report(project: Path | str) -> dict[str, Any]:
     estimate = ep.read_state(root)
     todos = ep.user_todos(root, f'"{name}"')
     focus: tuple[str, str, Any] | None = None
-    for sid in ad.stage_order():
+    for sid in ad.stage_order(root):
+        from commercial_workflow import active, next_batch
+        if active(root, sid):
+            if not ad.stage_complete(ctx, sid) or internal_errors(root, sid, ctx=ctx):
+                return next_batch(ctx, sid, checklist(root, sid, ctx=ctx, project=name))
+            continue
         docs = ad.documents(root, sid)
         if not docs:
             if not ad.stage_record_effective(ctx, sid) or internal_errors(root, sid, ctx=ctx):
@@ -472,7 +482,7 @@ def next_report(project: Path | str) -> dict[str, Any]:
 
 
 def _queue_from_stage(ctx: ad.Ctx, sid: str) -> list[dict[str, Any]]:
-    docs = [d for d in ctx.docs if d["stage"] in ad.stage_order()[ad.stage_order().index(sid):]]
+    docs = [d for d in ctx.docs if d["stage"] in ad.stage_order(ctx.root)[ad.stage_order(ctx.root).index(sid):]]
     out = []
     for d in docs:
         st = ad.document_status(ctx, d)
@@ -489,6 +499,15 @@ def format_todos(todos: list[str]) -> list[str]:
 
 def format_next(report: dict[str, Any]) -> str:
     kind = report.get("kind")
+    if report.get("model") == "batch":
+        details = [report["stage_name"], report["message"], *format_todos(report.get("user_todos") or [])]
+        if kind in {"present", "revise"}:
+            details.extend(report["documents"])
+        details.extend(n["text"] for n in report["open_notes"])
+        details.extend((report.get("current_step") or {}).get("blocked_by", []))
+        if report.get("command"):
+            details.append(report["command"])
+        return "\n".join(details)
     lines: list[str] = format_todos(report.get("user_todos") or [])
     if kind in {"legacy", "done"}:
         return "\n".join(lines) + report["message"]

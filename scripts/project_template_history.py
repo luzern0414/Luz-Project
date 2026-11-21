@@ -42,6 +42,11 @@ def _approved_document(ctx, doc, checked):
     path, stage = doc["path"], doc["stage"]
     if path in checked:
         return
+    import commercial_workflow as cw
+    if cw.active(ctx.root, stage):
+        _approved_batch(ctx, stage, path)
+        checked.add(path)
+        return
     record = _latest(ctx, "document", document=path)
     if (record.get("stage") != stage or record.get("mode") != ad.USER
             or record.get("source_hashes") != ad.source_hashes(ctx, stage)
@@ -73,26 +78,54 @@ def _approved_internal_stage(ctx, stage, path):
         art = artifacts.get(identifier)
         if not art or art.get("sha256") != digest or ctx.hash_of(art["path"]) != digest:
             raise ValueError("内部步骤原批准绑定的来源或产物已变化")
-    earlier = ad.stage_order()[:ad.stage_order().index(stage)]
+    order = ad.stage_order(ctx.root)
+    earlier = order[:order.index(stage)]
     checked = set()
     for doc in ctx.docs:
         if doc["stage"] in earlier:
             _approved_document(ctx, doc, checked)
 
 
+def _approved_batch(ctx, stage, path):
+    import commercial_workflow as cw
+    from project_crawl_gate import stage_record
+
+    for batch in cw.BATCHES:
+        latest = _latest(ctx, "batch", stage=batch)
+        # Design already checked the historical template/snapshot for its target.
+        # Calling require_selected here again would recurse into this validator.
+        grant, problem = cw.batch_record(ctx, batch, check_templates=False)
+        if grant != latest or problem or any(n["stage"] == batch and n["status"] == "open" for n in ctx.notes):
+            raise ValueError("整批文件没有有效的原批准，或来源、上游确认、变更和意见已变化")
+        if batch == stage:
+            break
+    if path not in cw.paths(stage):
+        evidence = stage_record(ctx.root, ctx.manifest, stage).with_suffix(".html")
+        rel = relative_to_project(ctx.root, evidence)
+        receipt = pc._read_json(ctx.root / cw.receipt_path(stage))
+        art = ctx.registered(stage, rel)
+        if not art or path != rel or receipt["sources"].get(rel) != ctx.hash_of(path) or art["sha256"] != ctx.hash_of(path):
+            raise ValueError("本批原确认没有绑定该检索结论")
+
+
 def _contract(ctx, stage, path):
     """Only known Project writers can prove historical Project output."""
 
-    for kind, (folder, name, owner_stage) in pc.client_document_files().items():
+    import commercial_workflow as cw
+    if cw.active(ctx.root, stage) and path in cw.paths(stage):
+        from commercial_documents import TEMPLATES, WRITER
+        template = TEMPLATES[stage][Path(path).suffix]
+        return WRITER, template, f"Luz-Project/scripts/commercial_documents.py:{template}"
+    for kind, (folder, name, owner_stage) in pc.client_document_files(ctx.root).items():
         if path == f"{folder}/{name}" and stage == owner_stage:
             caller, identifier = output_contract(ctx.root, stage, {"path": path})
             return caller, identifier, f"Luz-Project/scripts/client_flow.py:{kind}"
-    if path == pc.stage_document_path(stage, ctx.root).replace(chr(92), "/"):
-        return "luz-project", "showcase", "Luz-Project/scripts/stage_documents.py"
     owner = pc._stage_record(ctx.manifest, stage)["owner"]
     report = f"{pc.evidence_dir(ctx.root, ctx.manifest)}/{owner}-{stage}.html"
     if path == report:
         return owner, "reading-html", "Luz-Crawl/scripts/crawl_preflight.py:render_report"
+    if path == pc.stage_document_path(stage, ctx.root).replace(chr(92), "/"):
+        return "luz-project", "showcase", "Luz-Project/scripts/stage_documents.py"
     raise ValueError("目标不属于可核验原生成器的历史项目文档或内部结论")
 
 
@@ -103,7 +136,7 @@ def require_approved_output(session, caller, stage, target, selection):
     ctx = ad.Ctx(root)
     if ad.policy(ctx.manifest).get("model") != "document":
         raise ValueError("历史模板核验要求逐文件审批模型的原始批准账本")
-    if stage not in pc._stage_defs():
+    if stage not in pc._stage_defs(root):
         raise ValueError("历史模板阶段不存在")
     path = relative_to_project(root, target)
     if locate(root, path).resolve() != target:
@@ -114,6 +147,10 @@ def require_approved_output(session, caller, stage, target, selection):
             or Path(str(output.get("path") or "")).resolve() != target
             or output.get("sha256") != ctx.hash_of(path)):
         raise ValueError("原生成回执未绑定准确调用者、模板、实际生成器与成品 SHA-256")
+    import commercial_workflow as cw
+    if cw.active(root, stage):
+        _approved_batch(ctx, stage, path)
+        return
     doc = next((d for d in ad.documents(root, stage) if d["path"] == path), None)
     if doc:
         _approved_document(ctx, doc, set())

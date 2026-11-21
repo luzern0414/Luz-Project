@@ -61,7 +61,7 @@ class RunbookTests(unittest.TestCase):
         skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("references/runbook.md", skill)
         self.assertLessEqual(len((ROOT / "SKILL.md").read_bytes()), 12 * 1024, "SKILL.md keeps to a card: the detail is in references")
-        for needle in ("一次一个文件", "三行以内", "内部步骤不省略", "project.py next", "project.py checklist", "project.py review", "动作门"):
+        for needle in ("三次项目确认", "一次出示整批", "已有逐文件项目", "内部步骤不省略", "project.py next", "project.py checklist", "project.py review", "动作门"):
             self.assertTrue(needle in skill, needle)
 
     def test_the_runbook_covers_every_stage_and_every_file_of_the_matrix(self) -> None:

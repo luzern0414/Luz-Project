@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商业运营数据底座</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%234c60b8' d='m16 3 13 7-13 7-13-7zm-13 13 13 7 13-7v4l-13 7-13-7z'/%3E%3C/svg%3E">
+<style>
+:root {
+  color-scheme: light;
+  --ink: #18243a;
+  --muted: #526178;
+  --line: #dde3ed;
+  --accent: #4258aa;
+  --active: #edf1fb;
+  --surface: #f6f8fb;
+  font: 16px/1.55 "Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+  color: var(--ink);
+  background: #fff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+button, input { font: inherit; color: inherit; }
+button {
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px 11px;
+  min-height: 36px;
+}
+button:hover { border-color: #a8b5d7; background: #f5f7fc; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+button[aria-pressed="true"] { color: #304496; background: var(--active); border-color: #aebade; font-weight: 650; }
+button:disabled { cursor: default; opacity: .55; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: clamp(23px,2.65vw,34px); line-height: 1.25; letter-spacing: -.035em; }
+h2 { font-size: 21px; line-height: 1.4; }
+code { font: 14px/1.45 ui-monospace,Consolas,monospace; overflow-wrap: anywhere; }
+.sr-only { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+.wrap { width: min(100% - 64px,1376px); margin-inline: auto; }
+.masthead { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding-block: 27px 17px; }
+.meta { margin-top: 7px; color: var(--muted); font-size: 14px; }
+.meta code { color: var(--ink); }
+search { display: block; width: min(330px,36%); position: relative; z-index: 4; }
+.search-input { width: 100%; min-height: 42px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--surface); }
+.search-input::placeholder { color: var(--muted); opacity: 1; }
+.search-list {
+  position: absolute;
+  inset: calc(100% + 6px) 0 auto;
+  list-style: none;
+  margin: 0;
+  padding: 5px;
+  max-height: 310px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px #2434601b;
+}
+.search-list button { border: 0; width: 100%; text-align: left; min-height: 42px; }
+.search-list small { display: block; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.search-list p { padding: 8px; color: var(--muted); }
+.filters { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 0 13px; }
+.filters button { font-size: 14px; }
+.workspace { border-top: 1px solid var(--line); padding-top: 16px; }
+.map-head, .detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.map-head { margin-bottom: 9px; }
+.tools, .switches, .route-list { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; font-size: 14px; }
+.tools [data-map="zoom-in"], .tools [data-map="zoom-out"] { min-width: 37px; font-size: 17px; }
+.stage {
+  position: relative;
+  height: clamp(345px,42vw,412px);
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  isolation: isolate;
+  background: radial-gradient(circle,#dbe1ed 1px,transparent 1.35px) 0 0 / 23px 23px #fafbfd;
+  touch-action: pan-y;
+}
+.stage[data-mode="spatial"] { cursor: grab; }
+.stage[data-dragging="true"] { cursor: grabbing; }
+.stage canvas, .node-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
+.stage canvas, .node-layer { pointer-events: none; }
+.node {
+  position: absolute;
+  transform: translate(-50%,-16px);
+  width: max-content;
+  max-width: 174px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  display: grid;
+  justify-items: center;
+  pointer-events: auto;
+  font-size: 15px;
+  line-height: 1.3;
+}
+.node:hover, .node[aria-pressed="true"] { background: transparent; }
+.node[aria-pressed="true"] .node-name { text-decoration: underline; text-underline-offset: 3px; }
+.node[data-related="false"] .node-glyph { opacity: .58; }
+.node:focus-visible, .node:hover { opacity: 1; }
+.node-glyph { display: grid; width: 41px; height: 31px; place-items: center; }
+.node-glyph::before { content: ""; background: var(--tone); width: 28px; height: 20px; border-radius: 5px; box-shadow: 0 4px 0 #34405e6e; }
+.stage[data-mode="spatial"] .node-glyph::before { visibility: hidden; }
+.node code { font-size: 13px; font-weight: 400; color: var(--muted); background: #fafbfd; margin-top: 2px; }
+.node-name { font-weight: 675; padding-inline: 2px; background: #fafbfd; }
+.map-key { min-height: 36px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; color: var(--muted); font-size: 14px; }
+.legend-mark { width: 9px; height: 9px; border-radius: 2px; background: var(--tone); display: inline-block; margin-right: 6px; vertical-align: 1px; }
+.line-mark { display: inline-block; width: 22px; vertical-align: .25em; margin-right: 6px; border-top: 2px solid #607398; }
+.line-mark[data-kind="rule"] { border-top-style: dashed; }
+.map-status { margin-left: auto; }
+.detail { border: 1px solid var(--line); border-radius: 10px; padding: 15px 19px 17px; margin-block: 8px 22px; min-width: 0; }
+.detail-head h2 { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.detail-head code { font-weight: 400; color: var(--muted); }
+.detail-content { padding-top: 11px; }
+.overview-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,220px),1fr)); gap: 8px; }
+.overview-grid button { text-align: left; min-height: 43px; }
+.overview-grid code { display: block; color: var(--muted); }
+.detail-note { margin-bottom: 10px; color: var(--muted); font-size: 15px; }
+.field-strip, .metric-refs { display: flex; flex-wrap: wrap; gap: 6px; }
+.field-strip button, .metric-refs button { font-size: 14px; }
+.table-scroll { overflow-x: auto; margin-top: 8px; }
+table { width: 100%; border-collapse: collapse; text-align: left; font-size: 15px; }
+th, td { padding: 8px 10px; vertical-align: top; border-bottom: 1px solid var(--line); }
+th { background: var(--surface); font-weight: 650; }
+td code { color: #2e438f; }
+tr[data-focus="true"] { background: #eef2ff; }
+.field-label { display: block; }
+.field-tag { color: var(--muted); font-size: 14px; }
+details { margin-top: 10px; }
+summary { min-height: 27px; cursor: pointer; color: #354a92; width: fit-content; font-size: 14px; }
+.sources { color: var(--muted); padding-left: 21px; margin: 7px 0 0; }
+.relation-list, .steps { padding: 0; margin: 0; list-style: none; }
+.relation-list li, .steps li { border-top: 1px solid var(--line); padding-block: 9px; }
+.relation-list li:first-child, .steps li:first-child { border-top: none; padding-top: 0; }
+.relation-list .target { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.relation-list p, .steps p { margin-top: 5px; color: var(--muted); font-size: 15px; }
+.relation-list button, .metric-refs button { text-align: left; }
+.qualifier { color: var(--muted); font-size: 14px; font-weight: 400; }
+.question-bar { display: flex; flex-wrap: wrap; gap: 8px 13px; align-items: center; padding: 3px 0 5px; }
+.question-bar > b { font-size: 15px; }
+.formula { padding: 10px 13px; background: var(--surface); border-radius: 6px; margin: 7px 0 9px; overflow-wrap: anywhere; }
+.metric-refs { margin-top: 6px; }
+.pending { margin-top: 9px; padding: 9px 12px; background: #fff6e8; border: 1px solid #efd9b5; border-radius: 6px; }
+@media (max-width:720px) {
+  .wrap { width: calc(100% - 30px); }
+  .masthead { align-items: stretch; flex-direction: column; gap: 12px; padding-block: 23px 10px; }
+  search { width: 100%; }
+  .filters { gap: 5px; padding-bottom: 10px; }
+  .filters button, .tools button { min-height: 40px; padding-inline: 9px; }
+  .workspace { padding-top: 11px; }
+  .stage { height: 419px; }
+  .node { max-width: 120px; font-size: 14px; }
+  .node code { display: none; }
+  .map-key { padding-block: 5px; }
+  .map-status { margin-left: 0; }
+  .detail { padding: 13px; }
+  .table-scroll table { min-width: 420px; }
+}
+</style>
+</head>
+<body>
+<header class="wrap masthead">
+  <div>
+    <h1 id="page-title">商业运营数据底座</h1>
+    <p id="db-meta" class="meta"></p>
+  </div>
+  <search>
+    <form id="search-form">
+      <label class="sr-only" for="lookup">查找业务表或字段</label>
+      <input class="search-input" id="lookup" type="search" placeholder="查找表名或字段" aria-controls="search-results">
+      <ul id="search-results" class="search-list" aria-label="搜索结果" hidden></ul>
+    </form>
+  </search>
+</header>
+<main class="wrap">
+  <nav class="filters" id="groups" aria-label="按业务模块筛选"></nav>
+  <section class="workspace" aria-labelledby="map-title">
+    <div class="map-head">
+      <h2 id="map-title">业务关系网</h2>
+      <div class="tools" role="group" aria-label="关系图视角">
+        <button data-map="spatial" type="button" aria-pressed="true">立体</button>
+        <button data-map="flat" type="button" aria-pressed="false">平面</button>
+        <button data-map="zoom-out" type="button" aria-label="缩小关系图">−</button>
+        <button data-map="zoom-in" type="button" aria-label="放大关系图">+</button>
+        <button data-map="reset" type="button">适配全图</button>
+      </div>
+    </div>
+    <figure class="stage" id="stage" data-mode="flat" aria-labelledby="map-title">
+      <canvas id="connections" aria-hidden="true"></canvas>
+      <div class="node-layer" id="map-nodes"></div>
+    </figure>
+    <div class="map-key" id="map-key" aria-label="关系图图例">
+      <span><i class="line-mark" aria-hidden="true"></i>字段关联</span>
+      <span><i class="line-mark" data-kind="rule" aria-hidden="true"></i>业务归属</span>
+      <span class="map-status" id="map-status"></span>
+    </div>
+  </section>
+  <nav class="question-bar" id="question-bar" aria-label="问数路径">
+    <b>问数路径</b><div class="route-list" id="routes"></div>
+  </nav>
+  <section class="detail" id="detail" aria-labelledby="detail-title">
+    <div class="detail-head">
+      <h2 id="detail-title" tabindex="-1">库表目录</h2>
+      <div id="detail-controls" class="switches" role="group" aria-label="数据表详情"></div>
+    </div>
+    <div id="detail-content" class="detail-content"></div>
+  </section>
+  <p id="notice" class="sr-only" role="status"></p>
+</main>
+<noscript><p class="wrap">启用浏览器脚本后可查看关系图和字段。</p></noscript>
+<script type="application/json" id="foundation-data">
+{
+  "title": "商业运营数据底座",
+  "database": {"name": "retail_demo", "label": "示例项目分析库"},
+  "groups": [
+    {"id": "scope", "label": "项目与铺位", "color": "#247d71"},
+    {"id": "agreements", "label": "合同", "color": "#aa692c"},
+    {"id": "facts", "label": "经营数据", "color": "#3579b3"}
+  ],
+  "tables": [
+    {
+      "name": "project", "label": "项目表", "group": "scope",
+      "grain": "一行对应一个已登记项目。项目键限定查询范围。", "sources": ["demo_source.project_registry"],
+      "fields": [
+        {"name":"project_id","label":"项目编号","type":"TEXT","description":"项目的唯一编号。","key":"主键","featured":true},
+        {"name":"name","label":"项目名称","type":"TEXT","description":"日常查询使用的项目名称。","featured":true}
+      ]
+    },
+    {
+      "name": "space", "label": "铺位表", "group": "scope",
+      "grain": "一行对应一个物理铺位。", "sources": ["demo_source.space_registry"],
+      "fields": [
+        {"name":"space_id","label":"铺位编号","type":"TEXT","description":"物理铺位的唯一编号。","key":"主键","featured":true},
+        {"name":"project_id","label":"所属项目","type":"TEXT","description":"用于查找项目的铺位。","key":"外键","featured":true}
+      ]
+    },
+    {
+      "name": "lease", "label": "租赁合同表", "group": "agreements",
+      "grain": "一行对应一份经营合同。", "sources": ["demo_source.lease_register"],
+      "fields": [
+        {"name":"contract_id","label":"合同编号","type":"TEXT","description":"合同的唯一编号。","key":"主键","featured":true},
+        {"name":"space_id","label":"所属铺位","type":"TEXT","description":"合同覆盖的物理铺位。","key":"外键","featured":true},
+        {"name":"square_meters","label":"核定面积","type":"REAL","unit":"平方米","description":"本例计算采用的核定面积。","featured":true}
+      ]
+    },
+    {
+      "name": "daily_sales", "label": "日销售表", "group": "facts",
+      "grain": "一行对应一份合同一天的销售汇总。", "sources": ["demo_source.daily_report"],
+      "fields": [
+        {"name":"contract_id","label":"所属合同","type":"TEXT","description":"日销售对应的合同编号。","key":"外键","featured":true},
+        {"name":"sales_day","label":"销售日期","type":"DATE","description":"销售发生的业务日期。","featured":true},
+        {"name":"sales_amount","label":"销售额","type":"DECIMAL","unit":"元","description":"按日汇总的销售金额。","featured":true}
+      ]
+    }
+  ],
+  "links": [
+    {"from":{"table":"space","field":"project_id"},"to":{"table":"project","field":"project_id"},"label":"铺位所属项目","kind":"foreign-key","rule":"按项目编号关联。"},
+    {"from":{"table":"lease","field":"space_id"},"to":{"table":"space","field":"space_id"},"label":"合同对应铺位","kind":"foreign-key","rule":"按铺位编号关联。"},
+    {"from":{"table":"daily_sales","field":"contract_id"},"to":{"table":"lease","field":"contract_id"},"label":"销售所属合同","kind":"foreign-key","rule":"按合同编号归集销售。"}
+  ],
+  "questions": [
+    {
+      "id":"efficiency","label":"销售坪效","question":"某项目铺位本月的日均销售坪效是多少？",
+      "status":"示例口径","formula":"销售额 ÷（核定面积 × 统计日数）",
+      "example":"示例金额 10 万元、面积 400 平方米、统计 20 天，结果为 12.50 元/平方米/天。",
+      "steps":[
+        {"title":"定位铺位和合同","text":"用项目定位铺位，再确认合同和核定面积。","fields":[{"table":"space","field":"project_id"},{"table":"lease","field":"space_id"},{"table":"lease","field":"square_meters"}]},
+        {"title":"汇总同期间销售","text":"按合同与销售日期取销售额。","fields":[{"table":"daily_sales","field":"sales_day"},{"table":"daily_sales","field":"sales_amount"}]}
+      ]
+    }
+  ]
+}
+</script>
+<script src="../../../Luz-Design/kit/vendor/three/three.min.js" data-inline-renderer></script>
+<script>
+"use strict";
+
+const model = JSON.parse(document.getElementById("foundation-data").textContent);
+const $ = id => document.getElementById(id);
+const tableByName = new Map(model.tables.map(table => [table.name, table]));
+const groupById = new Map(model.groups.map(group => [group.id, group]));
+const questionById = new Map(model.questions.map(question => [question.id, question]));
+const state = { group: "", table: "", question: "", field: "", pane: "overview", allFields: false };
+const stage = $("stage"), nodeLayer = $("map-nodes"), linksCanvas = $("connections");
+const ink = linksCanvas.getContext("2d");
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const view = { mode: "flat", yaw: .11, elevation: .93, zoom: 1, width: 0, height: 0, frame: 0 };
+
+function element(tag, value = "", className = "") {
+  const item = document.createElement(tag);
+  if (className) item.className = className;
+  if (value) item.textContent = value;
+  return item;
+}
+function button(label, run, className = "") {
+  const item = element("button", label, className);
+  item.type = "button";
+  item.addEventListener("click", run);
+  return item;
+}
+function fieldOf(ref) {
+  return tableByName.get(ref.table)?.fields.find(field => field.name === ref.field);
+}
+function qualified(name) { return model.database.name + "." + name; }
+function tone(name) { return groupById.get(tableByName.get(name).group).color; }
+function shownTables() { return model.tables.filter(item => !state.group || item.group === state.group); }
+function relatedTo(name) { return model.links.filter(link => link.from.table === name || link.to.table === name); }
+
+function readLocation() {
+  const route = new URLSearchParams(location.hash.slice(1));
+  const table = tableByName.get(route.get("table"));
+  const question = questionById.get(route.get("question"));
+  const field = table && fieldOf({table: table.name, field: route.get("field")});
+  state.table = table && !question ? table.name : "";
+  state.question = question?.id || "";
+  state.field = field && !question ? field.name : "";
+  state.pane = state.field ? "fields" : "overview";
+  state.allFields = Boolean(state.field);
+  if (state.question || (state.table && table.group !== state.group)) state.group = "";
+}
+function writeLocation() {
+  const route = new URLSearchParams();
+  if (state.table) route.set("table", state.table);
+  if (state.field) route.set("field", state.field);
+  if (state.question) route.set("question", state.question);
+  if (route.toString() === location.hash.slice(1)) return;
+  const target = route.size ? "#" + route.toString() : location.href.split("#")[0];
+  try { history.pushState(null, "", target); }
+  catch { location.hash = route.toString(); }
+}
+function chooseTable(name, field = "", moveFocus = false) {
+  const target = tableByName.get(name);
+  state.table = target.name;
+  state.question = "";
+  state.field = field;
+  state.pane = field ? "fields" : "overview";
+  state.allFields = Boolean(field);
+  if (state.group && state.group !== target.group) state.group = "";
+  writeLocation();
+  render();
+  if (moveFocus) $("detail-title").focus();
+}
+function chooseQuestion(question) {
+  state.group = "";
+  state.table = "";
+  state.field = "";
+  state.question = question.id;
+  writeLocation();
+  render();
+  $("detail-title").focus();
+}
+
+const filters = $("groups");
+const filterButtons = new Map();
+for (const group of [{id: "", label: "全部业务表"}, ...model.groups]) {
+  const item = button(group.label, () => {
+    state.group = group.id;
+    if (state.table && state.group && tableByName.get(state.table).group !== state.group) {
+      state.table = "";
+      state.field = "";
+    }
+    state.question = "";
+    writeLocation();
+    render();
+  });
+  filters.append(item);
+  filterButtons.set(group.id, item);
+  if (group.id) {
+    const mark = element("i", "", "legend-mark");
+    mark.style.setProperty("--tone", group.color);
+    mark.setAttribute("aria-hidden", "true");
+    const entry = element("span");
+    entry.append(mark, group.label);
+    $("map-key").insertBefore(entry, $("map-status"));
+  }
+}
+const routeButtons = new Map();
+for (const question of model.questions) {
+  const item = button(question.label, () => chooseQuestion(question));
+  $("routes").append(item);
+  routeButtons.set(question.id, item);
+}
+$("question-bar").hidden = !model.questions.length;
+$("page-title").textContent = model.title;
+document.title = model.title;
+$("db-meta").append(model.database.label + "  ", element("code", model.database.name), " · " + model.tables.length + " 张业务表");
+
+const searchInput = $("lookup"), searchList = $("search-results");
+let results = [];
+function lookup() {
+  const q = searchInput.value.trim().toLowerCase();
+  searchList.replaceChildren();
+  results = [];
+  if (!q) { searchList.hidden = true; return; }
+  for (const table of model.tables) {
+    if ((table.label + " " + qualified(table.name)).toLowerCase().includes(q)) {
+      results.push({ table, field: null });
+      continue;
+    }
+    for (const field of table.fields) {
+      if ((field.label + " " + qualified(table.name) + "." + field.name).toLowerCase().includes(q)) results.push({ table, field });
+    }
+  }
+  results = results.slice(0, 14);
+  for (const {table, field} of results) {
+    const li = element("li");
+    const item = button(field ? field.label + " · " + table.label : table.label, () => openResult(table, field));
+    item.append(element("small", field ? qualified(table.name) + "." + field.name : qualified(table.name)));
+    li.append(item);
+    searchList.append(li);
+  }
+  if (!results.length) {
+    const li = element("li");
+    li.append(element("p", "未找到匹配的表或字段"));
+    searchList.append(li);
+  }
+  searchList.hidden = false;
+}
+function openResult(table, field) {
+  searchList.hidden = true;
+  searchInput.value = "";
+  chooseTable(table.name, field?.name || "", true);
+}
+searchInput.addEventListener("input", lookup);
+searchInput.addEventListener("focus", lookup);
+$("search-form").addEventListener("submit", event => {
+  event.preventDefault();
+  if (results.length) openResult(results[0].table, results[0].field);
+});
+$("search-form").addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    searchInput.focus();
+    searchList.hidden = true;
+  }
+  if (event.key === "ArrowDown" && event.target === searchInput && !searchList.hidden) {
+    const firstResult = searchList.querySelector("button");
+    if (firstResult) { event.preventDefault(); firstResult.focus(); }
+  }
+});
+document.addEventListener("pointerdown", event => {
+  if (!$("search-form").contains(event.target)) searchList.hidden = true;
+});
+
+function makeScene() {
+  const kit = window.LzThree;
+  if (!kit) return null;
+  let renderer;
+  try {
+    const surface = document.createElement("canvas");
+    const context = surface.getContext("webgl2", {antialias: true, alpha: true, powerPreference: "low-power"});
+    if (!context) return null;
+    renderer = new kit.WebGLRenderer({canvas: surface, context, antialias: true, alpha: true});
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
+    surface.setAttribute("aria-hidden", "true");
+    stage.insertBefore(surface, nodeLayer);
+    const camera = new kit.OrthographicCamera(-10, 10, 10, -10, .1, 90);
+    const scene = new kit.Scene();
+    const ambient = new kit.AmbientLight(0xffffff, 1.7);
+    const light = new kit.DirectionalLight(0xffffff, 2.25);
+    light.position.set(-3, 9, 4);
+    scene.add(ambient, light);
+    const geometry = new kit.BoxGeometry(1.38, .22, 1.1);
+    const objects = new Map();
+    for (const table of model.tables) {
+      const group = new kit.Group();
+      for (let i = 0; i < 3; i += 1) {
+        const material = new kit.MeshLambertMaterial({color: tone(table.name), transparent: true});
+        material.color.multiplyScalar(.62 + .18 * i);
+        const layer = new kit.Mesh(geometry, material);
+        layer.position.y = i * .24;
+        group.add(layer);
+      }
+      group.rotation.y = .31;
+      objects.set(table.name, group);
+      scene.add(group);
+    }
+    surface.addEventListener("webglcontextlost", event => {
+      event.preventDefault();
+      view.mode = "flat";
+      updateMapTools();
+      requestDraw();
+    });
+    surface.addEventListener("webglcontextrestored", updateMapTools);
+    return {renderer, scene, camera, objects, context};
+  } catch {
+    renderer?.domElement.remove();
+    renderer?.dispose();
+    return null;
+  }
+}
+const three = makeScene();
+if (three && !reducedMotion.matches) view.mode = "spatial";
+
+const nodeByName = new Map();
+for (const table of model.tables) {
+  const item = button("", () => chooseTable(table.name, "", stage.clientWidth < 610), "node");
+  item.dataset.table = table.name;
+  item.style.setProperty("--tone", tone(table.name));
+  const glyph = element("span", "", "node-glyph");
+  glyph.setAttribute("aria-hidden", "true");
+  item.append(glyph, element("span", table.label, "node-name"), element("code", table.name));
+  nodeLayer.append(item);
+  nodeByName.set(table.name, item);
+}
+function resetView() {
+  view.yaw = .11;
+  view.elevation = .93;
+  view.zoom = 1;
+}
+function updateMapTools() {
+  stage.dataset.mode = view.mode;
+  const spatial = document.querySelector('[data-map="spatial"]');
+  spatial.disabled = !three || Boolean(three?.context.isContextLost());
+  spatial.setAttribute("aria-pressed", String(view.mode === "spatial"));
+  document.querySelector('[data-map="flat"]').setAttribute("aria-pressed", String(view.mode === "flat"));
+  $("map-status").textContent = view.mode === "spatial" ? "拖动旋转，点表查看字段" : "点表查看字段与关联";
+}
+const bound = (n, min, max) => Math.max(min, Math.min(max, n));
+for (const control of document.querySelectorAll("[data-map]")) {
+  control.addEventListener("click", () => {
+    const action = control.dataset.map;
+    if (action === "flat" || action === "spatial") {
+      view.mode = action;
+      resetView();
+    }
+    if (action === "reset") resetView();
+    if (action === "zoom-in") view.zoom = bound(view.zoom * 1.17, .65, 1.9);
+    if (action === "zoom-out") view.zoom = bound(view.zoom / 1.17, .65, 1.9);
+    updateMapTools();
+    requestDraw();
+  });
+}
+let dragging = null;
+stage.addEventListener("pointerdown", event => {
+  if (view.mode !== "spatial" || event.target.closest("button") || event.button !== 0) return;
+  dragging = {id: event.pointerId, x: event.clientX, y: event.clientY};
+  stage.setPointerCapture(event.pointerId);
+  stage.dataset.dragging = "true";
+});
+stage.addEventListener("pointermove", event => {
+  if (dragging?.id !== event.pointerId) return;
+  view.yaw = bound(view.yaw - (event.clientX - dragging.x) * .005, -.64, .64);
+  view.elevation = bound(view.elevation + (event.clientY - dragging.y) * .005, .53, 1.22);
+  dragging = {id: event.pointerId, x: event.clientX, y: event.clientY};
+  requestDraw();
+});
+for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) {
+  stage.addEventListener(event, () => { dragging = null; delete stage.dataset.dragging; });
+}
+reducedMotion.addEventListener("change", () => {
+  if (reducedMotion.matches) view.mode = "flat";
+  updateMapTools();
+  requestDraw();
+});
+new ResizeObserver(requestDraw).observe(stage);
+
+function requestDraw() {
+  if (!view.frame) view.frame = requestAnimationFrame(draw);
+}
+function frameLayout(names, w, h) {
+  const cols = Math.min(names.length, w < 610 ? 2 : (names.length > 12 ? 4 : 3));
+  const rows = Math.ceil(names.length / cols);
+  return names.map((name, index) => {
+    const row = Math.floor(index / cols);
+    const count = Math.min(cols, names.length - row * cols);
+    const x = index % cols - (count - 1)/2;
+    const y = row - (rows - 1)/2;
+    return {name, x: x * (w < 610 ? 4.8 : 8.8), z: y * 3.65,
+      flatX: w/2 + x * Math.min(250, (w-32)/cols) * view.zoom,
+      flatY: h/2 - 14 + y * Math.min(110, (h-52)/rows) * view.zoom};
+  });
+}
+function activeNodes() {
+  const focus = new Set();
+  if (state.table) {
+    focus.add(state.table);
+    for (const link of relatedTo(state.table)) {
+      focus.add(link.from.table === state.table ? link.to.table : link.from.table);
+    }
+  }
+  if (state.question) {
+    for (const step of questionById.get(state.question).steps) {
+      for (const ref of step.fields) focus.add(ref.table);
+    }
+  }
+  return focus;
+}
+function drawSpatial(positions, w, h, focus) {
+  const {camera, renderer, scene, objects} = three;
+  const horizontal = 25 * Math.cos(view.elevation);
+  camera.position.set(Math.sin(view.yaw)*horizontal, 25*Math.sin(view.elevation), Math.cos(view.yaw)*horizontal);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld();
+  let maxX = 1, maxY = 1;
+  for (const {name, x, z} of positions) {
+    const object = objects.get(name);
+    object.position.set(x, 0, z);
+    const point = object.position.clone().applyMatrix4(camera.matrixWorldInverse);
+    maxX = Math.max(maxX, Math.abs(point.x) + 1.6);
+    maxY = Math.max(maxY, Math.abs(point.y) + 1.55);
+  }
+  const scale = bound(Math.min((w - 62)/(2*maxX), (h - 70)/(2*maxY)), 9, 55) * view.zoom;
+  camera.left = -w / (2*scale);
+  camera.right = -camera.left;
+  camera.top = h / (2*scale);
+  camera.bottom = -camera.top;
+  camera.updateProjectionMatrix();
+  const displayed = new Set(positions.map(p => p.name));
+  for (const [name, object] of objects) {
+    object.visible = displayed.has(name);
+    object.scale.setScalar(state.table === name ? 1.15 : 1);
+    for (const layer of object.children) layer.material.opacity = !focus.size || focus.has(name) ? 1 : .38;
+  }
+  const projected = new Map();
+  for (const {name} of positions) {
+    const point = objects.get(name).position.clone();
+    point.y = .35;
+    point.project(camera);
+    projected.set(name, {x:(point.x+1)*w/2, y:(1-point.y)*h/2});
+  }
+  renderer.render(scene, camera);
+  return projected;
+}
+function draw() {
+  view.frame = 0;
+  const w = stage.clientWidth, h = stage.clientHeight;
+  if (!w || !h || !ink) return;
+  if (w !== view.width || h !== view.height) {
+    const ratio = Math.min(devicePixelRatio || 1, 1.75);
+    linksCanvas.width = Math.round(w * ratio);
+    linksCanvas.height = Math.round(h * ratio);
+    ink.setTransform(ratio, 0, 0, ratio, 0, 0);
+    three?.renderer.setSize(w, h, false);
+    view.width = w;
+    view.height = h;
+  }
+  ink.clearRect(0, 0, w, h);
+  const positions = frameLayout(shownTables().map(table => table.name), w, h);
+  const focus = activeNodes();
+  if (three) three.renderer.domElement.hidden = view.mode !== "spatial";
+  const screen = view.mode === "spatial" && three
+    ? drawSpatial(positions, w, h, focus)
+    : new Map(positions.map(p => [p.name, {x:p.flatX, y:p.flatY}]));
+  for (const [name, item] of nodeByName) {
+    const p = screen.get(name);
+    item.hidden = !p;
+    if (!p) continue;
+    item.style.left = p.x + "px";
+    item.style.top = p.y + "px";
+    item.dataset.related = String(!focus.size || focus.has(name));
+    item.setAttribute("aria-pressed", String(state.table === name));
+  }
+  for (const link of model.links) {
+    const start = screen.get(link.from.table), end = screen.get(link.to.table);
+    if (!start || !end) continue;
+    const active = state.table ? state.table === link.from.table || state.table === link.to.table
+      : focus.has(link.from.table) && focus.has(link.to.table);
+    const mid = (start.x + end.x)/2;
+    const y = Math.min(start.y,end.y) - Math.min(30, Math.abs(start.x-end.x)*.13);
+    ink.strokeStyle = active ? "#4a5faf" : (focus.size ? "#cbd3e2" : "#7184a2");
+    ink.lineWidth = active ? 2.1 : 1.2;
+    ink.setLineDash(link.kind === "rule" ? [5, 4] : []);
+    ink.beginPath();
+    ink.moveTo(start.x, start.y);
+    ink.bezierCurveTo(mid, y, mid, y, end.x, end.y);
+    ink.stroke();
+  }
+  ink.setLineDash([]);
+}
+
+function renderOverview(content) {
+  const grid = element("div", "", "overview-grid");
+  for (const table of shownTables()) {
+    const item = button(table.label, () => chooseTable(table.name, "", true));
+    item.append(element("code", qualified(table.name)));
+    grid.append(item);
+  }
+  content.append(grid);
+}
+function renderFields(content, table) {
+  const all = table.fields.length;
+  const featured = table.fields.filter(field => field.featured);
+  const showing = state.allFields || !featured.length ? table.fields : featured;
+  if (featured.length && featured.length < all) {
+    const toggle = button(state.allFields ? "只看关键字段" : "显示全部字段（" + all + "）", () => {
+      state.allFields = !state.allFields;
+      renderDetail();
+      $("detail-content").querySelector("button")?.focus();
+    });
+    content.append(toggle);
+  }
+  const scroll = element("div", "", "table-scroll");
+  const grid = element("table");
+  grid.setAttribute("aria-label", table.label + "字段");
+  const heading = grid.createTHead().insertRow();
+  for (const label of ["字段名","业务含义","类型与单位"]) {
+    const cell = element("th", label);
+    cell.scope = "col";
+    heading.append(cell);
+  }
+  const body = grid.createTBody();
+  for (const field of showing) {
+    const row = body.insertRow();
+    row.dataset.focus = String(field.name === state.field);
+    row.insertCell().append(element("code", field.name));
+    const meaning = row.insertCell();
+    meaning.append(element("strong", field.label, "field-label"), document.createTextNode(field.description));
+    if (field.key) meaning.append(element("div", field.key, "field-tag"));
+    row.insertCell().textContent = [field.type, field.unit].filter(Boolean).join(" / ");
+  }
+  scroll.append(grid);
+  content.append(scroll);
+}
+function renderLinks(content, table) {
+  const edges = relatedTo(table.name);
+  if (!edges.length) {
+    content.append(element("p", "未登记可追溯的关联字段", "detail-note"));
+    return;
+  }
+  const list = element("ul", "", "relation-list");
+  for (const edge of edges) {
+    const target = edge.to.table === table.name ? edge.from : edge.to;
+    const item = element("li");
+    const header = element("div", "", "target");
+    header.append(
+      button(tableByName.get(target.table).label + " · " + fieldOf(target).label, () => chooseTable(target.table, target.field, true)),
+      element("span", edge.label, "qualifier"),
+    );
+    const join = element("p");
+    join.append(element("code", edge.from.table + "." + edge.from.field), " → ", element("code", edge.to.table + "." + edge.to.field));
+    item.append(header, join, element("p", edge.rule));
+    list.append(item);
+  }
+  content.append(list);
+}
+function renderQuestion(content, question) {
+  content.append(element("p", question.question), element("p", question.formula, "formula"));
+  const list = element("ol", "", "steps");
+  for (const [index, step] of question.steps.entries()) {
+    const item = element("li");
+    item.append(element("strong", (index+1) + " " + step.title), element("p", step.text));
+    if (step.fields.length) {
+      const fields = element("div", "", "metric-refs");
+      for (const ref of step.fields) {
+        fields.append(button(tableByName.get(ref.table).label + " · " + fieldOf(ref).label,
+          () => chooseTable(ref.table, ref.field, true)));
+      }
+      item.append(fields);
+    }
+    list.append(item);
+  }
+  content.append(list);
+  if (question.example) content.append(element("p", question.example, "detail-note"));
+  if (question.pending) content.append(element("p", question.pending, "pending"));
+}
+function renderDetail() {
+  const title = $("detail-title"), controls = $("detail-controls"), content = $("detail-content");
+  controls.replaceChildren();
+  content.replaceChildren();
+  if (state.question) {
+    const question = questionById.get(state.question);
+    title.replaceChildren(document.createTextNode(question.label), element("span", question.status, "qualifier"));
+    controls.append(button("返回库表", () => {
+      state.question = "";
+      writeLocation();
+      render();
+      $("detail-title").focus();
+    }));
+    renderQuestion(content, question);
+    return;
+  }
+  if (!state.table) {
+    title.textContent = "库表目录";
+    renderOverview(content);
+    return;
+  }
+  const table = tableByName.get(state.table);
+  title.replaceChildren(document.createTextNode(table.label), element("code", qualified(table.name)));
+  for (const [key, label] of [["overview","概览"],["fields","字段 " + table.fields.length],["links","关联 " + relatedTo(table.name).length]]) {
+    const control = button(label, () => {
+      state.pane = key;
+      if (key !== "fields") {
+        state.field = "";
+        writeLocation();
+      }
+      renderDetail();
+      $("detail-controls").querySelector('[aria-pressed="true"]')?.focus();
+    });
+    control.setAttribute("aria-pressed", String(state.pane === key));
+    controls.append(control);
+  }
+  if (state.pane === "fields") renderFields(content, table);
+  if (state.pane === "links") renderLinks(content, table);
+  if (state.pane === "overview") {
+    content.append(element("p", table.grain, "detail-note"));
+    const strip = element("div", "", "field-strip");
+    for (const field of table.fields.filter(item => item.featured).slice(0, 7)) {
+      strip.append(button(field.label, () => chooseTable(table.name, field.name, true)));
+    }
+    if (strip.childNodes.length) content.append(strip);
+    if (table.sources.length) {
+      const details = element("details");
+      details.append(element("summary", "来源库和表"));
+      const sources = element("ul", "", "sources");
+      for (const source of table.sources) {
+        const item = element("li");
+        item.append(element("code", source));
+        sources.append(item);
+      }
+      details.append(sources);
+      content.append(details);
+    }
+  }
+}
+function render() {
+  for (const [id, item] of filterButtons) item.setAttribute("aria-pressed", String(id === state.group));
+  for (const [id, item] of routeButtons) item.setAttribute("aria-pressed", String(id === state.question));
+  $("notice").textContent = state.table ? tableByName.get(state.table).label + "已选中" :
+    state.question ? questionById.get(state.question).label + "问数路径已打开" : shownTables().length + " 张业务表";
+  renderDetail();
+  updateMapTools();
+  requestDraw();
+}
+function restoreLocation() { readLocation(); render(); }
+window.addEventListener("popstate", restoreLocation);
+window.addEventListener("hashchange", restoreLocation);
+restoreLocation();
+</script>
+</body>
+</html>

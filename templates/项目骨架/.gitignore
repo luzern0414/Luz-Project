@@ -1,0 +1,28 @@
+# 实际凭据和本地配置
+.env
+.env.*
+!.env.example
+/config/secrets/
+/config/**/*.local.*
+
+# 客户原件和商务交付
+/docs/01-原始资料/
+/docs/02-对接资料/
+
+# 本地日志、工作记录和运行数据
+/log/
+/raw/
+/data/local/
+/data/users/
+/data/imports/
+/data/exports/
+/data/snapshots/
+
+# 依赖、缓存和构建产物
+node_modules/
+.venv/
+__pycache__/
+.pytest_cache/
+dist/
+build/
+coverage/

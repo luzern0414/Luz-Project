@@ -1464,5 +1464,117 @@
     "last_confirmed": "2026-11-18",
     "scope": "maintenance",
     "codified": "references/client-documents.md › 需求对接文件的职责"
+  },
+  {
+    "key": "project-docs-source-and-audience",
+    "kind": "lesson",
+    "text": "对接资料和开发资料共用 NN-短文种.扩展名 命名规则，项目名称、编号和代号由目录与正文承载。按实际选用文档连续编号，缺项跳过。已发对接编号沿用，新增文件顺延。模板编号用于定位母版。更名同步导航、引用与产物记录，功能编号贯穿开发、测试与验收。",
+    "why": "对接资料已去项目名前缀后，开发资料模板仍要求补项目名称，导致同一项目出现两套命名方式。已统一入口、归档规范和开发模板。",
+    "uses": 8,
+    "first_seen": "2026-11-19",
+    "last_confirmed": "2026-11-20",
+    "previous": {
+      "text": "对接资料用 NN-文种.扩展名，项目名称和编号由目录与正文承载。按项目实际顺序为已采用文件连续编号，缺项跳过。已发编号沿用，新增文件顺延。模板编号用于定位母版。方案和功能清单之后确认规则，再安排实施与商务事项。产品介绍以交付成果为依据，开发、测试和验收使用同一功能编号追溯。",
+      "replaced_at": "2026-11-20"
+    },
+    "scope": "maintenance",
+    "codified": "references/project-structure.md › 编号与归档"
+  },
+  {
+    "key": "project-bootstrap-file-ownership",
+    "kind": "lesson",
+    "text": "项目骨架提供目录、项目 README 和仓库基础文件。配置沿用 Luz-Dev 总入口，迁移沿用 infra/migrations。说明放在配置树之外，接入配置包时保留组件的唯一来源。",
+    "why": "现行配置检查会核对未登记文件，骨架用隔离副本实测 Git 忽略清单和 Dev 配置包接入。",
+    "uses": 1,
+    "first_seen": "2026-11-19",
+    "last_confirmed": "2026-11-19",
+    "scope": "maintenance",
+    "codified": "references/project-structure.md 的项目目录标准与 templates/项目骨架"
+  },
+  {
+    "key": "project-template-scenarios",
+    "kind": "lesson",
+    "text": "模板校对覆盖文种、填写示例、自动生成和题库。场景字段写触发环节、执行者和业务操作或结果，名称变化同步文件、内页和索引。功能需求清单按使用端、功能模块、使用角色分组，同一上级内合并。",
+    "why": "同类口语表述在需求草稿、确认表、图文说明与开发模板中反复出现，项目分组也需与通用表格校验一致。",
+    "uses": 1,
+    "first_seen": "2026-11-19",
+    "last_confirmed": "2026-11-19",
+    "scope": "maintenance",
+    "codified": "references/client-documents.md 客户文档与表格分组；templates/02-对接资料/README.md 填写说明"
+  },
+  {
+    "key": "generic-research-template",
+    "kind": "lesson",
+    "text": "通用 Word 与 PDF 文件从 Design 的母版生成。Project 收录无编号的 PDF 示例，调研、检索和其他成文文件按用途替换章节。",
+    "why": "用户要求把已确认的黑白报告版式用于后续调研及其他通用文件。",
+    "uses": 4,
+    "first_seen": "2026-11-19",
+    "last_confirmed": "2026-11-19",
+    "previous": {
+      "text": "通用调研报告以文种命名。正文交代范围、发现与复核事项，表格逐项记录来源和核验状态。按黑白 Word 版式导出 PDF，状态符号附文字解释，页码居中。",
+      "replaced_at": "2026-11-19"
+    },
+    "scope": "maintenance",
+    "codified": "Luz-Design references/design/documents.md 通用文档模板；Luz-Project SKILL.md 模板"
+  },
+  {
+    "key": "agreement-quote-subtotal-conflict",
+    "kind": "lesson",
+    "text": "生成合作协议时逐项复核人工报价的单价、数量与小计，出现互相抵消的差额也应留空协议价款，待签署双方书面确认。",
+    "why": "报价总价一致时，分项单价乘数量仍可能与列示小计不符。",
+    "uses": 1,
+    "first_seen": "2026-11-20",
+    "last_confirmed": "2026-11-20"
+  },
+  {
+    "key": "agreement-exact-word-template",
+    "kind": "lesson",
+    "text": "按项目指定的合作协议模板重排文字时，使用本次读取的原始Word母版并记录哈希；样例商务条件依用户授权取舍。",
+    "why": "合作协议母版更新后，沿用旧结构或通用合同样式会偏离当前指定格式。",
+    "uses": 1,
+    "first_seen": "2026-11-20",
+    "last_confirmed": "2026-11-20"
+  },
+  {
+    "key": "agent-data-foundation-html-template",
+    "kind": "lesson",
+    "text": "Agent 数据底座母版、填写说明和生成脚本由 Luz-Project 维护，母版归入 03-开发资料模板库。",
+    "why": "用户指定通用母版直接放在 Project 的 03 模板库。",
+    "uses": 1,
+    "first_seen": "2026-11-20",
+    "last_confirmed": "2026-11-20",
+    "scope": "maintenance",
+    "codified": "templates/03-开发资料/README.md#agent-数据底座"
+  },
+  {
+    "key": "commercial-project-three-review-packages",
+    "kind": "preference",
+    "text": "成熟商业项目由 Project 主导。先由 System 调 Crawl，需求与方案成组确认；四份开发说明成组确认；可操作的 HTML 原型单独确认，随后定稿对接资料 03 至 06 再进入实施。",
+    "why": "用户于 2026-11-21 明确更新项目矩阵和审批顺序。",
+    "uses": 1,
+    "first_seen": "2026-11-21",
+    "last_confirmed": "2026-11-21",
+    "codified": "references/commercial-project.md › 三次确认和实施基线"
+  },
+  {
+    "key": "commercial-prototype-business-coverage",
+    "kind": "preference",
+    "text": "商业系统原型按已确认功能逐项办理，岗位可查询主数据、处理单据、核对业务影响并追溯来源；正式成品直接呈现动作、条件和结果。",
+    "why": "用户要求原型覆盖可操作的业务模块，交付文案清除制作话术。",
+    "uses": 1,
+    "first_seen": "2026-11-21",
+    "last_confirmed": "2026-11-21",
+    "codified": "references/commercial-project.md#原型验收"
+  },
+  {
+    "key": "商业原型逐状态验收",
+    "kind": "lesson",
+    "text": "商业项目的应用原型逐操作执行 Design 成品检查，将实际 HTML、走查记录与规则版本绑定；界面问题先修正规范、基线与生成入口，再用既有业务样例回归。",
+    "why": null,
+    "uses": 1,
+    "first_seen": "2026-11-21",
+    "last_confirmed": "2026-11-21",
+    "scope": "maintenance",
+    "codified": "references/commercial-project.md#原型验收"
   }
 ]

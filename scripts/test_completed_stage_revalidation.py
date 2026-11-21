@@ -64,7 +64,7 @@ def test_terminal_route_rechecks_evidence_before_reporting_done(tmp_path, monkey
     root = completed(tmp_path)
     # Restrict only the route's stage order to this genuinely completed stage
     # so the terminal branch is exercised without unrelated future stages.
-    monkeypatch.setattr(ad, "stage_order", lambda: ["requirements"])
+    monkeypatch.setattr(ad, "stage_order", lambda root=None: ["requirements"])
     assert flow_steps.next_report(root)["kind"] == "done"
     crawl_record(root, "requirements").unlink()
 

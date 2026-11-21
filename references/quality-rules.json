@@ -297,7 +297,8 @@
       "owner": "luz-system",
       "stages": [
         "requirements",
-        "architecture"
+        "architecture",
+        "scope"
       ],
       "title": "需求有事实来源",
       "applies_when": "每项业务需求",
@@ -326,7 +327,9 @@
       ],
       "owner": "luz-system",
       "stages": [
-        "architecture"
+        "architecture",
+        "design",
+        "baseline"
       ],
       "title": "功能闭环追踪",
       "applies_when": "所有已确认在范围内功能",
@@ -417,7 +420,8 @@
       "owner": "luz-system",
       "stages": [
         "requirements",
-        "architecture"
+        "architecture",
+        "scope"
       ],
       "title": "先定义度量口径",
       "applies_when": "任务成功率、耗时、错误率等项目目标",
@@ -537,17 +541,17 @@
       "stages": [
         "design"
       ],
-      "title": "新手写组件事前人批",
+      "title": "自研交互有依据",
       "applies_when": "本地及网上均无适用来源的新组件",
-      "basis": "user-policy",
-      "requirement": "实现前必须取得绑定申请内容、组件、行为、文件和范围的明确人工批准；未授权实现数0。",
+      "basis": "local-derived",
+      "requirement": "覆盖成熟组件的适用性差异、自研范围、操作语义及验证证据。",
       "metric": {
-        "target": "实现前必须取得绑定申请内容、组件、行为、文件和范围的明确人工批准；未授权实现数0。",
-        "unit": "未授权项"
+        "target": "自研交互逐项给出适用性依据和验证结果。",
+        "unit": "项"
       },
-      "exceptions": "正常配置、装配、类型适配、数据绑定不增加审批；范围变化重新确认。",
-      "verification": "核对真实会话、申请哈希、本地/网络失败理由及验收范围；检查是否把新控件伪称绑定。",
-      "required_evidence": "具体申请、真实批准、当前范围和文件",
+      "exceptions": "项目已约定的技术选型审批按原约定执行。",
+      "verification": "对照 Design 组件复用规范，核对真实组件、源码与针对性验证。",
+      "required_evidence": "选型依据、组件文件与交互用例",
       "source_ids": [],
       "severity": "blocker",
       "local_policy": "100%、0、完整覆盖及流程门槛若未在来源逐字规定，均为 Luz 本地项目验收策略；不得写成来源的通用指标。",
@@ -622,9 +626,9 @@
       "title": "真实复用量透明",
       "applies_when": "组件交接与维护",
       "basis": "local",
-      "requirement": "固定独立组件分母，以原样复用/配置适配/业务绑定/获批手写作多标签统计；可能重叠，不将比例相加或宣称100%复用配额。",
+      "requirement": "固定独立组件分母，以原样复用/配置适配/业务绑定/有依据的自研作多标签统计；可能重叠，不将比例相加或宣称100%复用配额。",
       "metric": {
-        "target": "固定独立组件分母，以原样复用/配置适配/业务绑定/获批手写作多标签统计；可能重叠，不将比例相加或宣称100%复用配额。",
+        "target": "固定独立组件分母，以原样复用/配置适配/业务绑定/有依据的自研作多标签统计；可能重叠，不将比例相加或宣称100%复用配额。",
         "unit": "各标签组件数/独立组件总数"
       },
       "exceptions": "无通用豁免；不适用必须记录具体原因。",
@@ -1132,7 +1136,8 @@
       ],
       "owner": "luz-ops",
       "stages": [
-        "verification"
+        "verification",
+        "demo"
       ],
       "title": "可观察行为测试",
       "applies_when": "功能回归",
@@ -1559,7 +1564,8 @@
       "owner": "luz-ops",
       "stages": [
         "verification",
-        "release"
+        "release",
+        "demo"
       ],
       "title": "当前证据绑定当前版本",
       "applies_when": "所有验收文件",
@@ -2178,6 +2184,61 @@
       "local_policy": "100%是Luz本地适用范围与证据覆盖门槛；HAX未给出通用准确率、点击次数、时延或成功率阈值。",
       "implementation_status": "规则定义；产品是否符合必须逐项目执行验证，目录存在不代表通过。",
       "authority_boundary": "HAX G7–G10支持用户控制、纠正与歧义处理；100%场景覆盖为Luz本地策略，不是微软量化验收指标，也不是AX协议标准。"
+    },
+    {
+      "id": "UX-20",
+      "owner": "luz-design",
+      "stages": [
+        "design",
+        "demo",
+        "implementation",
+        "verification"
+      ],
+      "axes": [
+        "UX",
+        "DX"
+      ],
+      "title": "应用颜色与交互边界",
+      "applies_when": "产品 Web、App、小程序的界面",
+      "basis": "user-policy",
+      "requirement": "全局表面纯白，组件与各状态禁用绿色及青绿色。多字段办理采用独立页；详情就近展开或在独立页显示。",
+      "metric": {
+        "target": "全局表面纯白，组件与各状态禁用绿色及青绿色。多字段办理采用独立页；详情就近展开或在独立页显示。",
+        "unit": "违规处"
+      },
+      "exceptions": "按实际终端和业务功能确定走查状态。",
+      "verification": "核对渲染后的页面、交互和设备状态，覆盖打开、办理、校验、返回和恢复。",
+      "required_evidence": "实际版本、浏览器或设备走查和关键状态截图",
+      "source_ids": [],
+      "severity": "blocker",
+      "local_policy": "项目使用者确定的应用界面成品要求，详见 Luz-Design/references/design/hard-rules.md。",
+      "implementation_status": "由项目场景实测并核验成品及所用规则版本。"
+    },
+    {
+      "id": "PROJ-01",
+      "owner": "luz-project",
+      "stages": [
+        "demo"
+      ],
+      "axes": [
+        "UX",
+        "DX"
+      ],
+      "title": "确认绑定实际走查版本",
+      "applies_when": "商业项目第三批 HTML 原型",
+      "basis": "local-derived",
+      "requirement": "送审原型及每个走查场景的 HTML 和 Design 检查程序摘要准确对应。",
+      "metric": {
+        "target": "送审原型及每个走查场景的 HTML 和 Design 检查程序摘要准确对应。",
+        "unit": "场景"
+      },
+      "exceptions": "按实际终端和业务功能确定走查状态。",
+      "verification": "执行 build demo，重新核对当前构建记录、页面与逐步验证的结果。",
+      "required_evidence": "批次构建记录、送审 HTML、逐场景走查记录",
+      "source_ids": [],
+      "severity": "blocker",
+      "local_policy": "项目批次使用本地构建记录绑定送审版本，规则见 references/commercial-project.md。",
+      "implementation_status": "由项目场景实测并核验成品及所用规则版本。"
     }
   ],
   "research": {

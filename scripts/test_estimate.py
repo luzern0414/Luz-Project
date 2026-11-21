@@ -500,7 +500,12 @@ class FeatureListRenderTests(unittest.TestCase):
             self.assertIsNone(book.properties.description, "no evidence is carried because no switch is on")
             cells = [c.value for ws in book.worksheets for row in ws.iter_rows() for c in row if c.value is not None]
             header = next(r for r in book.active.iter_rows(min_row=1, max_row=5) if any(c.value == "功能" for c in r))
-            self.assertEqual([c.value for c in header], ["使用端", "使用角色", "功能模块", "功能", "功能说明", "类型"])
+            self.assertEqual([c.value for c in header], ["使用端", "功能模块", "使用角色", "功能", "功能说明", "类型"])
+            self.assertEqual(book.active.freeze_panes, "D4")
+            merges = {str(region) for region in book.active.merged_cells.ranges if region.min_row >= 4}
+            self.assertEqual(merges, {"A4:A7", "A8:A10", "A11:A12", "B4:B6", "B9:B10", "B11:B12", "C4:C6", "C11:C12"})
+            self.assertEqual([book.active[f"B{row}"].value for row in (7, 8)], ["预约服务", "预约服务"])
+            self.assertEqual([book.active[f"C{row}"].value for row in (9, 10)], ["店长", "店长、老板"])
             self.assertFalse([v for v in cells if isinstance(v, str) and (v.startswith("=") or any(w in v for w in ("工时", "人天", "小计", "合计", "金额", "单价", "报价", "元每")))], cells)
             self.assertEqual(cf.estimate_errors(root), [])
             self.assertEqual(ep.user_todos(root), [])

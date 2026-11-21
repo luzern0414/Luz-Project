@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Command line interface for the Luz project control plane.
 
-A project is given as its project directory (``D:\\Codes\\NNN-项目名``) or as its state root (the ``raw`` of its session in the output root); every
-command except ``init`` takes either."""
+A running project is given as its project directory (``D:\\Codes\\NNN-项目名``) or as its state root (the ``raw`` of its session in the output root).
+The ``init`` and ``scaffold`` commands use an explicit project destination."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from project_paths import command_project
 
 from project_core import (
     ProjectError,
@@ -49,8 +50,13 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--project-dir", required=True, help="项目目录 D:/Codes/NNN-项目名（不存在则创建）；会话目录与它同名")
     init.add_argument("--output-root", help="Luz-Project 的输出根（默认 E:/Skill输出/Luz-Project，或环境变量 LUZ_PROJECT_OUTPUT）")
     init.add_argument("--repository")
+    init.add_argument("--workflow", choices=["commercial", "legacy"], default="commercial", help="默认商业流程；已有项目按自身流程继续")
     init.add_argument("--ui-mode", choices=["component-reuse", "source-locked"], default="component-reuse",
                       help="新项目 UI 模式，写入 project.json；默认 component-reuse，source-locked 需显式指定")
+
+    scaffold = sub.add_parser("scaffold", help="按目录标准创建项目骨架和基础文件")
+    scaffold.add_argument("name", help="写入 README 的项目名称")
+    scaffold.add_argument("--project-dir", required=True, help="骨架的目标新目录")
 
     status = sub.add_parser("status", help="查看项目状态")
     status.add_argument("project")
@@ -73,7 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     artifact.add_argument("--kind", default="html")
     artifact.add_argument("--source-id", action="append", default=[])
 
-    approve = sub.add_parser("approve", help="记录用户审批：用户逐个审批 docs 里的文件（--doc），一次一个，按顺序；没有 docs 文件的阶段内部门通过后自动完成（不带 --doc）")
+    approve = sub.add_parser("approve", help="商业项目前三次确认整批文件（不加 --doc）；逐文件阶段使用 --doc。记录实际确认人和原话")
     approve.add_argument("project")
     approve.add_argument("stage")
     approve.add_argument("--doc", help="docs 下的相对路径，如 docs/01-需求对接/01-需求说明书.pdf（用 project.py next 看当前该审哪一个）")
@@ -85,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     confirm.add_argument("--doc", required=True)
     confirm.add_argument("--note", required=True)
     confirm.add_argument("--approver", required=True)
-    nxt = sub.add_parser("next", help="当前待审的那一个文件、为什么是它、已通过的内部检查和之后的队列（对用户汇报的唯一来源）")
+    nxt = sub.add_parser("next", help="当前应完成的内部步骤、整组待确认文件或后期动作门")
     nxt.add_argument("project")
     nxt.add_argument("--json", action="store_true", dest="as_json")
     checklist = sub.add_parser("checklist", help="一个阶段的完整路径清单：每一步已完成/未做/被什么阻断，以及现在该执行的命令")
@@ -98,7 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
     step.add_argument("step", choices=["rules", "specialist"])
     step.add_argument("--note", required=True)
     step.add_argument("--by", default="")
-    review = sub.add_parser("review", help="用户对当前文件的修改意见：add 登记原话、done 标记处理完、list 列出（有 open 意见的文件不能批准）")
+    review = sub.add_parser("review", help="add 登记当前文件的意见、done 登记处理结果、list 查看；未处理的意见会阻止整批确认")
     review.add_argument("project")
     review.add_argument("action", choices=["add", "done", "list"])
     review.add_argument("--doc")
@@ -134,6 +140,14 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--strict", action="store_true")
 
     matrix = sub.add_parser("matrix", help="输出完整开发矩阵")
+    matrix.add_argument("project", nargs="?", help="按此项目实际保存的流程列出矩阵")
+    matrix.add_argument("--workflow", choices=["commercial", "legacy"], default="commercial")
+    for command in ("build", "templates"):
+        batch = sub.add_parser(command, help="商业项目按批准批次生成正式文件或选择真实模板")
+        batch.add_argument("project")
+        batch.add_argument("stage", choices=["scope", "design", "demo", "baseline"])
+        if command == "build":
+            batch.add_argument("--data", required=True)
     matrix.add_argument("--json", action="store_true", dest="as_json")
     gate = sub.add_parser("gate", help="检查当前阶段的前置审批和检索证据")
     gate.add_argument("project")
@@ -148,6 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
     document.add_argument("--file", required=True)
 
     adopt = sub.add_parser("adopt", help="把既有仓库就地接入为 Luz 项目（仓库做项目目录，不改代码目录；文档按 --move 迁移）")
+    adopt.add_argument("--workflow", choices=["auto", "commercial", "legacy"], default="auto", help="默认从现有资料目录识别，空仓库及标准三组目录进入商业流程")
     adopt.add_argument("project")
     adopt.add_argument("--output-root", help="Luz-Project 的输出根")
     adopt.add_argument("--name")
@@ -229,6 +244,9 @@ def run_client(args: argparse.Namespace) -> object:
 
     root = resolve_state_root(_path(args.project))
     act = args.action
+    from project_paths import commercial_at
+    if commercial_at(root) and (act.startswith(("requirements", "proposal", "intake"))):
+        raise ProjectError("商业项目前期资料使用 project.py build <项目> <批次> --data <事实.json>")
     if act == "estimate":
         import client_estimate as ce
 
@@ -283,6 +301,8 @@ def run_change(args: argparse.Namespace) -> object:
     import client_flow as cf
 
     root = resolve_state_root(_path(args.project))
+    if args.no_reopen and __import__("project_paths").commercial_at(root):
+        raise ProjectError("商业项目不能跳过变更回退")
     split = lambda value: [x.strip() for x in value.split(",") if x.strip()]
     visible_flag = lambda value: {"是": True, "否": False, "默认": "default" if args.action == "update" else None}.get(value)
     if args.action == "add":
@@ -314,10 +334,42 @@ def run_change(args: argparse.Namespace) -> object:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command in {"build", "templates", "approve", "confirm", "action", "review", "change", "step", "stage", "artifact", "client", "document", "link", "session", "render"}:
+            import commercial_workflow as cw
+            root = resolve_state_root(_path(args.project))
+            if cw.active(root):
+                with cw.write_lock(root):
+                    return execute(args)
+        return execute(args)
+    except (ProjectError, OSError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+
+def execute(args: argparse.Namespace) -> int:
+    import commercial_workflow as cw
+    try:
         if args.command == "init":
-            state = create_project(args.name, _path(args.project_dir), _path(args.output_root) if args.output_root else output_root(), args.repository, ui_mode=args.ui_mode)
+            state = create_project(args.name, _path(args.project_dir), _path(args.output_root) if args.output_root else output_root(), args.repository, ui_mode=args.ui_mode, workflow=cw.WORKFLOW if args.workflow == "commercial" else "legacy")
             _print({"project": str(deliver_root(state)), "state_root": str(state), "session": str(state.parent), "summary": str(state.parent / f"{state.parent.name}.html"),
-                    "next": "project.py next <项目> 看现在该做什么；完整路径见 references/runbook.md"})
+                    "next": f'project.py next "{command_project(state)}"'})
+        elif args.command in {"build", "templates"}:
+            import approval_docs
+            root = resolve_state_root(_path(args.project))
+            if not cw.active(root, args.stage):
+                raise ProjectError("此命令仅用于商业项目的四个前期批次")
+            if args.command == "templates":
+                from commercial_documents import select_templates
+                holds = approval_docs.hold_errors(approval_docs.Ctx(root), args.stage)
+                if holds:
+                    raise ProjectError("上游尚未确认：" + "；".join(holds[:2]))
+                _print(select_templates(deliver_root(root), root, args.stage))
+            else:
+                _print(cw.build(root, args.stage, _path(args.data)))
+        elif args.command == "scaffold":
+            from project_scaffold import create_scaffold
+            folder = create_scaffold(args.name, _path(args.project_dir))
+            _print({"project": str(folder), "readme": str(folder / "README.md")})
         elif args.command == "status":
             _print(project_status(_path(args.project)))
         elif args.command == "route":
@@ -345,6 +397,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command in {"approve", "confirm"}:
             import approval_docs
             project = _path(args.project)
+            if args.command == "approve" and cw.active(project, args.stage) and args.pre_authorized:
+                raise ProjectError("商业批次只接受用户对完整本批的实际确认")
             if args.command == "confirm":
                 found = next((d for d in approval_docs.all_documents(resolve_state_root(project)) if d["path"] == approval_docs.rel(args.doc) or d["path"].endswith("/" + approval_docs.rel(args.doc))), None)
                 if found is None:
@@ -367,7 +421,7 @@ def main(argv: list[str] | None = None) -> int:
             if not args.stage:
                 report = flow_steps.next_report(root)
                 stage = report.get("stage") or stage
-            data = flow_steps.checklist(root, stage, project=str(deliver_root(root)))
+            data = flow_steps.checklist(root, stage, project=str(command_project(root)))
             print(json.dumps(data, ensure_ascii=False, indent=2, default=str) if args.as_json else flow_steps.format_checklist(data))
         elif args.command == "step":
             import flow_steps
@@ -427,9 +481,9 @@ def main(argv: list[str] | None = None) -> int:
             from project_core import adopt_project
             pair = lambda v: tuple(x.strip() for x in v.split("=", 1))
             _print(adopt_project(_path(args.project), args.name, moves=[pair(v) for v in args.move], aliases=dict(pair(v) for v in args.alias),
-                                 output=_path(args.output_root) if args.output_root else None))
+                                 output=_path(args.output_root) if args.output_root else None, workflow=args.workflow))
         elif args.command == "relink":
-            from project_core import load_project, relink_after_moves
+            from project_core import relink_after_moves
             pairs = [tuple(x.strip() for x in v.split("=", 1)) for v in args.move] or [tuple(x) for x in load_project(_path(args.project)).get("adopted", {}).get("pairs", [])]
             _print(relink_after_moves(_path(args.project), pairs))
         elif args.command == "migrate":
@@ -455,7 +509,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "change":
             _print(run_change(args))
         elif args.command == "matrix":
-            matrix_value = load_matrix()
+            from project_core import commercial_matrix, matrix_for
+            matrix_value = matrix_for(_path(args.project)) if args.project else (commercial_matrix() if args.workflow == "commercial" else load_matrix())
             if args.as_json:
                 _print(matrix_value)
             else:

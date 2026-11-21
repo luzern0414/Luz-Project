@@ -78,7 +78,8 @@ class QuoteAndRules(unittest.TestCase):
 
     def test_feature_list_lists_functions_only_by_default(self):
         spec = cr.feature_list_xlsx_spec(fx.features(), "示例", "japanese-sushi")
-        self.assertEqual([c["name"] for c in spec["columns"]], ["使用端", "使用角色", "功能模块", "功能", "功能说明", "类型"])
+        self.assertEqual([c["name"] for c in spec["columns"]], ["使用端", "功能模块", "使用角色", "功能", "功能说明", "类型"])
+        self.assertEqual([c["name"] for c in spec["columns"] if c.get("merge")], ["使用端", "功能模块", "使用角色"])
         self.assertNotIn("sheets", spec)
         self.assertNotIn("footer", spec)
         self.assertNotIn("estimate", spec)
@@ -87,7 +88,7 @@ class QuoteAndRules(unittest.TestCase):
         data = self.features()
         spec = cr.feature_list_xlsx_spec(data, "示例", "japanese-sushi", self.human_quote(), estimate=self.estimate())
         listing, pricing = spec["sheets"]
-        self.assertEqual([c["name"] for c in listing["columns"]], ["使用端", "使用角色", "功能模块", "功能", "功能说明", "类型", "工时（人天）"])
+        self.assertEqual([c["name"] for c in listing["columns"]], ["使用端", "功能模块", "使用角色", "功能", "功能说明", "类型", "工时（人天）"])
         self.assertEqual([c["name"] for c in pricing["columns"]][-3:], ["工时（人天）", "单价（元每人天）", "报价（元）"])
         self.assertTrue(all(r[-2] == 800 and str(r[-1]).startswith("=") for r in pricing["rows"]), "the unit price is the person's; the amount is a formula, not a typed number")
         self.assertTrue(all(isinstance(v, str) and v.startswith("=") for item in pricing["footer"] for v in item["values"].values()), "every total is a formula")

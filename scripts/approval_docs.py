@@ -51,8 +51,8 @@ def blanket(manifest: dict[str, Any]) -> bool:
     return policy(manifest).get("mode") == "blanket"
 
 
-def stage_order() -> list[str]:
-    return [str(item["id"]) for item in pc._load_matrix()["stages"]]
+def stage_order(project=None) -> list[str]:
+    return [str(item["id"]) for item in pc.matrix_for(project)["stages"]]
 
 
 def rel(path: str) -> str:
@@ -71,7 +71,7 @@ def documents(root: Path, stage: str, *, approvable: bool = True) -> list[dict[s
     """The files of ``docs/`` a stage hands over, in the order the user approves them (matrix ``documents``). ``approvable=False`` also lists the living
     file (the change ledger) and the client's own input (the filled-in form). The design stage lists its prototypes (named by data/stages/design.json)
     before the interface design document, which embeds them."""
-    item = pc._stage_defs()[stage]
+    item = pc._stage_defs(root)[stage]
     out: list[dict[str, Any]] = []
     for d in item.get("documents", []):
         if d.get("dynamic") == "prototypes":
@@ -91,7 +91,7 @@ def documents(root: Path, stage: str, *, approvable: bool = True) -> list[dict[s
 def all_documents(root: Path) -> list[dict[str, Any]]:
     """Every approvable file of the project in the global order: the stages in matrix order, inside a stage the order of its ``documents``."""
     out: list[dict[str, Any]] = []
-    for stage in stage_order():
+    for stage in stage_order(root):
         out += documents(root, stage)
     return out
 
@@ -135,9 +135,10 @@ class Ctx:
     def hash_of(self, path: str) -> str | None:
         key = rel(path)
         if key not in self._hash:
-            name = key.partition("#")[0]
+            section = "#" in key and not key.startswith("docs/")
+            name = key.partition("#")[0] if section else key
             target = locate(self.root, name)
-            if "#" in key:
+            if section:
                 import client_data as cd
 
                 self._hash[key] = cd.source_digest(self.root, key)
@@ -161,7 +162,8 @@ class Ctx:
 
     def stage_upstream(self, stage: str) -> dict[str, str]:
         """Hashes of all documents of the stages before ``stage``."""
-        before = stage_order()[: stage_order().index(stage)]
+        order = stage_order(self.root)
+        before = order[: order.index(stage)]
         return {d["path"]: h for d in self.docs if d["stage"] in before and (h := self.hash_of(d["path"]))}
 
 
@@ -181,7 +183,7 @@ def source_hashes(ctx: Ctx, stage: str) -> dict[str, str]:
 
     late = LATE_SOURCES.get(stage, set())
     out = {k: v for k, v in client_flow.tracked_hashes(ctx.root, stage).items() if k.partition("#")[0] not in late}
-    if any(d.get("kind") in {"html", "prototype"} for d in pc._stage_defs()[stage].get("documents", [])):
+    if any(d.get("kind") in {"html", "prototype"} for d in pc._stage_defs(ctx.root)[stage].get("documents", [])):
         spec = f"data/stages/{stage}.json"
         if (h := ctx.hash_of(spec)):
             out[spec] = h
@@ -192,6 +194,18 @@ def record_problem(ctx: Ctx, record: dict[str, Any]) -> str | None:
     """None when an approval record is still effective; otherwise why not (``voided``, ``changed``, ``upstream``, ``source``, ``missing``)."""
     if record.get("status", "approved") != "approved":
         return "voided"
+    if record.get("scope") == "action" and pc.commercial_at(ctx.root):
+        stage, action = record.get("stage"), record.get("action")
+        defs = pc._stage_defs(ctx.root)
+        if not any(g["id"] == action for g in defs.get(stage, {}).get("action_gates", [])):
+            return "source"
+        bound = {d["path"]: ctx.hash_of(d["path"]) for d in documents(ctx.root, stage)}
+        if action == "final-acceptance":
+            bound["data/acceptance/checklist.json"] = ctx.hash_of("data/acceptance/checklist.json")
+        if (not bound or None in bound.values() or record.get("source_hashes") != bound
+                or record.get("upstream") != ctx.stage_upstream(stage) or record.get("mode") != USER
+                or record.get("project_id") != ctx.manifest["project_id"] or not record.get("approver") or not record.get("note")):
+            return "source"
     if record.get("scope") == "document":
         h = ctx.hash_of(record["document"])
         if h is None:
@@ -223,7 +237,9 @@ def document_status(ctx: Ctx, doc: dict[str, Any]) -> dict[str, Any]:
     path = doc["path"]
     h = ctx.hash_of(path)
     notes = [n for n in ctx.notes if n.get("document") == path and n.get("status") == "open"]
-    record, problem = effective_record(ctx, "document", document=path)
+    from commercial_workflow import BATCHES, WORKFLOW, batch_record
+    batched = ctx.manifest.get("workflow") == WORKFLOW and doc["stage"] in BATCHES
+    record, problem = batch_record(ctx, doc["stage"]) if batched else effective_record(ctx, "document", document=path)
     art = ctx.registered(doc["stage"], path)
     state, detail = "ready", ""
     if h is None:
@@ -235,8 +251,8 @@ def document_status(ctx: Ctx, doc: dict[str, Any]) -> dict[str, Any]:
     elif notes:
         state, detail = "notes", f"{len(notes)} 条修改意见待处理"
     elif record:
-        state = "approved" if record.get("mode") == USER else "pending-review"
-        detail = "用户已逐个批准" if state == "approved" else "预先授权记录：等你逐个复核后才算数"
+        state = "approved" if batched or record.get("mode") == USER else "pending-review"
+        detail = ("基线已定稿" if doc["stage"] == "baseline" else "用户已确认整批文件") if batched else ("用户已逐个批准" if state == "approved" else "预先授权记录：等你逐个复核后才算数")
     elif problem in {"upstream", "source", "voided"}:
         state, detail = "voided", {"upstream": "前面的文件改过，这份文件的批准随之作废", "source": "来源数据变化，这份文件的批准作废", "voided": "变更使这份文件的批准作废"}[problem]
     elif problem == "changed":
@@ -272,7 +288,7 @@ def action_status(project: Path | str, stage: str, action: str) -> dict[str, Any
     that approves by stage. Nothing is written."""
     root = pc._project_root(project)
     out: dict[str, Any] = {"project": str(root), "stage": stage, "action": action, "granted": False, "reason": "", "approver": None, "time": None, "note": None, "record": None, "bound_files": {}}
-    defs = pc._stage_defs()
+    defs = pc._stage_defs(root)
     if stage not in defs:
         out["reason"] = f"未知阶段: {stage}"
         return out
@@ -285,6 +301,14 @@ def action_status(project: Path | str, stage: str, action: str) -> dict[str, Any
         return out
     ctx = Ctx(root)
     record, problem = effective_record(ctx, "action", stage=stage, action=action)
+    if record is not None and pc.commercial_at(root):
+        problems = hold_errors(ctx, stage)
+        if action == "final-acceptance":
+            import client_flow
+            problems += client_flow.stage_checks(root, stage, phase="complete")
+        if problems:
+            out["reason"] = "；".join(problems[:3])
+            return out
     if record is not None:
         out.update({"granted": True, "approver": record.get("approver"), "time": record.get("time") or record.get("approved_at"), "note": record.get("note"), "record": record.get("id"),
                     "bound_files": dict(record.get("source_hashes") or {}), "mode": record.get("mode")})
@@ -320,7 +344,7 @@ def completion_open(ctx: Ctx, stage: str) -> list[str]:
     """What is left after the documents of a stage are approved: the client's input (intake import, acceptance sign-off) and the user's action gates."""
     import client_flow
 
-    item = pc._stage_defs()[stage]
+    item = pc._stage_defs(ctx.root)[stage]
     out: list[str] = []
     if stage in {"client-intake", "handover"}:
         try:
@@ -370,7 +394,7 @@ def hold_errors(ctx: Ctx, stage: str, *, before_doc: str | None = None) -> list[
     user's review; ``blanket`` mode lets them stand), a stage before it is not complete."""
     errors: list[str] = []
     allow_pre = blanket(ctx.manifest)
-    order = stage_order()
+    order = stage_order(ctx.root)
     for earlier in order[: order.index(stage)]:
         for d in documents(ctx.root, earlier):
             st = document_status(ctx, d)
@@ -416,6 +440,9 @@ def approve_document(project: Path | str, stage: str, doc: str, note: str, appro
     no modification note is open; the internal steps of the stage (flow_steps: upstream, rules, Crawl, specialist output, build, records, trace) are done and pass;
     the file is registered and unchanged since. The record binds the file's hash, its sources and the files before it."""
     root = pc._project_root(project)
+    from commercial_workflow import active
+    if active(root, stage):
+        raise ProjectError("商业项目前三批文件须整批确认，不能逐件批准；基线由 build 定稿")
     if not is_document_model(root):
         raise ProjectError("这个项目还是按阶段审批的旧模型：先 project.py approvals-upgrade <项目> 预演，确认后 --apply；或用 project.py approve <项目> <阶段> --note … 按阶段批准")
     if not str(note).strip() or not str(approver).strip():
@@ -459,6 +486,9 @@ def approve_stage_level(project: Path | str, stage: str, note: str = "", approve
     """``approve <项目> <阶段>`` in the document model: a stage with documents is approved file by file; a stage without any completes by itself once its internal steps pass."""
     root = pc._project_root(project)
     pc._stage_record(pc.load_project(root), stage)
+    from commercial_workflow import active, confirm
+    if active(root, stage):
+        return confirm(root, stage, note, approver)
     docs = documents(root, stage)
     if docs:
         raise ProjectError(f"阶段 {stage} 有 docs 文件，由用户逐个审批：{'、'.join(d['path'] for d in docs)}。用 project.py approve <项目> {stage} --doc <路径> --note <用户原话> --approver <用户>；"
@@ -487,9 +517,12 @@ def record_action(project: Path | str, stage: str, action: str, note: str, appro
     """The user's authorization of an act that is not a file (matrix ``action_gates``: production release, final acceptance). Needs the stage's files approved
     by the user and its internal steps done; binds the hashes of those files, so changing one voids the authorization. Never recordable as pre-authorized."""
     root = pc._project_root(project)
+    if pc.commercial_at(root):
+        from commercial_workflow import require_decision
+        require_decision(note, approver)
     if not is_document_model(root):
         raise ProjectError("动作门属于逐文件审批模型；旧项目的发布和验收授权仍记在阶段审批里")
-    item = pc._stage_defs()[stage]
+    item = pc._stage_defs(root)[stage]
     gate = next((a for a in item.get("action_gates", []) if a["id"] == action), None)
     if gate is None:
         raise ProjectError(f"阶段 {stage} 没有动作门 {action}；有的是：{'、'.join(a['id'] for a in item.get('action_gates', [])) or '无'}")
@@ -508,9 +541,17 @@ def record_action(project: Path | str, stage: str, action: str, note: str, appro
     problems = [p for p in flow_steps.internal_errors(root, stage)]
     if problems:
         raise ProjectError("内部步骤没有全部完成: " + "；".join(problems[:4]))
+    if action == "final-acceptance" and pc.commercial_at(root):
+        import client_flow
+        problems = client_flow.stage_checks(root, stage, phase="complete")
+        if problems:
+            raise ProjectError("客户签收未完成：" + "；".join(problems))
     docs = documents(root, stage)
+    bound = {d["path"]: ctx.hash_of(d["path"]) for d in docs if ctx.hash_of(d["path"])}
+    if pc.commercial_at(root) and action == "final-acceptance":
+        bound["data/acceptance/checklist.json"] = ctx.hash_of("data/acceptance/checklist.json")
     record = _new_record(ctx, scope="action", stage=stage, action=action, mode=USER, approver=str(approver).strip(), note=str(note).strip(),
-                         source_hashes={d["path"]: ctx.hash_of(d["path"]) for d in docs if ctx.hash_of(d["path"])}, upstream=ctx.stage_upstream(stage))
+                         source_hashes=bound, upstream=ctx.stage_upstream(stage))
     refresh(root)
     return record
 
@@ -520,11 +561,11 @@ def record_action(project: Path | str, stage: str, action: str, note: str, appro
 def void_from(root: Path, stage: str, reason: str) -> int:
     """A change reopens ``stage``: every approval record of that stage and all after it is voided (kept as history with the reason)."""
     ledger = pc._load_approvals(root)
-    order = stage_order()
+    order = stage_order(root)
     affected = set(order[order.index(stage):])
     count = 0
     for record in ledger["approvals"]:
-        if record.get("scope") in {"document", "stage", "action"} and record.get("stage") in affected and record.get("status", "approved") == "approved":
+        if record.get("scope") in {"document", "stage", "action", "batch"} and record.get("stage") in affected and record.get("status", "approved") == "approved":
             record["status"] = "voided"
             record["voided_at"] = pc.now_iso()
             record["voided_reason"] = reason
@@ -545,16 +586,16 @@ def refresh(root: Path, manifest: dict[str, Any] | None = None, *, save: bool = 
 
     ctx = Ctx(root)
     ctx.manifest = manifest
-    order = stage_order()
+    order = stage_order(root)
     previous_done = True
     for sid in order:
         record = pc._stage_record(manifest, sid)
         # Approval records are history.  A deleted Crawl conclusion, missing
         # template post-binding or changed source package must also reopen a
         # previously completed stage, not only prevent its first promotion.
-        done = stage_complete(ctx, sid) and not flow_steps.internal_errors(root, sid, ctx=ctx)
+        done = previous_done and stage_complete(ctx, sid) and not flow_steps.internal_errors(root, sid, ctx=ctx)
         if done and record.get("status") not in {"approved", "completed"}:
-            last = next((r for r in reversed(ctx.ledger["approvals"]) if r.get("stage") == sid and r.get("scope") in {"document", "stage", "action"} and r.get("status") == "approved"), None)
+            last = next((r for r in reversed(ctx.ledger["approvals"]) if r.get("stage") == sid and r.get("scope") in {"document", "stage", "action", "batch"} and r.get("status") == "approved"), None)
             record["status"] = "approved"
             record["approval_id"] = (last or {}).get("id")
             record["approved_hashes"] = {a["id"]: a["sha256"] for a in ctx.artifacts if a.get("stage") == sid}
@@ -606,6 +647,10 @@ def review_add(project: Path | str, doc: str, text: str, by: str = "") -> dict[s
     if found is None:
         raise ProjectError(f"不是需要审批的 docs 文件: {doc}")
     st = document_status(ctx, found)
+    from commercial_workflow import active
+    if active(root, found["stage"]):
+        if found["stage"] == "baseline" or hold_errors(ctx, found["stage"]):
+            raise ProjectError("本批尚不在用户确认阶段")
     if st["state"] == "missing":
         raise ProjectError(f"{found['path']} {st['detail']}：没有可审的文件，不能登记修改意见")
     if st["state"] == "approved":
@@ -686,7 +731,7 @@ def approvals_upgrade(project: Path | str, apply: bool = False) -> dict[str, Any
     new_records: list[dict[str, Any]] = []
     backfill: list[str] = []
     probe = [dict(r) for r in ledger["approvals"]]
-    for sid in stage_order():
+    for sid in stage_order(root):
         stage = pc._stage_record(manifest, sid)
         legacy = by_id.get(str(stage.get("approval_id")))
         docs = documents(root, sid)
@@ -761,9 +806,12 @@ def validation_errors(root: Path, manifest: dict[str, Any]) -> list[str]:
     ctx = Ctx(root)
     ctx.manifest = manifest
     for record in ctx.ledger["approvals"]:
-        if record.get("scope") not in {"document", "stage", "action"}:
+        if record.get("scope") not in {"document", "stage", "action", "batch"}:
             continue
         mode, note, approver = record.get("mode"), str(record.get("note", "")), str(record.get("approver", ""))
+        from commercial_workflow import active, BATCHES
+        if active(root) and record.get("stage") in BATCHES and record.get("scope") != "batch":
+            errors.append(f"商业批次 {record['stage']} 不能用 {record['scope']} 记录代替整组确认")
         if mode == USER and (note.startswith(BLANKET_PREFIX) or any(w in approver for w in ("代为记录", "预先授权"))):
             errors.append(f"审批记录 {record.get('id')} 标了用户逐个批准，但备注或审批人写的是整体预先授权/代为记录：应标 pre-authorized")
         if mode == PRE and not note.startswith(BLANKET_PREFIX):
@@ -772,7 +820,7 @@ def validation_errors(root: Path, manifest: dict[str, Any]) -> list[str]:
             errors.append(f"审批记录 {record.get('id')} 的模式无效: {mode}")
         if record.get("scope") == "action" and mode != USER:
             errors.append(f"动作门记录 {record.get('id')} 必须是用户授权（mode user）")
-    order = stage_order()
+    order = stage_order(root)
     for sid in order:
         stage = pc._stage_record(manifest, sid)
         if stage.get("status") not in {"approved", "completed"}:

@@ -2,6 +2,12 @@
 
 给执行项目的 agent 的唯一操作手册：从 `init` 到最终验收的完整路径。不看任何对话也能照做。下面的命令写 `project.py` 时都指 `py -X utf8 D:\Codes\Luz-Project\scripts\project.py`；`"<项目>"` 是项目目录（如 `D:\Codes\014-示例`）或状态根，两种写法都行。
 
+## 商业项目入口
+
+普通 `init` 启动[商业项目执行路线](commercial-project.md)。Project 先把客户原件与目标交给 System。System 调用 Crawl 查证，再形成第一批两份文件。后续按功能与技术方案、HTML Demo 两批确认，定稿实施基线后接产品开发、测试、发布和移交。项目的阶段、所有者与文件位置从其自身矩阵读取。
+
+以下第 0 至 12 节描述已有逐文件项目。商业项目后半段沿用其中适用的执行和动作授权规则；路径及批次以项目当前矩阵为准。
+
 ## 0 三条铁律
 
 1. **用户只审批 docs 里的文件，一次一个。** 一个文件生成并通过内部检查后，只向用户报这一个文件（路径、是什么、怎么看，三行以内），然后停下等用户回复；收到“通过”才记录审批、才开始下一个文件。同一阶段的几个文件可以由同一条命令一次构建（它们同源），但**当前待审文件永远只有一个**，没轮到的文件不出示、不审批。
@@ -12,9 +18,11 @@
 
 ## 1 开始之前
 
+只需要把项目目录和基础文件搭好时，使用 `project.py scaffold`。骨架文件、Git 和存放规则见[项目目录标准](project-structure.md#项目目录标准)。下列命令用于开始阶段执行。
+
 ```powershell
-py -X utf8 D:\Codes\Luz-Project\scripts\project.py matrix
-py -X utf8 D:\Codes\Luz-Project\scripts\project.py init <名称> --project-dir <项目目录>
+py -X utf8 D:\Codes\Luz-Project\scripts\project.py matrix --workflow legacy
+py -X utf8 D:\Codes\Luz-Project\scripts\project.py init <名称> --project-dir <项目目录> --workflow legacy
 py -X utf8 D:\Codes\Luz-Project\scripts\project.py next "<项目>"
 ```
 

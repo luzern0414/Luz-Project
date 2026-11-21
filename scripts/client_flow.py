@@ -19,6 +19,7 @@ from typing import Any
 import client_data as cd
 import client_render as cr
 import estimate_policy as ep
+from project_paths import commercial_at
 from project_core import (
     ProjectError,
     client_document_files,
@@ -45,8 +46,8 @@ NEEDS_EDIT = {"需修改", "需要修改"}              # the function rows offe
 
 
 def _target(root: Path, kind: str) -> Path:
-    folder, name, _ = client_document_files()[kind]
-    path = deliver_root(root) / folder / name
+    folder, name, _ = client_document_files(root)[kind]
+    path = locate(root, f"{folder}/{name}")
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -142,15 +143,15 @@ def draft_requirements(root: Path) -> dict[str, Any]:
     need = ({"type": "auto", "what": "requirement_list"} if cd.data_path(root, "client", "features.json").is_file() else
             {"type": "table", "columns": ["编号", "需求", "具体要求", "业务规则", "类型"], "widths": [1.9, 2.2, 4, 4, 1.2], "caption": "需求清单", "rows": [["待补充"] * 5]})
     sections = [
-        {"key": "background", "title": "项目背景", "blocks": [{"type": "sub", "text": "业务现状"}, text_block("客户是做什么的、现在怎么做、规模多大"), {"type": "sub", "text": "问题与痛点"},
-                                                            {"type": "table", "columns": ["使用方", "现状问题", "具体表现", "带来的后果"], "caption": "按使用方的现状问题", "rows": [["待补充"] * 4]}]},
-        {"key": "goals", "title": "建设目标", "blocks": [text_block("三到四个可检验的目标，各写衡量方法")]},
-        {"key": "scope", "title": "范围与使用者", "blocks": [{"type": "sub", "text": "本期范围"}, text_block("本期要做的"), {"type": "sub", "text": "不在本期范围"}, text_block("明确不做的"),
-                                                          {"type": "table", "columns": ["使用者", "使用端", "主要做什么"], "caption": "使用者与使用端", "rows": [["待补充"] * 3]}]},
+        {"key": "background", "title": "项目背景", "blocks": [{"type": "sub", "text": "业务现状"}, text_block("记录客户的业务场景、现有流程和运营规模"), {"type": "sub", "text": "现状问题"},
+                                                            {"type": "table", "columns": ["使用方", "现状问题", "具体表现", "业务影响"], "caption": "使用方现状分析", "rows": [["待补充"] * 4]}]},
+        {"key": "goals", "title": "建设目标", "blocks": [text_block("列出可验证的业务目标及衡量方法")]},
+        {"key": "scope", "title": "范围与使用者", "blocks": [{"type": "sub", "text": "本期范围"}, text_block("列明本期覆盖的业务流程和使用端"), {"type": "sub", "text": "不在本期范围"}, text_block("列明另行确认或安排的事项"),
+                                                          {"type": "table", "columns": ["使用角色", "使用端", "主要任务"], "caption": "角色与业务任务", "rows": [["待补充"] * 3]}]},
         {"key": "requirements", "title": "需求清单", "blocks": [need]},
         {"key": "rules", "title": "业务规则与约束", "blocks": [text_block("业务规则、时间与金额口径、数据范围、合规与平台约束")]},
-        {"key": "acceptance", "title": "验收标准", "blocks": [text_block("怎样算做好了：可观察的结果与验收方式")]},
-        {"key": "open", "title": "需要客户确认的事项", "blocks": [{"type": "table", "columns": ["事项", "为什么需要确认", "建议的做法"], "caption": "需要客户确认的事项", "rows": [["待补充"] * 3]}]},
+        {"key": "acceptance", "title": "验收标准", "blocks": [text_block("按业务场景记录验证步骤与可观察的预期结果")]},
+        {"key": "open", "title": "需要客户确认的事项", "blocks": [{"type": "table", "columns": ["事项", "业务场景", "拟定规则"], "caption": "需要客户确认的事项", "rows": [["待补充"] * 3]}]},
     ]
     return {"title": f"{name}需求说明书", "format": "word", "toc": True,
             "hero": {"info": [["项目名称", name], ["版本", "V1.0"], ["日期", date.today().isoformat()]]}, "sections": sections}
@@ -399,7 +400,8 @@ def intake_questions(root: Path, features: dict[str, Any], *, include_all: bool 
                                        "basis": f["id"], "features": [f["id"]], "feature_id": f["id"]}))
     for q in out:
         if not q.get("feature_id") and not q.get("why"):
-            raise ProjectError(f"确认表问题缺少说明与理由（why）: {q['category']}/{q['item']}")
+            field = "说明与理由" if sheet_of(q) == SHEET_BUSINESS else "使用场景"
+            raise ProjectError(f"确认表问题缺少{field}（why）: {q['category']}/{q['item']}")
     seen = set()
     for q in out:
         key = _qkey(q["category"], q["item"])
@@ -476,7 +478,7 @@ def build_intake_form(root: Path, *, force: bool = False, include_all: bool = Fa
             lists[name] = per_sheet
             groups = [{"name": "分类", "merge": True}, {"name": "子类", "merge": True}]
             columns = groups + ([{"name": "业务逻辑"}, {"name": "拟定逻辑", "type": "longtext"}, {"name": "说明与理由", "type": "longtext"}, {"name": "审核结果"}, {"name": "修改后的逻辑", "type": "longtext"}] if logic else
-                                [{"name": "需要提供的内容"}, {"name": "示例", "type": "longtext"}, {"name": "为什么需要", "type": "longtext"}, {"name": "客户填写", "type": "longtext"}, {"name": "必填"}])
+                                [{"name": "需要提供的内容"}, {"name": "示例", "type": "longtext"}, {"name": "使用场景", "type": "longtext"}, {"name": "客户填写", "type": "longtext"}, {"name": "必填"}])
             sheets.append({"sheet": name, "title": f"{project['name']} {'业务逻辑确认表' if logic else '需要提供的资料'}", "columns": columns, "rows": rows})
     spec = {"title": title, "theme": theme, "sheets": sheets}
     built = cr.build_xlsx(root, "intake-form", spec, pick_column=["审核结果", "修改后的逻辑", "客户填写"], row_lists=lists)
@@ -807,7 +809,12 @@ def add_change(root: Path, *, type: str, category: str, title: str, detail: str,
         raise ProjectError(f"变更字段无效。类型{cd.CHANGE_TYPES} 分类{cd.CHANGE_CATEGORIES} 来源{cd.CHANGE_SOURCES} 状态{cd.CHANGE_STATUSES}")
     if not title.strip() or not detail.strip():
         raise ProjectError("变更必须写清标题和逻辑/细节（detail），不能只写“修改规则”")
-    stages = _stage_defs()
+    stages = _stage_defs(root)
+    if commercial_at(root):
+        if not reopen:
+            raise ProjectError("商业项目的已确认变更必须回退受影响阶段")
+        if not affects:
+            affects = ["scope"]
     if feature_ops and not affects:
         affects = ["proposal"]  # a feature-list change always reopens the approved proposal
     for s in affects or []:
@@ -836,6 +843,9 @@ def _approved_files(root: Path, stage: str) -> bool:
     if not approval_docs.is_document_model(root):
         return False
     ctx = approval_docs.Ctx(root)
+    import commercial_workflow as cw
+    if cw.active(root, stage):
+        return bool(cw.batch_record(ctx, stage)[0])
     return any(approval_docs.effective_record(ctx, "document", document=d["path"])[0] for d in approval_docs.documents(root, stage)) or approval_docs.stage_record_effective(ctx, stage)
 
 
@@ -899,6 +909,8 @@ def update_change(root: Path, change_id: str, *, status: str | None = None, conf
     entry = next((c for c in ledger["changes"] if c["id"] == change_id), None)
     if not entry:
         raise ProjectError(f"没有这条变更: {change_id}")
+    if commercial_at(root) and not reopen:
+        raise ProjectError("商业项目的已确认变更必须回退受影响阶段")
     if status is not None and status not in cd.CHANGE_STATUSES:
         raise ProjectError(f"状态无效: {status}")
     if status == "已确认" and entry["status"] != "已确认" and not confirmed_by:
@@ -908,7 +920,7 @@ def update_change(root: Path, change_id: str, *, status: str | None = None, conf
     added_stages: list[str] = []
     if affects:
         from project_core import _stage_defs
-        known = _stage_defs()
+        known = _stage_defs(root)
         for stage_id in affects:
             if stage_id not in known:
                 raise ProjectError(f"未知阶段: {stage_id}")
@@ -951,7 +963,7 @@ def ledger_rows(root: Path) -> list[list[Any]]:
     """The rows of the client-facing ledger: only visible entries, detail without process logs, Beijing dates in both date columns."""
     from project_core import _stage_defs
 
-    project_stage_names = {k: v.get("name", k) for k, v in _stage_defs().items()}
+    project_stage_names = {k: v.get("name", k) for k, v in _stage_defs(root).items()}
     feature_file = cd.data_path(root, "client", "features.json")
     names = {x["id"]: x["name"] for x in (cd.load(root, "client", "features.json", default={}) or {}).get("features", [])} if feature_file.is_file() else {}
     rows = []
@@ -1019,7 +1031,7 @@ def estimate_errors(root: Path) -> list[str]:
         if days:
             errors.append(f"data/client/{name} 出现人天或工时（没有要求写人日，客户文件不出现）: {'、'.join(days[:4])}")
     errors += [f"变更台账（客户可见）{w}" for w in ledger_warnings(root) if w.split("含", 1)[-1].startswith(("金额", "人天"))]
-    folder, name, _ = client_document_files()["feature-list-xlsx"]
+    folder, name, _ = client_document_files(root)["feature-list-xlsx"]
     sheet = deliver_root(root) / folder / name
     names, money, days = _sheet_words(sheet, ep.project_allowed_terms(root)) if sheet.is_file() else ([], set(), set())
     if names:
@@ -1043,7 +1055,7 @@ def estimate_errors(root: Path) -> list[str]:
     return errors
 
 
-def _ledger_workbook_spec(root: Path) -> dict[str, Any] | None:
+def _ledger_workbook_spec(root: Path, *, snapshot: bool = False) -> dict[str, Any] | None:
     """Read the confirmed ledger data without touching either formal file."""
     ledger = _ledger(root)
     try:
@@ -1051,6 +1063,9 @@ def _ledger_workbook_spec(root: Path) -> dict[str, Any] | None:
     except ProjectError:
         return None
     if not ledger["changes"]:
+        if snapshot and commercial_at(root):
+            return {"title": "需求变更台账交付快照", "theme": theme, "sheet": "变更台账",
+                    "columns": [{"name": "交付情况"}], "rows": [["截至本次交付，项目未登记需求变更。"]]}
         return None
     project = load_project(root)
     spec = {"title": f"{project['name']} 需求变更台账", "theme": theme, "sheet": "变更台账",
@@ -1111,7 +1126,7 @@ def snapshot_ledger(root: Path) -> Path:
     # snapshot must never rewrite the live client workbook as a side effect.
     require_crawl(root, "handover")
     _require_generation_gate(root, "handover")
-    spec = _ledger_workbook_spec(root)
+    spec = _ledger_workbook_spec(root, snapshot=True)
     if spec is None:
         raise ProjectError("变更台账为空或未选定主题，无法生成交付快照")
     built = cr.build_xlsx(root, "change-ledger-snapshot", spec, stage="handover")
@@ -1571,7 +1586,7 @@ def stage_checks(root: Path, stage: str, phase: str = "all") -> list[str]:
         proposal_spec = cd.load(root, "client", "proposal.json") or {}
         for kind in ("proposal-pdf", "architecture-pdf", "feature-list-xlsx"):
             art = _registered(root, stage, kind)
-            folder, filename, _ = client_document_files()[kind]
+            folder, filename, _ = client_document_files(root)[kind]
             if not art:
                 errors.append(f"缺少客户文档 {filename}（project.py client proposal）")
             elif not art["path"].startswith(folder + "/"):
@@ -1583,7 +1598,7 @@ def stage_checks(root: Path, stage: str, phase: str = "all") -> list[str]:
     elif stage == "client-intake":
         if build:
             if not _registered(root, stage, "intake-form"):
-                errors.append(f"缺少 {client_document_files()['intake-form'][1]}")
+                errors.append(f"缺少 {client_document_files(root)['intake-form'][1]}")
             errors += [f"确认表已过期: {s}" for s in cd.stale_sources(root, "intake-form")]
         if done:
             if deferral is not None:
@@ -1591,7 +1606,7 @@ def stage_checks(root: Path, stage: str, phase: str = "all") -> list[str]:
                 if not deferral_errors:
                     return errors
             if not _registered(root, stage, "intake-response"):
-                errors.append(f"缺少 {client_document_files()['intake-response'][1]}")
+                errors.append(f"缺少 {client_document_files(root)['intake-response'][1]}")
             status = intake_status(root)
             if not status["imported_at"]:
                 errors.append("尚未导入客户回填表（project.py client intake-import）")
@@ -1605,7 +1620,7 @@ def stage_checks(root: Path, stage: str, phase: str = "all") -> list[str]:
             errors += [f"使用说明已过期: {s}" for s in cd.stale_sources(root, "manual")]
             for kind in ("user-manual-pdf", "acceptance-checklist", "change-ledger"):
                 if not _registered(root, stage, kind):
-                    errors.append(f"缺少交付文件 {client_document_files()[kind if kind != 'change-ledger' else 'change-ledger-snapshot'][1]}")
+                    errors.append(f"缺少交付文件 {client_document_files(root)[kind if kind != 'change-ledger' else 'change-ledger-snapshot'][1]}")
             if not checklist or not checklist["items"]:
                 errors.append("验收清单为空（project.py client acceptance）")
             else:
@@ -1618,13 +1633,15 @@ def stage_checks(root: Path, stage: str, phase: str = "all") -> list[str]:
             unfinished = [c["id"] for c in _ledger(root)["changes"] if c["status"] in {"待确认", "已确认"}]
             if unfinished:
                 errors.append("变更台账仍有未实施的条目: " + "、".join(unfinished[:6]))
+        if done and commercial_at(root) and not (checklist and checklist.get("items")):
+            errors.append("缺少真实客户签收清单")
         if done and checklist and checklist["items"]:
             for i in checklist["items"]:
                 if i["status"] == "passed" and not (i.get("signed_by") and i.get("signed_at")):
                     errors.append(f"{i['id']} 缺少客户签字")
-                elif i["status"] == "waived" and not i.get("note"):
+                elif i["status"] == "waived" and (not i.get("note") or (commercial_at(root) and not i.get("signed_by"))):
                     errors.append(f"{i['id']} 豁免缺少理由")
-                elif i["status"] in {"pending", "failed"}:
+                elif i["status"] in {"pending", "failed"} or (commercial_at(root) and i["status"] not in {"passed", "waived"}):
                     errors.append(f"{i['id']} 验收未完成（{i['status']}）")
     return errors
 
@@ -1647,7 +1664,7 @@ def deliverable_context(root: Path, stage_record: dict[str, Any]) -> list[dict[s
 
     from project_core import stage_deliverables
 
-    defs = _stage_defs().get(stage_record["id"], {})
+    defs = _stage_defs(root).get(stage_record["id"], {})
     arts = _load_artifacts(root)
     out = []
     for d in stage_deliverables(root, defs):
@@ -1695,7 +1712,7 @@ def client_context(root: Path, stage: str) -> dict[str, Any]:
         "open_changes": [{"id": c["id"], "title": c["title"], "affects": c["affects"]} for c in open_changes(root)],
         "recent_changes": [{"id": c["id"], "type": c["type"], "title": c["title"], "status": c["status"]} for c in _ledger(root)["changes"][-8:]],
         "skill_cards": [{"skill": s, "run": cmd, "for": why} for s, cmd, why in SKILL_CARDS.get(stage, [])],
-        "directory_contract": __import__("project_core").load_matrix().get("directory_contract", {}),
+        "directory_contract": __import__("project_core").matrix_for(root).get("directory_contract", {}),
     }
 
 

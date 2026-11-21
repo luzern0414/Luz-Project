@@ -336,7 +336,7 @@ def validate_requirements(spec: Any, theme_default: str | None = None) -> list[s
             errors.append("需求清单要有带表题的表，或用 {\"type\": \"auto\", \"what\": \"requirement_list\"} 由功能清单生成")
         background = by_key.get("background")
         if background and not any(b.get("type") == "table" for b in background.get("blocks", [])):
-            errors.append("项目背景要有一张按使用方写的现状问题表（现状问题、具体表现、带来的后果）")
+            errors.append("项目背景需包含按使用方记录的现状问题表（现状问题、具体表现、业务影响）")
     return errors
 
 
@@ -423,6 +423,8 @@ def _section(name: str, key: str, data: dict[str, Any]) -> Any:
         import estimate_policy as ep
 
         return ep.normalized_section(data)
+    if name == "data/client/trace-links.json" and key == "arch":
+        return {fid: row.get("arch") for fid, row in data.items() if isinstance(row, dict)}
     return data.get(key)
 
 

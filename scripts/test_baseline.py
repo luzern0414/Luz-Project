@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 import baseline as bl
 
@@ -17,11 +18,15 @@ class BaselineFilesTests(unittest.TestCase):
             for k in bl.FUNCTION_FIELDS:
                 self.assertGreaterEqual(len(fn[k]), 30, (fn["id"], k))
 
-    def test_the_six_layouts_and_the_ui_kit_are_in_the_frontend_baseline(self):
+    def test_layouts_and_current_design_contracts_are_in_the_frontend_baseline(self):
         names = {i["name"] for i in bl.frontend_items("layout")}
         for name in ("主次布局", "横带分层", "主区加右侧窄栏", "全幅画布加浮动面板", "看板分列", "时间轴泳道"):
             self.assertIn(name, names)
-        self.assertTrue(any("ui-kit" in i["source"] for i in bl.frontend_items("stack")))
+        design = Path(__file__).resolve().parents[2] / "Luz-Design"
+        sources = bl.item("FE-SK-09")["source"].split("；")
+        for relative in ("references/component-reuse.md", "references/design/hard-rules.md"):
+            self.assertIn("Luz-Design/" + relative, sources)
+            self.assertTrue((design / relative).is_file())
 
     def test_the_ordered_state_ramp_is_a_mandatory_colour_item_that_names_its_tokens_and_its_relation_to_the_other_colours(self):
         ids = [i["id"] for i in bl.frontend_items("colour")]

@@ -67,7 +67,8 @@ def summary_spec(root: Path) -> dict[str, Any]:
     spec_sections: list[dict[str, Any]] = []
 
     results: list[list[str]] = []
-    for folder in pc.DOC_FOLDERS:
+    from commercial_workflow import CLIENT, DEVELOPMENT
+    for folder in ((CLIENT, DEVELOPMENT) if pc.commercial_at(root) else pc.DOC_FOLDERS):
         base = deliver / folder
         for file in sorted(base.iterdir()) if base.is_dir() else []:
             if file.is_file() and not file.name.startswith("."):
@@ -200,7 +201,10 @@ def user_page(root: Path) -> str:
     if report.get("user_todos"):
         parts.append("<section><h2>需要你先做</h2>" + _table(cap("别人替不了的事"), ["事项"], [[t] for t in report["user_todos"]]) + "</section>")
     kind = report.get("kind")
-    if kind == "present":
+    if report.get("model") == "batch":
+        files = [[_win(path)] for path in report["documents"]]
+        parts.append(f"<section><h2>{esc(report['stage_name'])}</h2><p>{esc(report['message'])}</p>" + _table(cap("本批文件"), ["路径"], files) + "</section>")
+    elif kind == "present":
         doc = report["document"]
         parts.append("<section><h2>当前待审文件</h2>" + _table(cap("现在只需要你看这一个文件"), ["文件", "是什么", "怎么看"], [[_win(doc["path"]), doc["what"], doc["how"]]]) + "</section>")
     elif kind == "revise":
@@ -222,13 +226,13 @@ def user_page(root: Path) -> str:
         files.append([str(i + 1), _win(d["path"]), str(pc._stage_record(manifest, d["stage"]).get("name", d["stage"])), flow_steps.label_of(ctx, d, st)])
         if report.get("document") and report["document"]["path"] == d["path"]:
             current_index = i
-    for sid in ad.stage_order():
+    for sid in ad.stage_order(root):
         for d in ad.documents(root, sid, approvable=False):
             if d.get("living"):
                 files.append(["—", _win(d["path"]), str(pc._stage_record(manifest, sid).get("name", sid)), "不单独审批（随变更台账，交接时审快照）"])
             elif d.get("client_input"):
                 files.append(["—", _win(d["path"]), str(pc._stage_record(manifest, sid).get("name", sid)), "客户填写，不审批"])
-    parts.append("<section><h2>文件清单与状态</h2>" + _table(cap("按审批顺序的 docs 文件，一次只审一个"), ["序号", "文件", "阶段", "状态"], files, ["center", "left", "center", "center"], current_index, nowrap=(0, 2)) + "</section>")
+    parts.append("<section><h2>文件清单与状态</h2>" + _table(cap("项目文件与确认状态" if pc.commercial_at(root) else "按审批顺序的 docs 文件，一次只审一个"), ["序号", "文件", "阶段", "状态"], files, ["center", "left", "center", "center"], current_index, nowrap=(0, 2)) + "</section>")
 
     folded = []
     gates = []
@@ -239,7 +243,7 @@ def user_page(root: Path) -> str:
         gates.append([str(entry.get("name", entry["id"])), f"{done} / {len(internal)}", "；".join(r["id"] for r in internal if r["status"] != "done") or "全部通过"])
     folded.append("<h3>各阶段的内部检查</h3>" + _table(cap("内部步骤的完成情况（用户不需要操作）"), ["阶段", "已通过 / 共", "未通过的步骤"], gates, ["left", "center", "left"]))
     records = [[str(r.get("document") or r.get("stage")), MODE_LABELS.get(str(r.get("mode")), str(r.get("mode"))), str(r.get("approver", "—")), str(r.get("id"))]
-               for r in ctx.ledger["approvals"] if r.get("scope") in {"document", "stage", "action"} and r.get("status", "approved") == "approved"]
+               for r in ctx.ledger["approvals"] if r.get("scope") in {"document", "stage", "action", "batch"} and r.get("status", "approved") == "approved"]
     if records:
         folded.append("<h3>审批记录</h3>" + _table(cap("现行有效的审批记录"), ["文件或阶段", "方式", "审批人", "记录"], records, ["left", "center", "center", "center"]))
     stage_name = {str(s.get("id")): str(s.get("name", s.get("id"))) for s in manifest.get("stages", [])}

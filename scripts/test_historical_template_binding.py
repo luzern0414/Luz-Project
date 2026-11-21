@@ -64,9 +64,10 @@ def drift(tmp, monkeypatch, file="scripts/check_document.py"):
     copied = tmp / "current-design"
     catalog = read(library.CATALOG)
     for relative in {p for item in catalog["templates"].values() for p in item["files"]}:
-        target = copied / relative
+        original = library._template_file(relative)
+        target = copied / original.relative_to(library.ROOT) if original.is_relative_to(library.ROOT) else tmp / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(library.ROOT / relative, target)
+        shutil.copyfile(original, target)
     (copied / "references").mkdir(exist_ok=True)
     write(copied / "references/template-library.json", catalog)
     target = copied / file

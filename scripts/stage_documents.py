@@ -65,6 +65,9 @@ def _blocks_html(blocks, counters, where):
 def write_document(project, stage, spec):
     root = _project_root(project)
     manifest = load_project(root)
+    from commercial_workflow import active
+    if active(project, stage):
+        raise ProjectError("商业项目前期文件统一使用 project.py build 生成")
     if stage not in DOC_DIRS:
         raise ProjectError("未知阶段")
     require_crawl(root, stage)

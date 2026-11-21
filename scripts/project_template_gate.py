@@ -19,7 +19,7 @@ def output_contract(root: Path, stage: str, document: dict[str, Any]) -> tuple[s
     import client_data as cd
 
     path = str(document["path"]).replace(chr(92), "/")
-    for kind, (folder, name, _) in pc.client_document_files().items():
+    for kind, (folder, name, _) in pc.client_document_files(root).items():
         if path != f"{folder}/{name}":
             continue
         if kind in {"intake-response", "change-ledger"}:
